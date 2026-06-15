@@ -103,20 +103,26 @@ BorrowCycle.rawRecordIds[] ─> RawRecord.id
 
 ---
 
-## 技术选型建议
+## 技术选型建议 (AI 时代最新 React 技术栈)
+
+针对 AI 辅助编程以及未来可能的本地 AI 能力集成，选型偏向于**高度类型安全**、**现代化 API**、以及**利于 AI 理解与生成代码**的技术栈。同时严格遵守本系统**纯前端、零依赖后端**的隐私安全核心原则，专注打造极致的本地 SPA 体验。
 
 | 类别 | 推荐 | 备选 | 说明 |
 |------|------|------|------|
-| 框架 | React + Vite | Vue + Vite | 生态成熟，组件丰富 |
-| 状态管理 | Zustand | Jotai | 轻量，适合中等复杂度 |
-| IndexedDB 封装 | Dexie.js | idb | Dexie 的查询 API 更友好 |
-| 图表 | ECharts | Recharts | ECharts 对中文支持好 |
-| CSS | CSS Modules | Vanilla CSS | 避免样式冲突 |
-| 文件解析 | Papa Parse (CSV) | - | 成熟的 CSV 解析库 |
-| 编码检测 | TextDecoder API | iconv-lite | 浏览器原生支持 GBK |
-| 日期处理 | date-fns | dayjs | 按需引入，体积小 |
-| UUID | crypto.randomUUID() | uuid | 现代浏览器原生支持 |
-| 路由 | React Router v7 | TanStack Router | 社区成熟 |
+| 框架 | React 19 + Vite | - | 采用最新 React 19 (并发特性、新 Hooks) 与 Vite，可配合 React Compiler 减少手动优化负担，降低 AI 生成代码的复杂度 |
+| 类型验证 | Zod | Valibot | Schema 优先的设计，为 AI 代理提供严格的数据结构上下文，并在客户端保证解析数据的可靠性 |
+| 路由 | TanStack Router | React Router v7 | 100% 类型安全的路由系统，确保 AI 生成的页面跳转与参数传递完全静态类型化，杜绝低级拼写错误 |
+| 状态管理 | Zustand | Jotai | 极简且灵活的状态管理，AI 极易理解和生成，无需繁琐的 boilerplate 代码 |
+| 本地数据库 | Dexie.js | idb | 配合 `dexie-react-hooks` 实现响应式的本地数据流，完美契合零后端与离线可用的约束 |
+| UI 组件生态 | shadcn/ui | Radix UI | 基于 Tailwind 的可定制组件库，代码直接落盘于本地项目中，完全由开发者掌控。AI 工具（如 Cursor/v0 等）对其支持极深，生成质量最高 |
+| CSS/样式 | Tailwind CSS | CSS Modules | AI 时代首选的原子化 CSS 框架。通过系统级的配置文件来保持设计的一致性，省去为组件单独命名类的麻烦，极大提升 UI 迭代速度 |
+| 并发与性能 | Web Worker + Comlink | - | 将大量借阅记录的解析与统计下放至 Worker 线程，维持 AI 时代的丝滑 UI 交互 |
+| 本地 AI (未来扩展) | Transformers.js / WebLLM | - | 在浏览器内直接运行轻型模型（如自动分类、本地推荐），确保用户敏感阅读数据**绝对不离开本地设备** |
+| 图表 | ECharts | Recharts | 在本地离线处理海量记录渲染时性能更强，且对中文生态和复杂交互支持更好 |
+| 文件解析 | Papa Parse (CSV) | - | 客户端高性能、流式解析库，支持直接处理大型导出文件 |
+| 日期与工具 | date-fns | dayjs | 纯函数式 API，利于 Tree-shaking，且 AI 生成调用代码时直观明确 |
+| 国际化 (i18n) | react-i18next | Paraglide JS | 行业标准的 UI 多语言方案，AI 对其生态和配置语法烂熟于心，支持浏览器语言检测与动态加载 |
+| 本地化 (l10n) | 原生 Intl API | - | 追求零依赖：数字、货币、长短文本排序直接使用浏览器原生的 `Intl` 接口；日期配合 `date-fns` 的 locale 包实现精准格式化 |
 
 ---
 
