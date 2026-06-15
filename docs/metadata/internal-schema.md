@@ -33,6 +33,8 @@ interface ReadGraphDB {
 
 ## Object Store: books
 
+> 生成的数据：允许用户进行编辑（如修改元数据、合并记录）和删除。
+
 ```typescript
 /**
  * 主键: id (UUID)
@@ -57,6 +59,8 @@ const booksStore = {
 ```
 
 ## Object Store: borrowCycles
+
+> 生成的数据：允许用户进行编辑（如修改借还时间、状态）和删除。
 
 ```typescript
 /**
@@ -105,6 +109,7 @@ const sourcesStore = {
 ## Object Store: rawRecords
 
 > 保留原始导入数据，用于溯源、重新解析和调试
+> **操作约束**：原始数据不可篡改（不允许编辑），但允许用户删除（例如撤销导入）。
 
 ```typescript
 interface RawRecord {
@@ -249,6 +254,10 @@ interface ExportData {
   sources: Source[];
   importLogs: ImportLog[];
   
-  /** 不包含 rawRecords（体积过大） */
+  /** 
+   * 为了能够长久保留并在未来变动后重新生成，需要包含 rawRecords。
+   * 可以考虑在导出时提供“是否包含原始数据（体积较大）”的选项。
+   */
+  rawRecords?: RawRecord[];
 }
 ```
