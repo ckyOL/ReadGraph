@@ -79,12 +79,11 @@ interface Book {
   /** === 分类信息 === */
 
   /**
-   * 中图分类号（CLC - Chinese Library Classification）
-   * - 仅分类部分，不含种次号
-   * - 格式示例："TP312" "I247.5" "B842.6"
-   * - 用于映射到学科领域
+   * 图书分类号（支持多种分类法，如 CLC、DDC、LCC 等）
+   * - 同一本书在不同图书馆可能有不同的分类体系或不同的分类号
+   * - 存储为数组，兼容一书多分类
    */
-  clcCode: string | null;
+  classifications: ClassificationEntry[];
 
   /**
    * 主题词 / 关键词
@@ -117,6 +116,22 @@ interface BarcodeEntry {
   /** 关联的图书馆 source ID */
   sourceId: string;
 }
+
+interface ClassificationEntry {
+  /**
+   * 分类法体系
+   * - clc: 中国图书馆分类法 (Chinese Library Classification)
+   * - ddc: 杜威十进制分类法 (Dewey Decimal Classification)
+   * - lcc: 美国国会图书馆分类法 (Library of Congress Classification)
+   * - udc: 国际十进分类法 (Universal Decimal Classification)
+   * - other: 其他或馆内自编分类法
+   */
+  system: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other';
+  /** 分类号（如 "TP312"、"005.1"） */
+  code: string;
+  /** 对应的类别名称（可选，如 "自动化技术、计算机技术"） */
+  category?: string;
+}
 ```
 
 ## 字段优先级
@@ -141,12 +156,15 @@ Agent 实现要点：
 2. ISBN 清洗：
    - 去除连字符 "-" 和空格
    - 统一为纯数字（ISBN-10 末位 X 保留）
-3. 去重键：优先用 isbn13，其次用 title + authors[0] 模糊匹配
+3. 去重键与副本识别：
+   - 物理副本标识：使用 `sourceId` + `barcode` 唯一标识一本具体的实体书（避免无 ISBN 的自编文献、期刊或同馆多副本引起错乱）。
+   - 书目合并：通过 `isbn13` 将不同馆藏或无条码的阅读记录归集到统一的 `Book` 实体。
+   - 兜底策略：无 ISBN 时，退化使用 `title` + `authors[0]` 进行模糊建议合并。
 ```
 
-## CLC 分类号对照表（一级类目）
+## 分类号对照表（示例）
 
-用于阅读偏好分析的学科领域映射：
+由于支持多种分类法，系统需维护不同分类法的映射。以下为 CLC（中图分类法）一级类目示例：
 
 | 代码 | 类名 | 英文 |
 |------|------|------|

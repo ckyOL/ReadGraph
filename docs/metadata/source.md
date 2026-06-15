@@ -114,6 +114,13 @@ interface LibraryInfo {
 
   /** OPAC 地址 */
   opacUrl: string | null;
+
+  /**
+   * 图书馆默认使用的分类法体系
+   * - 用于导入数据时默认填充 Book 的 classifications[].system
+   * - clc: 中国图书馆分类法, ddc: 杜威十进制, lcc: 国会图书馆, udc: 国际十进
+   */
+  classificationSystem: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other' | null;
 }
 
 /**
@@ -161,6 +168,7 @@ const SOURCE_TEMPLATES: Partial<Source>[] = [
       province: null,
       website: null,
       opacUrl: null,
+      classificationSystem: 'clc',
     },
   },
   {
@@ -176,6 +184,7 @@ const SOURCE_TEMPLATES: Partial<Source>[] = [
       province: null,
       website: null,
       opacUrl: null,
+      classificationSystem: 'clc',
     },
   },
   {
@@ -191,6 +200,7 @@ const SOURCE_TEMPLATES: Partial<Source>[] = [
       province: null,
       website: null,
       opacUrl: null,
+      classificationSystem: 'clc',
     },
   },
 

@@ -38,7 +38,7 @@ interface ReadGraphDB {
  * 主键: id (UUID)
  * 索引:
  *   - isbn13 (unique, sparse) — 按 ISBN 查找和去重
- *   - clcCode (non-unique) — 按分类号统计
+ *   - classCodes (multiEntry) — 提取所有的分类号(如"TP312")供分类统计
  *   - title (non-unique) — 按书名搜索
  *   - createdAt (non-unique) — 按导入时间排序
  *   - sourceIds (multiEntry) — 按来源查询
@@ -47,7 +47,8 @@ const booksStore = {
   keyPath: 'id',
   indexes: [
     { name: 'isbn13', keyPath: 'isbn13', options: { unique: true, multiEntry: false } },
-    { name: 'clcCode', keyPath: 'clcCode', options: { unique: false } },
+    // 为了支持 IndexedDB 索引，可在写入前从 classifications 提取出 code 数组存入 classCodes
+    { name: 'classCodes', keyPath: 'classCodes', options: { unique: false, multiEntry: true } },
     { name: 'title', keyPath: 'title', options: { unique: false } },
     { name: 'createdAt', keyPath: 'createdAt', options: { unique: false } },
     { name: 'sourceIds', keyPath: 'sourceIds', options: { unique: false, multiEntry: true } },
@@ -192,10 +193,10 @@ interface ImportLog {
 ```
 Agent 实现要点：
 
-Book 去重（合并规则）:
-1. 精确匹配: isbn13 相同 → 合并
-2. 条码匹配: 同一 sourceId + barcode → 同一本书的同一副本
-3. 模糊匹配: normalize(title) + normalize(authors[0]) → 建议合并（需用户确认）
+Book 去重与归并（合并规则）:
+1. 物理副本匹配（最优先）: `sourceId` + `barcode` 相同 → 识别为已被导入过的特定物理副本，直接关联到对应的 Book（解决无 ISBN 的期刊、自编文献问题）。
+2. 书目精确匹配: `isbn13` 相同 → 不同物理副本或不同数据源的同一本书籍，归并合并到同一个 Book。
+3. 模糊匹配: 既无相同条码，也无（或缺失）ISBN，则比较 `normalize(title)` + `normalize(authors[0])` → 建议合并（需用户手动确认）。
 
 BorrowCycle 去重:
 1. 精确匹配: sourceId + barcode + borrowedAt → 重复导入，跳过
