@@ -10,125 +10,49 @@
 
 ---
 
-## 图书馆系统常见导出格式
+## 图书馆系统常见获取格式
 
-### 1. 汇文 Libsys 格式
+### 1. 纯流通流水日志格式（如深圳图书馆）
 
-> 国内高校图书馆最常用的管理系统
+> 直接从后端接口（如我的图书馆 API）截获的原始交易流水。
+> **特征**：完全缺少作者、ISBN、出版社等书目字段，仅包含操作动作、条码号和书名。
 
-**典型字段映射：**
-
-```json
-[
-  {
-    "barcode": "0012345678",
-    "title": "设计模式 : 可复用面向对象软件的基础",
-    "author": "(美) Able... 著",
-    "callno": "TP311.5/D3",
-    "loanDate": "2024-03-15 10:30:00",
-    "returnDate": "2024-04-10 14:20:00",
-    "dueDate": "2024-04-15",
-    "renewCount": "0",
-    "location": "理科馆三楼",
-    "type": "借出"
-  }
-]
-```
-
-**字段映射表：**
-
-| 原始字段 | 可能的中文名 | 映射目标 |
-|----------|-------------|----------|
-| barcode | 条码号, 册条码 | Book.barcodes, BorrowCycle.barcode |
-| title | 题名, 书名, 正题名 | Book.title |
-| author | 著者, 作者, 责任者 | Book.authors |
-| callno | 索书号, 分类号, 索取号 | Book.callNumber, Book.clcCode (提取) |
-| isbn | ISBN | Book.isbn13 / Book.isbn10 |
-| loanDate | 借出日期, 借阅日期, 借书日期 | BorrowCycle.borrowedAt |
-| returnDate | 归还日期, 还书日期 | BorrowCycle.returnedAt |
-| dueDate | 应还日期, 到期日期 | BorrowCycle.dueDate |
-| renewCount | 续借次数 | BorrowCycle.renewCount |
-| type | 操作类型, 流通类型 | 用于判断借/还/续借 |
-| location | 馆藏地, 馆藏地点 | (扩展信息) |
-| publisher | 出版者, 出版社 | Book.publisher |
-| pubdate | 出版日期, 出版年 | Book.publishDate |
-
-### 2. 金盘 GDLIS 格式
-
-> 国内公共图书馆常用
-
-**典型字段映射：**
+**典型格式（JSON）：**
 
 ```json
-[
-  {
-    "册条码号": "SZ00123456",
-    "正题名": "百年孤独",
-    "责任者": "[哥]加西亚·马尔克斯著 ; 范晔译",
-    "ISBN": "978-7-5442-6044-1",
-    "分类号": "I775.45",
-    "借书日期": "2024/01/20",
-    "应还日期": "2024/02/20",
-    "还书日期": "2024/02/15",
-    "续借次数": "0"
-  }
-]
+{
+  "record": [
+    {
+      "Sequence": 61,
+      "date": "20260411",
+      "time": "18:33:50",
+      "optype": "读者还回文献",
+      "cirtype": "大学城中文图书",
+      "title": "软件工程3.0 = Software engineering 3.0",
+      "barcode": "F4401002064220",
+      "callno": "TP311.5/1040"
+    },
+    {
+      "Sequence": 63,
+      "date": "20260411",
+      "time": "16:25:29",
+      "optype": "读者借出",
+      "cirtype": "电子设备外借",
+      "title": "宝安区图书馆电子阅读器",
+      "barcode": "04400790006607",
+      "callno": "TP368.3/168"
+    }
+  ]
+}
 ```
 
-### 3. Interlib 格式
-
-> 区域公共图书馆联盟常用
-
-```json
-[
-  {
-    "itemBarcode": "TJ20240001",
-    "bibTitle": "三体",
-    "bibAuthor": "刘慈欣 著",
-    "bibISBN": "9787536692930",
-    "classNo": "I247.5",
-    "loanTime": "2024-05-01 09:15:00",
-    "returnTime": "2024-05-20 16:30:00",
-    "dueTime": "2024-06-01",
-    "loanType": "普通借阅",
-    "renewTimes": 0
-  }
-]
-```
-
-### 4. 通用 CSV 格式
-
-支持用户导出的 CSV 文件，通过列名自动匹配：
-
-```csv
-条码号,书名,作者,ISBN,分类号,借出日期,归还日期,应还日期
-0012345678,设计模式,"Gamma等著",9787111075752,TP311.5,2024-03-15,2024-04-10,2024-04-15
-```
-
-**CSV 列名自动匹配规则：**
-
-```typescript
-const COLUMN_ALIASES: Record<string, string[]> = {
-  barcode: ['条码号', '册条码号', '册条码', 'barcode', 'itemBarcode', 'item_barcode'],
-  title: ['题名', '正题名', '书名', 'title', 'bibTitle', 'bib_title'],
-  author: ['著者', '责任者', '作者', 'author', 'bibAuthor', 'bib_author'],
-  isbn: ['ISBN', 'isbn', 'bibISBN', 'bib_isbn'],
-  callNumber: ['索书号', '索取号', '分类号', 'callno', 'classNo', 'call_number'],
-  loanDate: ['借出日期', '借阅日期', '借书日期', 'loanDate', 'loanTime', 'loan_date', 'borrow_date'],
-  returnDate: ['归还日期', '还书日期', 'returnDate', 'returnTime', 'return_date'],
-  dueDate: ['应还日期', '到期日期', 'dueDate', 'dueTime', 'due_date'],
-  renewCount: ['续借次数', 'renewCount', 'renewTimes', 'renew_count'],
-  publisher: ['出版者', '出版社', 'publisher'],
-  publishDate: ['出版日期', '出版年', 'pubdate', 'pub_date', 'publish_date'],
-  operationType: ['操作类型', '流通类型', 'type', 'loanType', 'operation_type'],
-};
-```
-
----
+**处理约束：**
+- **必须**使用 `optype` 判断借还是还，并过滤无效操作（如“自助查询”、“读者续借”）。
+- **完全依赖** `sourceId` + `barcode` 作为物理副本识别的唯一锚点，缺失 ISBN 会导致此记录无法自动与电子平台导入的数据精确合并。
 
 ## 电子阅读平台格式
 
-### 5. 微信读书
+### 2. 微信读书
 
 > 数据获取方式：通过浏览器扩展或 API 抓取
 
@@ -167,7 +91,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
 | lastReadTime | BorrowCycle.returnedAt | 最后阅读时间作为"归还"时间 |
 | progress | (扩展) | 阅读进度百分比 |
 
-### 6. Kindle
+### 3. Kindle
 
 > 数据获取方式：Amazon 账户数据导出
 
