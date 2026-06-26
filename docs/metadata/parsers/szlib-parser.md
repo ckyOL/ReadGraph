@@ -23,9 +23,8 @@
 - `isbn13`: `null` (原数据无此信息)。
 - `title`: 取自 `title` 字段。*(注：可能包含 "= 英文名 : 副标题" 等编目标记，原样保留)*。
 - `authors`: `[]` (空数组)。
-- `callNumber`: 取自 `callno`。
 - `classifications`:
-  - 提取 `callno` 中 `/` 前的部分作为 `code`（如 "TP311.5/1040" -> "TP311.5"）。
+  - 从 `callno` 中提取分类号：取 `/` 前的部分作为 `code`（如 "TP311.5/1040" → "TP311.5"）。
   - `system` 设为 `'clc'`（国内公共图书馆默认使用中图法）。
 - `barcodes`: `[{ barcode: 原始记录的barcode, sourceId: 当前解析的sourceId }]`。
 

@@ -74,11 +74,11 @@ interface Source {
   /** 用户备注 */
   notes: string | null;
 
-  /** 创建时间 (ISO 8601 UTC) */
-  createdAt: string;
+  /** 创建时间 (UTC) */
+  createdAt: Date;
 
-  /** 最后导入时间 (ISO 8601 UTC) */
-  lastImportAt: string | null;
+  /** 最后导入时间 (UTC) */
+  lastImportAt: Date | null;
 
   /** 累计导入记录数 */
   totalImportedRecords: number;

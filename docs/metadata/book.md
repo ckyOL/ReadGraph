@@ -36,13 +36,6 @@ interface Book {
    */
   barcodes: BarcodeEntry[];
 
-  /**
-   * 索书号 / 分类号（如中图分类法 CLC）
-   * - 格式示例："TP312/1234" "I247.5/789"
-   * - 用于分析阅读偏好的学科分布
-   */
-  callNumber: string | null;
-
   /** === 书目信息 === */
 
   /** 书名（取自原始数据，保留原始格式） */
@@ -73,8 +66,12 @@ interface Book {
   /** 页数 */
   pages: number | null;
 
-  /** 定价（保留原始字符串，如 "CNY 45.00"、"$12.99"） */
-  price: string | null;
+  /**
+   * 定价（结构化存储）
+   * - 从原始字符串解析出数值和货币代码
+   * - 便于统计分析和排序
+   */
+  price: Price | null;
 
   /** === 分类信息 === */
 
@@ -96,11 +93,11 @@ interface Book {
   /** 封面图片 URL（可选，来自豆瓣/OpenLibrary等） */
   coverUrl: string | null;
 
-  /** 记录创建时间 (ISO 8601 UTC) */
-  createdAt: string;
+  /** 记录创建时间 (UTC) */
+  createdAt: Date;
 
-  /** 记录最后更新时间 (ISO 8601 UTC) */
-  updatedAt: string;
+  /** 记录最后更新时间 (UTC) */
+  updatedAt: Date;
 
   /**
    * 数据来源标记
@@ -131,6 +128,17 @@ interface ClassificationEntry {
   code: string;
   /** 对应的类别名称（可选，如 "自动化技术、计算机技术"） */
   category?: string;
+}
+
+interface Price {
+  /** 金额数值 */
+  amount: number;
+  /**
+   * ISO 4217 货币代码
+   * - 示例: "CNY", "USD", "JPY", "EUR"
+   * - 从原始字符串推断："¥45.00" → CNY, "$12.99" → USD
+   */
+  currency: string;
 }
 ```
 

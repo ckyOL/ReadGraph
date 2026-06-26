@@ -162,8 +162,8 @@ interface ImportLog {
   /** 关联的 Source ID */
   sourceId: string;
 
-  /** 导入时间 (ISO 8601 UTC) */
-  importedAt: string;
+  /** 导入时间 (UTC) */
+  importedAt: Date;
 
   /** 原始文件名 */
   fileName: string;
@@ -245,8 +245,8 @@ interface ExportData {
   /** 导出格式版本 */
   version: string;
   
-  /** 导出时间 */
-  exportedAt: string;
+  /** 导出时间 (UTC) */
+  exportedAt: Date;
   
   /** 各 store 的完整数据 */
   books: Book[];
