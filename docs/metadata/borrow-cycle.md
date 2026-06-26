@@ -9,8 +9,11 @@ interface BorrowCycle {
   /** 系统内部唯一标识 (UUID v4) */
   id: string;
 
-  /** 关联的 Book ID */
+  /** 关联的全局书籍 ID */
   bookId: string;
+
+  /** 关联的本地编目记录 ID (CatalogRecord) */
+  catalogRecordId: string;
 
   /** 关联的 Source ID（从哪个图书馆/平台借出） */
   sourceId: string;
@@ -43,6 +46,14 @@ interface BorrowCycle {
    * - unknown: 无法确定（数据不完整）
    */
   status: 'borrowed' | 'returned' | 'unknown';
+
+  /** === 地点与附加元数据 === */
+
+  /** 借出地点/设备 (如：深图北馆一楼自助机) */
+  borrowLocation: string | null;
+
+  /** 归还地点/设备 (如：宝安中心区图书馆自助馆自助借还机) */
+  returnLocation: string | null;
 
   /** === 来源追踪 === */
 

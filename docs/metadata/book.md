@@ -26,16 +26,6 @@ interface Book {
    */
   isbn10: string | null;
 
-  /** === 图书馆特有标识符 === */
-
-  /**
-   * 馆藏条码号
-   * - 同一本书在不同馆可能有不同条码
-   * - 格式因馆而异，通常为纯数字
-   * - 存储为数组，支持多馆多条码
-   */
-  barcodes: BarcodeEntry[];
-
   /** === 书目信息 === */
 
   /** 书名（取自原始数据，保留原始格式） */
@@ -73,15 +63,7 @@ interface Book {
    */
   price: Price | null;
 
-  /** === 分类信息 === */
-
-  /**
-   * 图书分类号（支持多种分类法，如 CLC、DDC、LCC 等）
-   * - 同一本书在不同图书馆可能有不同的分类体系或不同的分类号
-   * - 存储为数组，兼容一书多分类
-   */
-  classifications: ClassificationEntry[];
-
+  /** === 标签与元信息 === */
   /**
    * 主题词 / 关键词
    * - 来源于图书馆编目数据或用户标签
@@ -105,29 +87,6 @@ interface Book {
    * - 后续可能被其他 source 的数据补充
    */
   sourceIds: string[];
-}
-
-interface BarcodeEntry {
-  /** 条码号 */
-  barcode: string;
-  /** 关联的图书馆 source ID */
-  sourceId: string;
-}
-
-interface ClassificationEntry {
-  /**
-   * 分类法体系
-   * - clc: 中国图书馆分类法 (Chinese Library Classification)
-   * - ddc: 杜威十进制分类法 (Dewey Decimal Classification)
-   * - lcc: 美国国会图书馆分类法 (Library of Congress Classification)
-   * - udc: 国际十进分类法 (Universal Decimal Classification)
-   * - other: 其他或馆内自编分类法
-   */
-  system: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other';
-  /** 分类号（如 "TP312"、"005.1"） */
-  code: string;
-  /** 对应的类别名称（可选，如 "自动化技术、计算机技术"） */
-  category?: string;
 }
 
 interface Price {
@@ -169,34 +128,3 @@ Agent 实现要点：
    - 书目合并：通过 `isbn13` 将不同馆藏或无条码的阅读记录归集到统一的 `Book` 实体。
    - 兜底策略：无 ISBN 时，退化使用 `title` + `authors[0]` 进行模糊建议合并。
 ```
-
-## 分类号对照表（示例）
-
-由于支持多种分类法，系统需维护不同分类法的映射。以下为 CLC（中图分类法）一级类目示例：
-
-| 代码 | 类名 | 英文 |
-|------|------|------|
-| A | 马克思主义、列宁主义、毛泽东思想、邓小平理论 | Marxism |
-| B | 哲学、宗教 | Philosophy & Religion |
-| C | 社会科学总论 | Social Sciences |
-| D | 政治、法律 | Politics & Law |
-| E | 军事 | Military |
-| F | 经济 | Economics |
-| G | 文化、科学、教育、体育 | Culture & Education |
-| H | 语言、文字 | Language |
-| I | 文学 | Literature |
-| J | 艺术 | Art |
-| K | 历史、地理 | History & Geography |
-| N | 自然科学总论 | Natural Sciences |
-| O | 数理科学和化学 | Math & Chemistry |
-| P | 天文学、地球科学 | Astronomy & Earth Science |
-| Q | 生物科学 | Biology |
-| R | 医药、卫生 | Medicine |
-| S | 农业科学 | Agriculture |
-| T | 工业技术 | Technology |
-| U | 交通运输 | Transportation |
-| V | 航空、航天 | Aviation & Aerospace |
-| X | 环境科学、安全科学 | Environmental Science |
-| Z | 综合性图书 | General |
-
-> 注意：TP（自动化技术、计算机技术）是 T 的子类，在分析中可进一步细分。
