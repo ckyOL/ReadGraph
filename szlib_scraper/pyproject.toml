@@ -1,0 +1,8 @@
+[project]
+name = "szlib-scraper"
+version = "0.1.0"
+description = "深圳图书馆借阅历史抓取工具"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.34.2",
+]
