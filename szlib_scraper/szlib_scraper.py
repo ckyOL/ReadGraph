@@ -2,16 +2,20 @@ import json
 import math
 import os
 import time
+import traceback
+import urllib.parse
 
 import requests
 
 
 def fetch_all_records(card_value, start_date, end_date, cookie_str, output_dir):
-    # 深圳图书馆移动端API接口
-    url = "https://www.szlib.org.cn/m/proxyBasic.jsp"
+    # 深圳图书馆移动端API基础地址
+    base_url = "https://www.szlib.org.cn/m/proxyBasic.jsp"
 
     # 构造请求头，包含参数传入的 Cookie 和模拟浏览器的 User-Agent
     headers = {
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Referer": "https://www.szlib.org.cn/m/mylibrary/readhistory.html",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Cookie": cookie_str,
     }
@@ -31,22 +35,30 @@ def fetch_all_records(card_value, start_date, end_date, cookie_str, output_dir):
     print(f"开始抓取，抓取完成后数据将合并保存至: {output_file}")
 
     while page <= total_pages:
-        # 构造 URL 请求参数
-        params = {
-            "service": "history/GetLoanHistory",
-            "startDate": start_date,
-            "endDate": end_date,
-            "v_ServiceAddr": "",
-            "CardOrBarcode": "cardno",
-            "value": card_value,
-            "eventType": "E",
-            "curpage": page,
-            "_": int(time.time() * 1000),
-        }
+        # 构造完整 URL
+        # 深圳图书馆 proxy 使用特殊格式：proxyBasic.jsp?<servicePath>?<queryParams>
+        # 第一个 ? 后是服务路径（含斜杠），第二个 ? 后是实际请求参数
+        service_path = "servicehistory/GetLoanHistory"
+        query_string = urllib.parse.urlencode(
+            {
+                "startDate": start_date,
+                "endDate": end_date,
+                "v_ServiceAddr": "",
+                "CardOrBarcode": "cardno",
+                "value": card_value,
+                "eventType": "E",
+                "curpage": page,
+                "_": int(time.time() * 1000),
+            }
+        )
+        url = f"{base_url}?{service_path}?{query_string}"
 
+        response = None
         try:
+            print(f"第 {page}/{total_pages} 页 请求 URL: {url}")
+
             # 发送 GET 请求
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
 
             # 解析 JSON 响应
@@ -72,13 +84,19 @@ def fetch_all_records(card_value, start_date, end_date, cookie_str, output_dir):
                 all_records.extend(records)
 
         except requests.exceptions.RequestException as e:
-            print(f"第 {page} 页 HTTP 请求失败: {e}")
+            print(f"第 {page} 页 HTTP 请求失败: {type(e).__name__}: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"  响应状态码: {e.response.status_code}")
+                print(f"  响应内容: {e.response.text[:500]}")
             break
-        except ValueError:
-            print(f"第 {page} 页 JSON 解析失败，服务器可能返回了非 JSON 格式的内容")
+        except ValueError as e:
+            print(f"第 {page} 页 JSON 解析失败: {type(e).__name__}: {e}")
+            if response is not None:
+                print(f"  原始响应内容: {response.text[:500]}")
             break
         except Exception as e:
-            print(f"发生未知错误: {e}")
+            print(f"发生未知错误: {type(e).__name__}: {e}")
+            traceback.print_exc()
             break
 
         # 递增页码，准备抓取下一页
