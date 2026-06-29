@@ -13,39 +13,36 @@ interface Source {
 
   /**
    * 来源类型
-   * - library: 公共/高校图书馆
-   * - ereader: 电子阅读器/平台
+   * - library: 公共/高校图书馆（含 Libby 等电子借阅平台，只要有借/还记录即归入此类）
    * - manual: 用户手动录入
    */
-  type: 'library' | 'ereader' | 'manual';
+  type: 'library' | 'manual';
 
   /**
    * 来源名称（用户可见的显示名称）
-   * - 示例: "北京大学图书馆", "深圳图书馆", "微信读书"
+   * - 示例: "北京大学图书馆", "深圳图书馆"
    */
   name: string;
-
-  /**
-   * 来源简称 / 标识符
-   * - 用于内部引用和 parser 选择
-   * - 格式: kebab-case
-   * - 示例: "pku-lib", "szlib", "weread"
-   */
-  slug: string;
 
   /** === Parser 配置 === */
 
   /**
-   * 对应的 Parser 标识符
-   * - 决定如何解析该来源的原始数据
-   * - 同一类系统的不同馆可以共享 parser
-   * - 示例: "interlib", "aleph", "koha", "weread", "kindle"
+   * Parser 标识符（来源唯一标识 + Parser 选择键，二合一）
+   * - 全局唯一（见 internal-schema 的 parserId unique 索引）
+   * - 格式: kebab-case
+   * - 个人单用户场景：每个图书馆体系一人一证，一个来源即对应一个 Parser，
+   *   故用单一字段 parserId 同时作为来源唯一标识和 Parser 选择键，
+   *   导入时按 source.parserId 在 Parser 注册表中查找匹配的解析器
+   *   （要求 parser.id === source.parserId）。
+   * - 数据由对应来源的抓取工具（Scraper）从图书馆流通 API 抓取并产出 JSON，
+   *   parserId 与具体来源的 API/抓取产物形态绑定，而非与底层 ILS 厂商绑定。
+   * - 示例: "pku-lib", "szlib"
    */
   parserId: string;
 
   /**
    * Parser 版本
-   * - 同一系统不同版本可能导出格式不同
+   * - 同一来源 API 不同版本可能导出格式不同
    * - 示例: "v3", "v4", "2024"
    */
   parserVersion: string | null;
@@ -65,9 +62,6 @@ interface Source {
 
   /** === 图书馆特有信息 === */
   library: LibraryInfo | null;
-
-  /** === 阅读器特有信息 === */
-  ereader: EReaderInfo | null;
 
   /** === 管理信息 === */
 
@@ -102,13 +96,6 @@ interface LibraryInfo {
   /** 所在省份 */
   province: string | null;
 
-  /**
-   * 图书馆管理系统类型
-   * - 用于辅助判断数据格式
-   * - 示例: "汇文Libsys", "金盘GDLIS", "Interlib", "Aleph", "Koha", "FOLIO"
-   */
-  ilsType: string | null;
-
   /** 图书馆官网 URL */
   website: string | null;
 
@@ -122,25 +109,6 @@ interface LibraryInfo {
    */
   classificationSystem: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other' | null;
 }
-
-/**
- * 电子阅读器/平台特有信息
- */
-interface EReaderInfo {
-  /**
-   * 平台类型
-   * - weread: 微信读书
-   * - kindle: Amazon Kindle
-   * - apple-books: Apple Books
-   * - douban: 豆瓣阅读
-   * - duokan: 多看阅读
-   * - custom: 其他
-   */
-  platform: 'weread' | 'kindle' | 'apple-books' | 'douban' | 'duokan' | 'custom';
-
-  /** 用户在该平台的标识（脱敏后） */
-  userId: string | null;
-}
 ```
 
 ## 预置来源注册表
@@ -151,43 +119,23 @@ interface EReaderInfo {
 /**
  * 来源模板注册表
  * - 用户创建新来源时可以从模板中选择
- * - 模板提供默认的 parser、timezone 等配置
+ * - 模板提供默认的 timezone、library 等配置（parserId 即来源标识）
  */
 const SOURCE_TEMPLATES: Partial<Source>[] = [
   // === 图书馆 ===
   {
     type: 'library',
     name: '深圳图书馆（流通 API）',
-    slug: 'szlib',
     parserId: 'szlib',
     timezone: 'Asia/Shanghai',
     library: {
       libraryType: 'public',
-      ilsType: '自定义API',
       city: '深圳市',
       province: '广东省',
       website: 'https://www.szlib.org.cn',
       opacUrl: null,
       classificationSystem: 'clc',
     },
-  },
-
-  // === 电子阅读 ===
-  {
-    type: 'ereader',
-    name: '微信读书',
-    slug: 'weread',
-    parserId: 'weread',
-    timezone: 'Asia/Shanghai',
-    ereader: { platform: 'weread', userId: null },
-  },
-  {
-    type: 'ereader',
-    name: 'Kindle',
-    slug: 'kindle',
-    parserId: 'kindle',
-    timezone: 'UTC',
-    ereader: { platform: 'kindle', userId: null },
   },
 ];
 ```
@@ -203,7 +151,7 @@ const SOURCE_TEMPLATES: Partial<Source>[] = [
  * - Parser 负责将原始数据转换为标准化的内部格式
  */
 interface SourceParser {
-  /** Parser 唯一标识符，对应 Source.parserId */
+  /** Parser 唯一标识符，必须等于其所解析来源的 Source.parserId */
   id: string;
 
   /** Parser 显示名称 */
@@ -216,7 +164,7 @@ interface SourceParser {
    * 解析原始数据
    * @param rawData - 原始文件内容（字符串或 ArrayBuffer）
    * @param source - 关联的 Source 配置
-   * @returns 解析结果，包含标准化的 Book 和 BorrowCycle
+   * @returns 解析结果，包含标准化的 Book、CatalogRecord 和 BorrowCycle
    */
   parse(rawData: string | ArrayBuffer, source: Source): ParseResult;
 
@@ -283,7 +231,5 @@ Agent 实现要点：
 
 3. 常见陷阱:
    - 中国图书馆数据几乎都是 UTC+8，但不带时区标记
-   - Kindle 数据可能是 UTC 或用户设备时区
-   - 微信读书数据是 Unix 时间戳（已经是 UTC）
    - 注意夏令时（中国大陆不实行，但台湾地区历史上有）
 ```

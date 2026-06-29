@@ -20,7 +20,7 @@
 import { SourceParser, ParseResult, Source } from '../types';
 
 export const YourLibParser: SourceParser = {
-  id: 'your-lib', // 全局唯一的 parser 标识符
+  id: 'your-lib', // 必须等于对应来源的 Source.parserId
   name: '某某图书馆 API 解析器',
   supportedFormats: ['json'], // 标明支持传入的数据格式
   
@@ -31,7 +31,7 @@ export const YourLibParser: SourceParser = {
 
   parse(rawData: string | ArrayBuffer, source: Source): ParseResult {
     // 核心解析逻辑
-    // 1. 将原始数据转换为内部的 Book 和 BorrowCycle 实体
+    // 1. 将原始数据转换为内部的 Book、CatalogRecord 和 BorrowCycle 实体
     // 2. 使用 source.timezone 将本地时间转换为 UTC
     // 3. 将单条的“借”、“还”流水记录合成为一个完整的借阅周期 (BorrowCycle)
     // 4. 返回标准化的 ParseResult

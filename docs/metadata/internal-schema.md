@@ -120,13 +120,13 @@ const borrowCyclesStore = {
 /**
  * 主键: id (UUID)
  * 索引:
- *   - slug (unique) — 按标识符查找
+ *   - parserId (unique) — 按标识符查找
  *   - type (non-unique) — 按类型筛选
  */
 const sourcesStore = {
   keyPath: 'id',
   indexes: [
-    { name: 'slug', keyPath: 'slug', options: { unique: true } },
+    { name: 'parserId', keyPath: 'parserId', options: { unique: true } },
     { name: 'type', keyPath: 'type', options: { unique: false } },
   ],
 };
@@ -200,7 +200,7 @@ interface ImportLog {
   /** 检测到的文件编码 */
   detectedEncoding: string;
 
-  /** 使用的 Parser ID */
+  /** 使用的 Parser 标识（= 导入时 Source.parserId 的快照，便于 Source 被删后仍可溯源/重解析） */
   parserId: string;
 
   /** 导入统计 */
