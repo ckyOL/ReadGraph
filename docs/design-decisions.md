@@ -45,6 +45,8 @@
 - 每个 Parser 必须实现自己的配对逻辑
 - 配对结果不完整时（如只有借出记录），仍创建 BorrowCycle 记录（status='borrowed'）
 - 保留 rawRecordIds 用于溯源
+- **导入管线必须是纯函数**：同样的 `(rawRecords, sources)` 输入必须产出结构等价的派生数据。这是「清空系统后凭备份 rawRecords 重建」能成立的前提——详见 [import-workflow 导入纯度要求](./metadata/import-workflow.md#导入纯度要求)。
+- `ExportData.rawRecords` 为**必导项**（非可选），它是系统重置后唯一的重建输入；导出格式与重建流程见 [internal-schema 数据导出](./metadata/internal-schema.md#数据导出)。
 
 ### 4. 物理副本与书目双层去重机制
 
@@ -149,7 +151,7 @@ Agent 实现要点：
 
 3. 浏览器存储安全：
    - IndexedDB 数据仅本域可访问
-   - 提供清除所有数据的功能
+   - 提供「清空系统」功能：一次性清空全部 Object Store，用于彻底重置/重新开始（不支持按单次导入撤销，见 [internal-schema 系统重置](./metadata/internal-schema.md#系统重置)）
    - 大数据量时考虑使用 OPFS (Origin Private File System) 替代 IndexedDB
 ```
 

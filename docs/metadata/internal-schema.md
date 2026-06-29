@@ -134,8 +134,9 @@ const sourcesStore = {
 
 ## Object Store: rawRecords
 
-> 保留原始导入数据，用于溯源、重新解析和调试
-> **操作约束**：原始数据不可篡改（不允许编辑），但允许用户删除（例如撤销导入）。
+> 保留原始导入数据，用于溯源、重新解析、调试，以及系统重置后从备份重建
+> **操作约束**：原始数据不可篡改（不允许编辑）。
+> **删除语义**：本系统**不支持按导入批次撤销/回滚单次导入**。rawRecords 的删除只随「清空系统」整体发生（见下方[系统重置](#系统重置)）。
 
 ```typescript
 interface RawRecord {
@@ -175,6 +176,37 @@ interface RawRecord {
  *   - parseStatus (non-unique)
  */
 ```
+
+## 系统重置
+
+> Agent 实现要点：本系统不做「按 ImportLog 撤销单次导入」的级联删除。唯一的批量删除操作是**清空整个系统、恢复到初始空库状态**，用户借此重新开始使用。
+
+### 重置范围
+
+清空操作**一次性清空全部 Object Store**，无差别、无筛选：
+
+| Store | 处理 |
+|-------|------|
+| `books` | 清空 |
+| `catalogRecords` | 清空 |
+| `borrowCycles` | 清空 |
+| `sources` | 清空（含预置模板若已落库，需在重置后重新写入） |
+| `rawRecords` | 清空 |
+| `importLogs` | 清空 |
+| `localStorage`（`readgraph:*`） | 可选一并清除，或保留用户偏好（locale/theme/时区） |
+
+### 为什么不做单次撤销
+
+- 借还配对与去重合并发生在导入阶段，多次导入之间的数据相互交织（同 ISBN 跨馆合并、同条码多次借阅），**不存在干净的「某次导入产出的数据子集」可独立删除**。
+- 强行按 ImportLog 回滚会破坏已合并的 Book / CatalogRecord，留下断裂的 `bookId` / `catalogRecordId` 引用，比不回滚更危险。
+- 因此把删除操作收敛为「全有或全无」：要么保留全部数据，要么清空重来。
+
+### 实现约束
+
+- 清空操作必须**原子**：在单个 IndexedDB transaction 内清空所有 store，失败则整体回滚，避免出现半清空的中间态。
+- 清空前应**强制导出备份**（或至少给出不可撤销的二次确认），因为该操作不可恢复。
+- `Source.lastImportAt` / `Source.totalImportedRecords` 等聚合计数无需维护「删除后重算」逻辑——系统重置后 Source 一并被清空，计数自然归零。
+- 重置后若重新导入，`createdAt` 时间戳以新导入时刻为准，旧时间线不再保留。
 
 ## Object Store: importLogs
 
@@ -268,26 +300,54 @@ interface UserPreferences {
 ```typescript
 /**
  * Agent 实现要点：支持导出完整数据为 JSON
- * 用于备份和在不同浏览器间迁移
+ * 用于备份、跨浏览器迁移，以及「清空系统」前的安全备份。
+ *
+ * 重要：rawRecords 是必导项，不可设为可选项。系统重置后唯一的恢复途径
+ * 就是凭 rawRecords + sources 重新跑一遍纯函数式的导入管线，重建全部
+ * 派生数据（books / catalogRecords / borrowCycles / importLogs）。
  */
 interface ExportData {
   /** 导出格式版本 */
   version: string;
-  
+
   /** 导出时间 (UTC) */
   exportedAt: Date;
-  
-  /** 各 store 的完整数据 */
+
+  /**
+   * 源数据层（重建的输入，必导）
+   * - sources：Parser 配置与时区，导入管线的必要入参
+   * - rawRecords：原始记录，导入纯函数的唯一数据输入
+   */
+  sources: Source[];
+  rawRecords: RawRecord[];
+
+  /**
+   * 派生数据层（导入管线的输出快照，便于直接恢复而无需重跑管线）
+   * - 与源数据层一起导出，恢复时可直接写入，也可选择丢弃后由 rawRecords 重建
+   */
   books: Book[];
   catalogRecords: CatalogRecord[];
   borrowCycles: BorrowCycle[];
-  sources: Source[];
   importLogs: ImportLog[];
-  
-  /** 
-   * 为了能够长久保留并在未来变动后重新生成，需要包含 rawRecords。
-   * 可以考虑在导出时提供“是否包含原始数据（体积较大）”的选项。
-   */
-  rawRecords?: RawRecord[];
 }
 ```
+
+## 从导出数据重建
+
+> Agent 实现要点：由于系统重置是「全有或全无」、且 rawRecords 是必导项，
+> 导入管线必须能凭一份 `ExportData` 中的 `rawRecords` + `sources` **完整重建**派生数据。
+
+### 重建模式
+
+恢复一份导出备份时，系统支持两种模式：
+
+1. **直接恢复（快照模式）**：把 `books` / `catalogRecords` / `borrowCycles` / `importLogs` 原样写回 IndexedDB。适合「同一版本、无需重算」的迁移场景。
+2. **从 rawRecords 重建（重放模式）**：丢弃导出中的派生数据，按 `sources` 配置把每批 `rawRecords`（按 `importLogId` 分组）重新喂给对应 Parser，重跑整个导入管线，得到全新的派生数据。适合版本升级、Parser 逻辑更新后想用旧原始数据重新生成结果的场景。
+
+### 重建的确定性要求
+
+因为重建就是「把同样的 rawRecords 再导入一次」，导入管线**必须是纯函数**：
+
+- 同样的 `(rawRecords, sources)` 输入，无论何时重放，必须产出结构等价的 `books` / `catalogRecords` / `borrowCycles`。
+- 详见 [import-workflow 导入纯度要求](./import-workflow.md#导入纯度要求)。
+- 实现需注意：UUID 等非确定性 ID 若影响跨实体引用一致性，应在重建时由 `rawRecord.id` + `importLogId` 等稳定输入派生，或保留导出快照中的 ID 映射，避免每次重建产生全新互不相交的 ID。
