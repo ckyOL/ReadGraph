@@ -53,7 +53,7 @@ Book    (1) ─────────< (N) BorrowCycle (via CatalogRecord)
 | [docs/metadata/book.md](./docs/metadata/book.md) | 书籍信息元数据 |
 | [docs/metadata/catalog-record.md](./docs/metadata/catalog-record.md) | 编目记录（本地馆藏映射）元数据 |
 | [docs/metadata/borrow-cycle.md](./docs/metadata/borrow-cycle.md) | 借阅周期元数据 |
-| [docs/metadata/source.md](./docs/metadata/source.md) | 数据来源（图书馆/阅读器）元数据 |
+| [docs/metadata/source.md](./docs/metadata/source.md) | 数据来源元数据 |
 | [docs/metadata/import-workflow.md](./docs/metadata/import-workflow.md) | 导入流程规范（编码、生命周期） |
 | [docs/metadata/internal-schema.md](./docs/metadata/internal-schema.md) | 内部存储 Schema（IndexedDB 结构、索引） |
 | [docs/metadata/parsers/szlib-parser.md](./docs/metadata/parsers/szlib-parser.md) | 深圳图书馆 Parser 设计 |

@@ -54,6 +54,6 @@
 
 ### 4. 数据去重与合并
 由于深图新 API **提供了 ISBN 和系统内部 metaid**，解析器在去重与合并方面更为可靠：
-1. **CatalogRecord 级匹配 (最优先)**：首先依赖 `sourceId` + `barcode` 或 `sourceId` + `metaId` 定位已存在的本地编目记录 `CatalogRecord`。如果找到，说明是同一个馆的同一次或不同复本，直接沿用。
+1. **CatalogRecord 级匹配 (最优先)**：首先依赖 `sourceId` + `barcode` 或 `sourceId` + `metaIdKey` 定位已存在的本地编目记录 `CatalogRecord`（`metaIdKey` 为 `metaid` 归一化后的 string，避免 int/string 类型不一致导致漏判）。如果找到，说明是同一个馆的同一次或不同复本，直接沿用。
 2. **Book 级基于 ISBN 的书目合并**：如果这是一个新的编目，优先使用提取出的合法 `ISBN` 在全局书库中查找匹配。若找到相同 ISBN 的 `Book`，则自动将新生成的 `CatalogRecord` 挂载到该 `Book` 之下。
 3. **回退机制 (无 ISBN 处理)**：对于 `ISBN` 为空或无效的记录（如部分老旧书目），若也无法通过 `metaid` 找到已有 `CatalogRecord`，系统只能退回到依赖 `title` 的模糊匹配，视为新书导入，后续由 UI 提供“按书名建议合并”的功能，由用户人工确认。
