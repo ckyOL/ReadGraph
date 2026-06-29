@@ -164,5 +164,5 @@ Agent 实现要点：
 1. **阅读笔记/批注** — 关联到 Book 或 BorrowCycle
 2. **阅读目标** — 年度阅读量目标、分类目标
 3. **社交分享** — 生成阅读报告图片（纯前端 Canvas 渲染）
-4. **豆瓣/OpenLibrary API 补全** — 通过 ISBN 补充封面、简介等
+4. **OpenLibrary API 补全** — 通过 ISBN 补充封面、简介等
 5. **多用户档案** — 同一浏览器支持多个阅读档案（不同 IndexedDB 数据库名）

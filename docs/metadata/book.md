@@ -81,8 +81,16 @@ interface Book {
 
   /** === 元信息 === */
 
-  /** 封面图片 URL（可选，来自豆瓣/OpenLibrary等） */
+  /** 封面图片 URL（可选，来自 OpenLibrary 等） */
   coverUrl: string | null;
+
+  /**
+   * 内容简介 / 摘要（预留字段，初始导入通常为空）
+   * - 初版不强制要求，由后续 OpenLibrary API 按 ISBN 补全
+   * - 在字段合并优先级中，自动补全 API 的简介低于图书馆编目与用户手动编辑
+   * - 仅用于展示，不参与去重或统计
+   */
+  description: string | null;
 
   /** 记录创建时间 (UTC) */
   createdAt: Date;
@@ -118,7 +126,7 @@ interface Price {
 |--------|------|------|
 | 1 | 用户手动编辑 | 用户修正的信息最优先 |
 | 2 | 图书馆编目数据 | 专业编目，通常最准确 |
-| 3 | 自动补全 API | OpenLibrary / 豆瓣 API（补封面、简介等） |
+| 3 | 自动补全 API | OpenLibrary 等（补封面、简介等） |
 
 
 ## ISBN 处理规则

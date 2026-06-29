@@ -68,10 +68,11 @@ const booksStore = {
  * 索引:
  *   - bookId (non-unique) — 查询对应书目的所有编目记录
  *   - sourceId (non-unique) — 按来源筛选编目
- *   - metaId (non-unique) — 根据库内 ID 检索
+ *   - metaId (non-unique) — 按来源原始 ID 检索（保留原始类型，仅展示/溯源）
+ *   - metaIdKey (non-unique, sparse) — 归一化为 string 的 ID 键，供索引与去重
  *   - classCodes (multiEntry) — 提取 classifications 中的 code，供分类统计
  *   - barcodes (multiEntry) — 按条码查找具体副本
- *   - [sourceId, metaId] (compound) — 特定来源的编目唯一定位
+ *   - [sourceId, metaIdKey] (compound) — 特定来源的编目唯一定位（类型稳定的去重键）
  */
 const catalogRecordsStore = {
   keyPath: 'id',
@@ -79,9 +80,10 @@ const catalogRecordsStore = {
     { name: 'bookId', keyPath: 'bookId', options: { unique: false } },
     { name: 'sourceId', keyPath: 'sourceId', options: { unique: false } },
     { name: 'metaId', keyPath: 'metaId', options: { unique: false } },
+    { name: 'metaIdKey', keyPath: 'metaIdKey', options: { unique: false } },
     { name: 'classCodes', keyPath: 'classCodes', options: { unique: false, multiEntry: true } },
     { name: 'barcodes', keyPath: 'barcodes', options: { unique: false, multiEntry: true } },
-    { name: 'sourceId_metaId', keyPath: ['sourceId', 'metaId'], options: { unique: false } },
+    { name: 'sourceId_metaIdKey', keyPath: ['sourceId', 'metaIdKey'], options: { unique: false } },
   ],
 };
 ```
@@ -260,11 +262,11 @@ Agent 实现要点：
 
 Book 去重与归并（合并规则）:
 1. CatalogRecord 级匹配（最优先）:
-   - 先通过 `sourceId` + `barcode` 或 `sourceId` + `metaId` 匹配是否已有相同的本地编目记录。如果找到，说明是同一个馆的同一编目记录，直接沿用。
+   - 先通过 `sourceId` + `barcode` 或 `sourceId` + `metaIdKey` 匹配是否已有相同的本地编目记录（`metaIdKey` 为 `metaId` 归一化后的 string，避免 int/string 类型不一致导致漏判）。如果找到，说明是同一个馆的同一编目记录，直接沿用。
 2. Book 级精确匹配:
    - 提取出 `isbn13`，在全局 `books` 中匹配。若找到相同 ISBN，则自动将新生成的 `CatalogRecord` 挂载到该 `Book` 下。
 3. Book 级模糊匹配 (兜底):
-   - 既无相同条码/metaId，且无有效 ISBN，则比较 `normalize(title)` + `normalize(authors[0])` → 建议合并（需用户手动确认）。
+   - 既无相同条码/metaIdKey，且无有效 ISBN，则比较 `normalize(title)` + `normalize(authors[0])` → 建议合并（需用户手动确认）。
 
 BorrowCycle 去重:
 1. 精确匹配: sourceId + barcode + borrowedAt → 重复导入，跳过

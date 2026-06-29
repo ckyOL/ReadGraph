@@ -21,10 +21,25 @@ interface CatalogRecord {
   /** === 编目与馆藏标识 === */
 
   /**
-   * 图书馆系统内部书目 ID
-   * - 例如深圳图书馆的 metaid，或豆瓣的 subject id
+   * 图书馆系统内部书目 ID（保留来源原始类型）
+   * - 深圳图书馆的 metaid 为整数（int），此处保留 number；
+   *   部分图书馆系统（如使用字符串主键的 ILS）为字符串，此处保留 string。
+   * - 该字段忠实记录来源返回的原始值，仅用于展示与溯源。
+   *
+   * 注意：不要直接用 `metaId` 建索引或做去重比较。
+   * IndexedDB 键按类型严格比较，"123" 与 123 视为不同键，
+   * 同一来源若混用 string/number（或跨来源比较）会导致漏判。
+   * 索引、复合键与去重统一使用下方归一化的 `metaIdKey`。
    */
   metaId: string | number | null;
+
+  /**
+   * 归一化的书目 ID 键（始终为 string，供索引与去重使用）
+   * - 由 `metaId` 经 `String(metaId).trim()` 派生，metaId 为 null 时本字段亦为 null。
+   * - 复合索引 [sourceId, metaIdKey] 与 CatalogRecord 级去重均以此为准，
+   *   确保 int(123) 与 string("123") 在同一来源内可正确匹配。
+   */
+  metaIdKey: string | null;
 
   /**
    * 馆藏条码号列表
