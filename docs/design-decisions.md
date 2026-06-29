@@ -55,7 +55,7 @@
 - **书目合并**：不同图书馆对同一本书会分别贴不同的条码，但如果是同一版次的出版物，它们共享相同的 ISBN。通过 ISBN 可以将分散的借阅记录统一归集到单一的书籍统计视图中。
 
 **约束**:
-- 导入数据时，首先检查系统是否已存在相同的 `sourceId` + `barcode`。若有，则这是重复借阅同一本实体书；若无，再根据 ISBN 进行书目合并，将该条码加入 Book 的馆藏列表。
+- 导入数据时，首先检查系统是否已存在相同的 `sourceId` + `barcode`。若有，则这是重复借阅同一本实体书；若无，再根据 ISBN 进行书目合并，将该条码加入对应 `CatalogRecord.barcodes`（而非 Book，Book 不再直接持有条码信息）。
 - 对既无条码也无 ISBN 的记录，降级使用书名和作者进行模糊匹配，并需标记为待确认。
 
 ### 5. 兼容国际多重分类法体系（CLC、DDC等）
@@ -78,11 +78,12 @@
 ```
 Agent 实现要点：理解实体关系对正确实现查询和 UI 至关重要
 
-Source (1) ─────────< (N) BorrowCycle
-                          │
-                          │ bookId
-                          │
-Book   (1) ─────────< (N) BorrowCycle
+Source (1) ─────────< (N) CatalogRecord ───────< (N) BorrowCycle
+                          │                            │
+                          │ bookId                     │ catalogRecordId（可推导 bookId/sourceId）
+                          │                            │ bookId / sourceId（为查询性能冗余）
+Book   (1) ─────────< (N) CatalogRecord                │
+Book   (1) ─────────< (N) BorrowCycle (via CatalogRecord)
 
 Source (1) ─────────< (N) ImportLog
                           │
@@ -90,16 +91,21 @@ Source (1) ─────────< (N) ImportLog
                           │
 ImportLog (1) ──────< (N) RawRecord
 
-Book.barcodes[].sourceId ───> Source.id
-Book.sourceIds[] ───────────> Source.id
-BorrowCycle.rawRecordIds[] ─> RawRecord.id
+CatalogRecord.barcodes[]      — 该馆具体物理副本条码
+CatalogRecord.sourceId        ───> Source.id
+Book.sourceIds[]              ───> Source.id（可由 CatalogRecord 推导，冗余存储便于查询）
+BorrowCycle.rawRecordIds[]    ─> RawRecord.id
+BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具体副本）
 ```
 
 **关键关系说明**:
-- 一本 Book 可以有多个 BorrowCycle（多次借阅）
-- 一个 Source 可以有多个 BorrowCycle（从一个馆借了很多次）
-- 一本 Book 可以关联多个 Source（不同图书馆都有这本书）
-- BorrowCycle 同时关联 Book 和 Source
+- 物理副本（条码）归属于 `CatalogRecord`，不再挂在 `Book` 上。
+- 一本 Book 可以有多个 CatalogRecord（不同来源/不同馆藏对该书的本地编目）。
+- 一个 CatalogRecord 可以有多个 BorrowCycle（同一副本多次借阅）。
+- 一本 Book 可以有多个 BorrowCycle（多次借阅，经 CatalogRecord 间接关联）。
+- 一个 Source 可以有多个 BorrowCycle（从一个馆借了很多次）。
+- 一本 Book 可以关联多个 Source（不同图书馆都有这本书）。
+- `BorrowCycle` 同时冗余存 `bookId`、`catalogRecordId`、`sourceId`，其中 `bookId`/`sourceId` 可经 `CatalogRecord` 推导，冗余仅为无 join 的 IndexedDB 查询性能。
 
 ---
 

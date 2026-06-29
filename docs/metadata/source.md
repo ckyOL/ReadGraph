@@ -232,6 +232,13 @@ interface ParseResult {
   /** 解析出的书籍信息 */
   books: Partial<Book>[];
 
+  /**
+   * 解析出的本地编目记录（连接 Book 与借阅事件的桥梁实体）
+   * - 必须返回：BorrowCycle.catalogRecordId 需要指向它
+   * - 每条 CatalogRecord 应携带 sourceId、metaId、classifications、barcodes 等本地编目数据
+   */
+  catalogRecords: Partial<CatalogRecord>[];
+
   /** 解析出的借阅周期 */
   borrowCycles: Partial<BorrowCycle>[];
 
@@ -242,6 +249,7 @@ interface ParseResult {
   stats: {
     totalRawRecords: number;
     parsedBooks: number;
+    parsedCatalogRecords: number;
     parsedCycles: number;
     skippedRecords: number;
   };
