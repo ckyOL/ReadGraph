@@ -27,7 +27,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 │  Book (书目) ← CatalogRecord (编目) ← BorrowCycle │
 ├─────────────────────────────────────────────────┤
 │                  来源层 (Source)                  │
-│  LibrarySource / ReaderSource / Manual            │
+│  Library (含电子借阅平台) / Manual                │
 └─────────────────────────────────────────────────┘
 ```
 

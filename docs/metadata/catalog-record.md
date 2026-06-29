@@ -1,6 +1,6 @@
 # CatalogRecord 编目记录元数据
 
-> AI Agent 指引：CatalogRecord 代表一本书在特定数据源（如图书馆或电子平台）的本地编目或物理映射。这是连接抽象的 `Book` 与具体借阅事件的桥梁。
+> AI Agent 指引：CatalogRecord 代表一本书在特定数据源（如某图书馆）的本地编目或物理映射。这是连接抽象的 `Book` 与具体借阅事件的桥梁。
 
 ## Schema 定义
 
