@@ -20,3 +20,32 @@ Thumbs.db
 
 # Project output
 szlib_scraper/output_data/
+
+# Node / Vite (from react-ts template, merged — not overwriting existing rules)
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor misc
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Test/build artifacts
+coverage/
