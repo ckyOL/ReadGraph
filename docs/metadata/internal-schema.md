@@ -284,8 +284,12 @@ normalize 函数:
 ```typescript
 /** 用户偏好设置 */
 interface UserPreferences {
-  /** 显示语言 */
-  locale: 'zh-CN' | 'zh-TW' | 'en';
+  /**
+   * 显示语言
+   * - 期仅交付 zh-CN 与 en；日后如需繁体中文可在此联合类型补回 'zh-TW'，
+   *   但当前不预留该枚举值，避免 UI 出现未翻译的占位。
+   */
+  locale: 'zh-CN' | 'en';
   /** 主题 */
   theme: 'light' | 'dark' | 'auto';
   /** 默认时区显示 */

@@ -126,11 +126,35 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 | CSS/样式 | Tailwind CSS | CSS Modules | AI 时代首选的原子化 CSS 框架。通过系统级的配置文件来保持设计的一致性，省去为组件单独命名类的麻烦，极大提升 UI 迭代速度 |
 | 并发与性能 | Web Worker + Comlink | - | 将大量借阅记录的解析与统计下放至 Worker 线程，维持 AI 时代的丝滑 UI 交互 |
 | 本地 AI (未来扩展) | Transformers.js / WebLLM | - | 在浏览器内直接运行轻型模型（如自动分类、本地推荐），确保用户敏感阅读数据**绝对不离开本地设备** |
-| 图表 | ECharts | Recharts | 在本地离线处理海量记录渲染时性能更强，且对中文生态和复杂交互支持更好 |
+| 图表 | ECharts | Recharts | 见下方「图表选型」段：离线海量渲染更强、中文生态友好，故保留 |
 | 文件解析 | Papa Parse (CSV) | - | 客户端高性能、流式解析库，支持直接处理大型导出文件 |
 | 日期与工具 | date-fns | dayjs | 纯函数式 API，利于 Tree-shaking，且 AI 生成调用代码时直观明确 |
 | 国际化 (i18n) | react-i18next | Paraglide JS | 行业标准的 UI 多语言方案，AI 对其生态和配置语法烂熟于心，支持浏览器语言检测与动态加载 |
 | 本地化 (l10n) | 原生 Intl API | - | 追求零依赖：数字、货币、长短文本排序直接使用浏览器原生的 `Intl` 接口；日期配合 `date-fns` 的 locale 包实现精准格式化 |
+
+---
+
+## 图表选型：ECharts（保留），不用 shadcn Chart / Recharts
+
+**决策**：图表层采用 ECharts，**不采用** shadcn 官方 `Chart` 组件（其内部包的是 Recharts）。
+
+**背景与考量**：
+
+1. **生态对齐**：shadcn 社区广泛使用的 charts 组件即官方 `Chart`，它 wraps Recharts，与 Tailwind v4 设计令牌深度绑定、即插即用。这是本选型的题眼。
+2. **供应链面**（本项目第一硬约束）：
+   - ECharts 依赖面极小（仅 `zrender` + `tslib`），零 lodash，零 d3 vendor 包。
+   - Recharts 3.x 携 `lodash`（全量）、`victory-vendor`（打包整片 d3 生态）、外加 `react-smooth`/`eventemitter3`/`recharts-scale`/`react-is`/`tiny-invariant`/`clsx`。transitive 依赖面越大，审计与 lockfile diff 越重，与 [npm-supply-chain-security] 的「依赖最小化」原则相悖。
+   - pnpm 严格隔离虽防幽灵依赖，但无法消除 transitive 依赖面与 audit 负担。
+3. **能力贴合规格**（见 [app-spec §6 #4 阅读画像与图表规格]、本文件数据模型）：
+   - 需要的视觉：分类法 treemap（CLC/DDC 分布）、借阅甘特带（同条码多次借阅的时间线 spine）、海量借阅记录稳定渲染、中文标签友好。
+   - ECharts：canvas 渲染、海量数据稳、treemap/heatmap/自定义 series 为强项，中文生态与复杂交互原生友好——与 [app-spec §2] 选 ECharts 的理由一致。
+   - Recharts：SVG 渲染、大数据量退化、treemap/甘特非强项，偏柱线饼基础图。
+4. **shadcn 集成代价**：放弃 `Chart` 即插即用，需自写一层薄适配——把 shadcn CSS 变量（`--background`/`--foreground`/`--chart-1..5` 等）映射成 echarts theme 的 color palette 与坐标轴/tooltip 样式，并随 `dark` class 切主题。该适配代码进 `src/lib/echarts-theme.ts`，本地落盘可控，符合「源码落本地可控」取向，工作量可控。
+
+**约束**：
+- 若后续 ECharts 缺少某 shadcn 令牌对应的能力，优先在薄适配层补齐，不为单图种回退到 Recharts。
+- ECharts 首次引入时按 [npm-supply-chain-security §4.1] 走依赖审查、精确版本（`save-exact` 归零 caret）、过 `pnpm verify`/`audit`/`security:check`。
+- 不使用 Recharts、不安装 shadcn `Chart` 组件。
 
 ---
 
