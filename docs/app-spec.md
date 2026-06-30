@@ -133,17 +133,17 @@ pnpm audit --audit-level=high
 | 强制 HTTPS | `.npmrc: strict-ssl=true` | pnpm 尊重 `strict-ssl` | ✅ 一致 |
 | 安全审计 | `.npmrc: audit=true`/`audit-level=high` | `pnpm audit --audit-level=high`（CI 显式调用） | ✅ 一致 |
 | Lockfile 提交与审查 | `package-lock.json` + `npm ci` | `pnpm-lock.yaml` 提交;CI 用 `pnpm install --frozen-lockfile`;`lockfile-lint` 需用 `--path pnpm-lock.yaml --type pnpm` 适配 | ✅ 等价 |
-| 新包冷却期 7 天 | `.npmrc: min-release-age=7d` | ⚠️ **pnpm 不支持此设置**（npm v11.16+ 专属）;需补偿控制，见下方「冷却期补偿」 | ⚠️ 见下 |
+| 新包冷却期 7 天 | `.npmrc: min-release-age=7d` | ✅ **pnpm 11.7+ 已支持** `minimumReleaseAge`（安装时由供应链策略验证器执行，见 `pnpm install` 输出），并会把逾期新包列入 `pnpm-workspace.yaml: minimumReleaseAgeExclude` 以备协调。npm v11.16+ 与 pnpm 11.7+ 行为等价 | ✅ 一致 |
 | 禁止幽灵依赖 | 约定 + 人工审查 | ✅ **pnpm 默认严格依赖隔离**，未在 `dependencies` 声明的包无法被 import，天然满足 §5.1#4 | ✅ 增益 |
 | 禁止 `--force` / `--legacy-peer-deps` | 规范禁止 | pnpm 对应禁止 `--force` / `--shamefully-hoist`（后者会破坏隔离性，禁止使用） | ✅ 等价 |
 
-### 冷却期补偿控制（pnpm `min-release-age` 缺失）
+### 冷却期补偿控制（pnpm `min-release-age` 已支持，下列为双保险）
 
-由于 pnpm 不解析 `min-release-age`，冷却期由下列组合控制兜底，**均需在 PR 审查中被发现**：
+pnpm 11.7+ 已通过 `minimumReleaseAge` 与 `pnpm-workspace.yaml` 执行冷却期；下列仍作为双保险，确保跨旧版 pnpm 或在 `minimumReleaseAgeStrict` 未开启时不漏：
 
 1. **PR 审查清单**：新增/升级依赖时，审查者按 [npm-supply-chain-security §4.1](./npm-supply-chain-security.md#41-添加新依赖-安全审查清单) 核验「最新版本发布时间是否超过 7 天」，未满则在 PR 中拒绝;审查时可查 `pnpm view <pkg> time` 或注册表页面。
 2. **自动化兜底**：在依赖更新机器人（Renovate / Dependabot）配置 `minimumReleaseAge: 7 days`，使自动 PR 不会在包发布 7 天内提出升级。
-3. **保留 `.npmrc: min-release-age=7d`**：对 pnpm 是 no-op，但保留以兼容 npm 回退场景且不弱化既有规范;**不得删除该行**。
+3. **保留 `.npmrc: min-release-age=7d`**：pnpm 11.7+ 与 npm v11.16+ 均解析此设置;**不得删除该行**。
 
 以下红线任何一条被弱化即视为安全事件：
 
@@ -187,7 +187,7 @@ pnpm install --ignore-scripts
 1. **Vitest**：模板无测试配置。需 `pnpm add -D vitest`（精确版本，经 §5 冷却期审查后），新增 `vitest.config.ts`，并补脚本 `test`/`test:watch`。
 2. **lockfile-lint**：模板无该 devDep。需 `pnpm add -D lockfile-lint`，并在 CI 校验脚本里使用 `--path pnpm-lock.yaml --type pnpm`。
 3. **`engines`/`engineStrict`**：模板 `package.json` 无。按 [npm-supply-chain-security §2.2] 补 `node>=20`、`npm>=10`（pnpm 行为不受 `engineStrict` 强制，但供审查与 Renovate 读取）。
-4. **`security:check` 脚本**：补一键自检脚本（对照安全规范附录 A），`min-release-age` 在 pnpm 下为 no-op，脚本仅告警不阻断。
+4. **`security:check` 脚本**：补一键自检脚本（对照安全规范附录 A）;冷却期在 pnpm 11.7+ 下由安装期策略强制，脚本该项仅作配置存在性核对。
 
 **关于 `react-compiler-ts` 模板**：若后续确定启用 React Compiler（见 design-decisions 技术选型），可改用此模板;本里程碑不启用，以减小首次依赖面。
 
@@ -232,4 +232,4 @@ pnpm install --ignore-scripts
 pnpm security:check
 ```
 
-预期输出：`ignore-scripts`/`save-exact`/`audit`/`strict-ssl` 均为 true，registry 指向 npm 官方。（`min-release-age` 在 pnpm 下为 no-op，冷却期由 §5 补偿控制兜底，自检脚本对此项仅做告警不阻断。）
+预期输出：`ignore-scripts`/`save-exact`/`audit`/`strict-ssl`/`registry` 均为预期值;`min-release-age` 在 pnpm 11.7+ 与 npm v11.16+ 下均生效（见 §5）。
