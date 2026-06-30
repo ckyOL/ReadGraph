@@ -1,6 +1,8 @@
 # ReadGraph 个人阅读智能档案系统
 
 > 本文档面向 AI Coding Agent，定义了 ReadGraph 项目的核心概念、数据模型和设计约束。
+>
+> AI Agent 仓库操作速查见 [AGENTS.md](AGENTS.md)。本文档为核心概念与数据模型的权威源；脚本契约与安全基线以 [docs/app-spec.md](docs/app-spec.md) 与 [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md) 为准。
 
 ## 项目概述
 
