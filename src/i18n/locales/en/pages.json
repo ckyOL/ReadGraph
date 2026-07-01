@@ -1,0 +1,19 @@
+{
+  "dashboard.title": "Dashboard",
+  "dashboard.subtitle": "Overview",
+  "library.title": "Library",
+  "library.subtitle": "Book list",
+  "bookDetail.title": "Book detail",
+  "bookDetail.subtitle": "Book detail",
+  "timeline.title": "Timeline",
+  "timeline.subtitle": "BorrowCycle spine",
+  "import.title": "Import",
+  "import.subtitle": "Import wizard",
+  "profile.title": "Reading profile",
+  "profile.subtitle": "Graph view",
+  "settings.title": "Settings",
+  "settings.subtitle": "Preferences & system",
+  "settings.language.label": "Language",
+  "settings.language.zhCN": "简体中文",
+  "settings.language.en": "English"
+}

@@ -1,4 +1,5 @@
 import { Outlet, createRootRoute, Link } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
   SidebarContent,
@@ -11,12 +12,12 @@ import {
 } from '@/components/ui/sidebar'
 
 const navItems = [
-  { to: '/', label: '概览' },
-  { to: '/library', label: '书库' },
-  { to: '/timeline', label: '时间线' },
-  { to: '/import', label: '导入' },
-  { to: '/profile', label: '画像' },
-  { to: '/settings', label: '设置' },
+  { to: '/', key: 'dashboard' as const },
+  { to: '/library', key: 'library' as const },
+  { to: '/timeline', key: 'timeline' as const },
+  { to: '/import', key: 'import' as const },
+  { to: '/profile', key: 'profile' as const },
+  { to: '/settings', key: 'settings' as const },
 ]
 
 export const Route = createRootRoute({
@@ -24,18 +25,19 @@ export const Route = createRootRoute({
 })
 
 function RootLayout() {
+  const { t } = useTranslation('nav')
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <span className="px-2 text-lg font-bold">ReadGraph</span>
+          <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
             {navItems.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild>
-                  <Link to={item.to}>{item.label}</Link>
+                  <Link to={item.to}>{t(item.key)}</Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}

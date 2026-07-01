@@ -1,0 +1,41 @@
+import i18n from 'i18next'
+import { initReactI18next } from 'react-i18next'
+
+import commonZh from './locales/zh-CN/common.json'
+import commonEn from './locales/en/common.json'
+import navZh from './locales/zh-CN/nav.json'
+import navEn from './locales/en/nav.json'
+import pagesZh from './locales/zh-CN/pages.json'
+import pagesEn from './locales/en/pages.json'
+
+import { getStoredLocale, type Locale } from '@/lib/locale'
+
+void i18n.use(initReactI18next).init({
+  resources: {
+    'zh-CN': {
+      common: commonZh,
+      nav: navZh,
+      pages: pagesZh,
+    },
+    en: {
+      common: commonEn,
+      nav: navEn,
+      pages: pagesEn,
+    },
+  },
+  lng: getStoredLocale(),
+  fallbackLng: 'zh-CN',
+  defaultNS: 'common',
+  ns: ['common', 'nav', 'pages'],
+  interpolation: { escapeValue: false }, // React already escapes
+  returnNull: false,
+})
+
+/** Change locale at runtime; persists and syncs <html lang>. */
+export async function changeLanguage(lng: Locale): Promise<void> {
+  await i18n.changeLanguage(lng)
+  if (typeof document !== 'undefined') document.documentElement.lang = lng
+}
+
+export { i18n }
+export default i18n
