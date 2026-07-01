@@ -46,8 +46,9 @@ uv run szlib_scraper.py
 - Pin exact versions (`save-exact=true`); no `^`/`*` ranges, no `--force`/`--shamefully-hoist`.
 - Times are stored as **UTC** ISO 8601; Parsers convert local time using `source.timezone` (e.g. `Asia/Shanghai`).
 - Dedup physical copies by `sourceId + barcode`, merge books by `isbn13`, fall back to title+author (flag for review).
+- UI 文案禁止硬编码：可见文本必须经 `react-i18next` 的 `t()` 取值，不得在 JSX 中直接写中英文字面量。
 
-> These are one-line summaries. Canonical rules for UTC storage and dedup live in [docs/design-decisions.md](docs/design-decisions.md); exact-version and supply-chain rules live in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md).
+> These are one-line summaries. Canonical rules for UTC storage and dedup live in [docs/design-decisions.md](docs/design-decisions.md); exact-version and supply-chain rules live in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md); i18n rules live in [docs/i18n-conventions.md](docs/i18n-conventions.md).
 
 ## Testing Guidelines
 
