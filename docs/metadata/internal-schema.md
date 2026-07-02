@@ -45,6 +45,7 @@ interface ReadGraphDB {
  *   - createdAt (non-unique) — 按导入时间排序
  *   - sourceIds (multiEntry) — 按来源查询
  *   - tags (multiEntry) — 按用户个人标签筛选/聚合（不含编目 subjects）
+ *   - needsReview (non-unique) — 按待审阅状态筛选（选书帮等占位书目）
  */
 const booksStore = {
   keyPath: 'id',
@@ -54,6 +55,7 @@ const booksStore = {
     { name: 'createdAt', keyPath: 'createdAt', options: { unique: false } },
     { name: 'sourceIds', keyPath: 'sourceIds', options: { unique: false, multiEntry: true } },
     { name: 'tags', keyPath: 'tags', options: { unique: false, multiEntry: true } },
+    { name: 'needsReview', keyPath: 'needsReview', options: { unique: false } },
   ],
 };
 ```
