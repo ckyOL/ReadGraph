@@ -1,0 +1,19 @@
+{
+  "dashboard.title": "Dashboard",
+  "dashboard.subtitle": "概览",
+  "library.title": "书库",
+  "library.subtitle": "Book 列表",
+  "bookDetail.title": "书目详情",
+  "bookDetail.subtitle": "Book detail",
+  "timeline.title": "时间线",
+  "timeline.subtitle": "BorrowCycle 脊柱",
+  "import.title": "导入",
+  "import.subtitle": "导入向导",
+  "profile.title": "阅读画像",
+  "profile.subtitle": "图谱",
+  "settings.title": "设置",
+  "settings.subtitle": "偏好与系统",
+  "settings.language.label": "语言",
+  "settings.language.zhCN": "简体中文",
+  "settings.language.en": "English"
+}

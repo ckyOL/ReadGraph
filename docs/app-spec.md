@@ -53,7 +53,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 图表 | ECharts | 待规格阶段锁定 | 离线渲染、中文友好 |
 | CSV 解析 | Papa Parse | 待规格阶段锁定 | 流式、大文件友好 |
 | 日期 | date-fns | 待规格阶段锁定 | 纯函数式、tree-shakable |
-| i18n | react-i18next | 待规格阶段锁定 | 浏览器语言检测 + 动态加载 |
+| i18n | react-i18next | ✅ 已锁定 | 浏览器语言检测 + 动态加载；已锁 `i18next@26.3.4` / `react-i18next@17.0.8`，`packageManager` 锁 `pnpm@11.9.0`，`engines.npm` 锁 `>=11.16.0` |
 | l10n | 原生 Intl API | 内置 | 数字/货币/排序零依赖 |
 | E2E 测试 | Playwright | 待规格阶段引入 | 覆盖导入与图表关键路径 |
 
@@ -303,6 +303,7 @@ src/routes/
 
 ### 8.5 国际化与本地化骨架（zh-CN / en 双语）
 
+- **落地状态（2026-07-01）**: ✅ 骨架已落地 — `src/i18n/`、`src/lib/locale.ts`、`src/hooks/use-locale.ts` 在用；双语 bundle + 命名空间 `common`/`nav`/`pages`，`fallbackLng: 'zh-CN'`，`<html lang>` 随切换同步。规则权威见 [docs/i18n-conventions.md](i18n-conventions.md)；单元测试覆盖 §8.8 的 locale 校验项（`src/lib/locale.test.ts`、`src/i18n/i18n.test.ts`、`src/hooks/use-locale.test.tsx`）。theme Provider 仍待数据层里程碑。
 - 范围：本期仅 `zh-CN` 与 `en`。`zh-TW` **不预留枚举**（见 internal-schema `UserPreferences.locale` 收窄说明），日后加回需补翻译 bundle 并恢复枚举。
 - 方案：`react-i18next`，命名空间按路由/功能拆分，浏览器语言检测 + 动态加载（按需 chunk）。
 - l10n：数字/货币/排序用原生 `Intl`；日期用 `date-fns` + locale 包；时间显示见 8.6 契约。
@@ -334,7 +335,7 @@ src/routes/
 
 **Vitest（单元/集成）**
 - AppShell 渲染与路由树懒加载（mock routeTree）。
-- locale / theme Provider：读写 `readgraph:preferences`，Zod 校验非法值降级。
+- ✅ locale Provider：读写 `readgraph:preferences`，Zod 同义校验非法值降级（已落地，见 `src/lib/locale.test.ts`、`src/hooks/use-locale.test.tsx`、`src/i18n/i18n.test.ts`）。theme Provider 待数据层里程碑。
 - 日期/时区纯函数：UTC ↔ `displayTimezone`、`source.timezone` 转换（对照 design-decisions §2）。
 - 分类号芯片渲染：CLC/DDC code 与 category 映射。
 -σότεEmpty 状态在各页分支渲染正确。
@@ -353,4 +354,3 @@ src/routes/
 - `client-localstorage-schema`：`readgraph:preferences` 读写做 Zod schema 校验，避免脏值。
 - `bundle-barrel-imports`：shadcn 组件与路由按需 import，避免 barrel 拉宽依赖/体积。
 - 大文件导入下放 Web Worker（design-decisions 并发与性能），主线程不阻塞导航。
-
