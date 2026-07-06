@@ -59,6 +59,8 @@ export const bookSchema = z.object({
   updatedAt: utcDate,
   needsReview: z.boolean(),
   sourceIds: z.array(z.string()),
+  // app-spec §10.13：Title 结构化解析后存并列题名；旧导出无此字段时默认 [] 兜底。
+  parallelTitles: z.array(z.string()).default([]),
 })
 
 export const catalogRecordSchema = z.object({

@@ -26,6 +26,7 @@ const validBook = {
   updatedAt: now(),
   needsReview: false,
   sourceIds: ['src-1'],
+  parallelTitles: [],
 }
 
 const validCatalogRecord = {

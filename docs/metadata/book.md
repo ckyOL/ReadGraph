@@ -34,6 +34,15 @@ interface Book {
   /** 副标题 */
   subtitle: string | null;
 
+  /**
+   * 并列题名（不同语言/文字形式的同名题名）
+   * - 来自 ISBD 著录中 ` = ` 右侧的段，可有多条
+   * - Parser 按 [docs/app-spec.md §10.13](../app-spec.md#1013-书目标题结构化解析) 结构化解析后写入
+   * - 不参与去重，仅展示与跨语种辅助辨识
+   * - 旧导出文件无此字段时默认 `[]`
+   */
+  parallelTitles: string[];
+
   /** 作者列表 */
   authors: string[];
 

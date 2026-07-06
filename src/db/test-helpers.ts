@@ -87,6 +87,7 @@ export function makeBook(
     updatedAt: NOW,
     needsReview,
     sourceIds,
+    parallelTitles: [],
   }
 }
 

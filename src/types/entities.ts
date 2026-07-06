@@ -39,6 +39,8 @@ export interface Book {
   updatedAt: Date
   needsReview: boolean
   sourceIds: string[]
+  /** 并列题名（ISBD ` = ` 右侧各段，跨语种辅助辨识）。参见 app-spec §10.13。 */
+  parallelTitles: string[]
 }
 
 /** 数据来源的本地编目记录 */
