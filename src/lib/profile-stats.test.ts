@@ -148,8 +148,9 @@ describe('computeProfileStats - 分类体系缺省度量', () => {
       { books: [b], catalogRecords: [cr], borrowCycles: [], sources: [makeSource('s1', 'clc'), makeSource('s2', 'ddc')] },
       { classificationSystem: 'ddc', range: null, displayTimezone: 'UTC' },
     )
+    // DDC 一级归并输出 category 始终取内置一级类目名（spec §11.2「主类名」）
     expect(r2.classification).toContainEqual(
-      expect.objectContaining({ code: '0', category: 'Computer science', value: 1 }),
+      expect.objectContaining({ code: '0', category: 'Computer science, information & general works', value: 1 }),
     )
   })
 
