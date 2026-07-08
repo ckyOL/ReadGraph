@@ -56,11 +56,11 @@
 - [ ] **G-5 导入向导（/import，多步）**：来源选择/创建 → 文件选择与编码检测 → 前 10 条预览与字段映射 → 执行 → 导入报告（统计 + `ParseWarning` 列表）。复用 §10 已落地 Parser/pipeline，UI 层不重算去重/配对;来源选择支持 source.md `SOURCE_TEMPLATES`；大文件导入下放 Web Worker（§8.6）。每步可回退。
 - [ ] **G-6 测试（Vitest + Playwright）**：§8.8 — AppShell 渲染与路由懒加载；侧栏六页跳转/高亮/移动端折叠；暗色/locale 切换持久；空 Dashboard → 导入入口；导入向导关键路径（模板建来源→选文件→预览→执行→报告→落库→书库可见，脱敏夹具）；分类号芯片渲染（CLC/DDC code↔category 映射）；日期/时区纯函数 UTC↔displayTimezone↔source.timezone（应已部分随 §9/§10 有覆盖，对齐补缺）。
 
-## 阶段 4：设置与系统重置规格（§6 #5，规格仍待补）
+## 阶段 4：设置与系统重置规格（§6 #5，规格已补 §12）
 
 > 本阶段是 §6 清单第 5 项「设置与系统重置规格」。先补规格再进 Red/Green（SDD 前置；§6 要求每节包含用户故事/UI 说明/数据契约/测试清单/React 性能规则引用）。
 
-- [ ] **S-1（Spec 先行）** 在 `docs/app-spec.md` 补 §12「设置与系统重置规格」：偏好（主题/locale/displayTimezone）、数据导出/重建、系统重置原子性与二次确认（`AlertDialog` 不可单次撤销）、来源管理（列/编辑/新建 `Source`）。含用户故事、UI 设计、数据契约、Vitest/Playwright 清单、React 性能规则引用。
+- [x] **S-1（Spec 先行）** 在 `docs/app-spec.md` 补 §12「设置与系统重置规格」：偏好（主题/locale/displayTimezone）、数据导出/重建、系统重置原子性与二次确认（`AlertDialog` 不可单次撤销）、来源管理（列/编辑/新建 `Source`）。含用户故事、UI 设计、数据契约、Vitest/Playwright 清单、React 性能规则引用。
 - [ ] **S-2** 设置页（/settings）落地：复用 `usePreferences`（§9.8 读写已就位）+ `useTheme`（P0-1）+ `useLocale`（已落地）+ `displayTimezone` 选择；导出/导入走 `exportDatabase`/`importDatabase`（§9.7 已落地）；重置走 `resetDatabase`（§9.6 已落地）+ `AlertDialog` 二次确认 + 强制备份；来源管理 CRUD（Repository 已就位）。
 - [ ] **S-3 测试（Vitest + Playwright）**：偏好读写/降级（对齐已落地 `preferences.test.ts`）；重置原子性 + 二次确认不可单步撤销；导出后重置库为空；切暗色/locale 持久（与 §8.8 对齐）。
 
@@ -75,4 +75,5 @@
 ## 状态
 
 - 2026-07-08 建档：§11.2 纯函数聚合、§11.3 `buildTheme` 已 TDD 落地（`src/lib/profile-stats.ts`、`src/lib/echarts-theme.ts`，20 suites/196 tests 绿）；阶段 0–4 待启动，依赖面（D-1~D-5）需先经供应链审查。
+- 2026-07-08 补 S-1：`docs/app-spec.md` §12「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
 - 推进建议顺序：D-1 → 阶段 0 → 阶段 1 → D-2/D-3 → 阶段 2 → 阶段 3 → S-1 → S-2/S-3；ECharts 与 Worker（D-2/D-3）在阶段 1 完成后再引入，以降低单批次依赖审查面。
