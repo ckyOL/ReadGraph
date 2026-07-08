@@ -214,7 +214,7 @@ pnpm install --ignore-scripts
 1. **数据层规格** — ✅ 已补，见 [§9 数据层规格](#9-数据层规格)（Dexie schema、Repository 接口、迁移策略、索引定义，对照 internal-schema）。
 2. **导入管线规格** — ✅ 已补，见 [§10 导入管线规格](#10-导入管线规格)（Parser 注册表、纯函数 pipeline、去重算法、时区转换、错误/警告模型、书目标题结构化解析）。
 3. **UI 导航规格** — 已补，见 §8（路由树、各页布局与空状态、主题/i18n 骨架、用户故事、数据契约、测试清单）。
-4. **阅读画像与图表规格** — ✅ 已补，见 [§11 阅读画像与图表规格](#11-阅读画像与图表规格)（统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单）。
+4. **阅读画像与图表规格** — ✅ 已补规格，见 [§11 阅读画像与图表规格](#11-阅读画像与图表规格)（统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单）。**落地状态**：§11.2「纯函数聚合」与 §11.3「`buildTheme` 薄适配」已 TDD 落地（`src/lib/profile-stats.ts` + `src/lib/echarts-theme.ts`，20 suites/196 tests 绿）；§11.4 UI 组件、`use-profile-stats` Hook、`stats-worker` 与 Playwright E2E 统一归入「后续 UI 统一里程碑」（见 [docs/tasks/ui-unified-batch.md](tasks/ui-unified-batch.md)），与书库/时间线/导入向导/设置等页统一装配，避免单独引入 `echarts`/`dexie-react-hooks`/`comlink` 等运行时依赖。
 5. **设置与系统重置规格** — 偏好持久化、重置的原子性与确认流程、备份导出与重建模式对照。
 
 每个功能阶段开始前，上述对应章节需包含：
