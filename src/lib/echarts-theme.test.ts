@@ -72,7 +72,9 @@ describe('buildTheme - 背景与纯函数', () => {
   })
 
   it('缺失 chart 变量时用首色循环补齐', () => {
-    const vars = { ...LIGHT_VARS, '--chart-3': undefined, '--chart-4': undefined }
+    const vars = { ...LIGHT_VARS }
+    delete vars['--chart-3']
+    delete vars['--chart-4']
     const t = buildTheme(false, vars)
     // 缺失项回退到 palette[0]，保证长度恒为 5
     expect(t.color).toHaveLength(5)
