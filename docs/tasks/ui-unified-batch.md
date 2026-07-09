@@ -78,3 +78,114 @@
 - 2026-07-08 补 S-1：[settings](../specs/settings.md)「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
 - 2026-07-08 文档重构：app-spec.md 拆分为 hub + specs/ 目录；§8–§12 对应 [ui-navigation](../specs/ui-navigation.md)/[data-layer](../specs/data-layer.md)/[import-pipeline](../specs/import-pipeline.md)/[reading-profile](../specs/reading-profile.md)/[settings](../specs/settings.md)；本文件交叉引用已更新为文件链接。
 - 推进建议顺序：D-1 → 阶段 0 → 阶段 1 → D-2/D-3 → 阶段 2 → 阶段 3 → S-1 → S-2/S-3；ECharts 与 Worker（D-2/D-3）在阶段 1 完成后再引入，以降低单批次依赖审查面。
+
+
+---
+
+## 实现指南（给执行 LLM 的速查）
+
+> 本节消除歧义：已落地代码、文件级接线、精确命令、i18n key 模式、验收 checklist。
+> 执行前先读 [ui-navigation](../specs/ui-navigation.md) §1-§3 了解各页布局与空状态。
+
+### A. 已落地代码快照（勿重复建）
+
+| 层 | 已有文件 | 状态 |
+|----|---------|------|
+| 路由桩 | `src/routes/*.tsx`（6 页 + __root） | 桩：仅标题+副标题，需替换为真实 UI |
+| AppShell | `src/routes/__root.tsx` | ✅ Sidebar + Outlet 已接；缺 theme Provider |
+| settings | `src/routes/settings.tsx` | ✅ 语言切换已接；缺 theme/时区/导出/重置/来源管理 |
+| shadcn 组件 | `src/components/ui/`（15 件） | ✅ 全装好，直接 import 用 |
+| i18n | `src/i18n/` + `src/hooks/use-locale.ts` | ✅ 骨架在用；各页 key 需补 |
+| DB | `src/db/db.ts` → `ReadGraphDB` class | ✅ 类已定义；**无全局单例**，见 D 节接线 |
+| Repository | `src/db/repositories.ts` → `createRepositories(db)` | ✅ 六实体 CRUD |
+| 重置/导出导入 | `src/db/reset.ts` `export-import.ts` `backup.ts` | ✅ 纯函数已绿 |
+| 纯函数 | `src/lib/profile-stats.ts` `echarts-theme.ts` `time.ts` 等 | ✅ 已绿 |
+| 未装依赖 | `dexie-react-hooks` `echarts` `comlink` `@playwright/test` | ❌ 见 B 节 |
+
+### B. 依赖引入（精确版本 + 命令）
+
+```bash
+# D-1: 响应式查询（阶段 0 前置）
+pnpm add dexie-react-hooks@1.1.7
+# D-2: 图表（阶段 2 前置）
+pnpm add echarts@5.6.0
+# D-3: Worker（阶段 2 前置，大数据聚合下放）
+pnpm add comlink@4.4.2
+# D-5: E2E（阶段 2 后，与 Playwright 测试同步）
+pnpm add -D @playwright/test@1.53.0 && pnpm exec playwright install
+```
+
+每次 add 后跑：`pnpm build && pnpm test && pnpm audit --audit-level=high`，全绿才提交 `package.json` + `pnpm-lock.yaml`。
+
+> 版本为候选；若上述版本不存在或 audit 报 high，选最近稳定版，记录决策到本文件状态节。
+
+### C. 文件级任务清单（建/改哪些文件）
+
+| 任务 | 文件 | 做什么 |
+|------|------|--------|
+| P0-1 | 建 `src/hooks/use-theme.ts` | `useTheme()` → `{theme,setTheme}`；读 `readPreferences().theme`，写 `writePreferences({theme})`；`auto` 监听 `matchMedia('(prefers-color-scheme: dark)')`；副作用 toggle `<html class="dark">` |
+| P0-1 | 改 `src/routes/__root.tsx` | 在 `<SidebarProvider>` 外包 theme Provider（或直接在 RootLayout 内调 `useTheme()` 触发副作用） |
+| H-1 | 建 `src/profile/use-profile-stats.ts` | `useLiveQuery` 取 `books`/`catalogRecords`/`borrowCycles`/`sources` → `computeProfileStats()` → 返回 `ProfileStatsResult`；大数据走 Worker（D-3，留接口） |
+| C-1~C-5 | 改 `src/routes/profile.tsx` | ECharts `treemap`/`bar`/`custom` series；按 `bundle-barrel-imports` 从 `echarts/core` 按需 import |
+| G-1 | 改 `src/routes/index.tsx` | 统计卡片 + 最近借阅 + 空态 `Empty` |
+| G-2 | 改 `src/routes/library/index.tsx` | `Table` 列表 + 搜索/筛选/排序 + `Badge` 分类号芯片 |
+| G-3 | 改 `src/routes/library/$bookId.tsx` | `Card` 卷卡式详情 + `BorrowCycle` 时间线 |
+| G-4 | 改 `src/routes/timeline.tsx` | 横向脊柱按 `borrowedAt` 排列 |
+| G-5 | 改 `src/routes/import.tsx` | 多步向导（来源→文件→预览→执行→报告），复用 `importPipeline()` |
+| S-2 | 改 `src/routes/settings.tsx` | 加 theme/时区/导出/重置/来源管理区 |
+
+### D. DB 接线（关键：当前无全局单例）
+
+```ts
+// src/db/db-instance.ts（新建）
+import { ReadGraphDB } from './db'
+export const db = new ReadGraphDB()          // 浏览器单例
+// 组件里用：
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/db/db-instance'
+const books = useLiveQuery(() => db.books.toArray())
+```
+
+测试用 `fake-indexeddb`（已装 devDep）：`createTestDB()` 在 `src/db/test-helpers.ts` 已有。
+
+### E. i18n key 模式
+
+命名空间 `pages`，key 按 `页面.区域.元素` 拆。每页补 key 时同步写 `zh-CN/pages.json` + `en/pages.json`。
+
+```
+dashboard.stats.bookCount       "藏书数" / "Books"
+dashboard.stats.cycleCount      "借阅周期" / "Borrow cycles"
+dashboard.empty.title           "还没有藏书" / "No books yet"
+dashboard.empty.action          "去导入" / "Go to import"
+library.column.title            "书名" / "Title"
+library.column.author           "作者" / "Author"
+library.column.isbn             "ISBN"
+library.column.classification   "分类号" / "Classification"
+library.column.borrowCount      "借阅次数" / "Borrows"
+library.empty.title             "书库为空" / "Library is empty"
+settings.preferences.theme      "主题" / "Theme"
+settings.preferences.themeLight "浅色" / "Light"
+settings.preferences.themeDark  "深色" / "Dark"
+settings.preferences.themeAuto  "跟随系统" / "Auto"
+settings.preferences.timezone   "时区" / "Timezone"
+settings.data.export            "导出备份" / "Export backup"
+settings.data.import            "导入备份" / "Import backup"
+settings.data.reset             "系统重置" / "System reset"
+settings.reset.confirm          "确认重置？此操作不可撤销" / "Confirm reset? This cannot be undone"
+settings.reset.backupRequired   "请先导出备份" / "Export backup first"
+```
+
+> 以上为起步 key；每页实现时按需补，保持 `页面.区域.元素` 层级。
+
+### F. 每 task 验收 checklist
+
+- [ ] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
+- [ ] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
+- [ ] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
+- [ ] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
+- [ ] **G-2**: 表格可排序/搜索；分类号 `Badge` 渲染；空态 `Empty`
+- [ ] **G-3**: 书目元数据 + CatalogRecord 列表 + 借阅时间线
+- [ ] **G-4**: 时间线按 borrowedAt 排序；在借状态区分
+- [ ] **G-5**: 向导每步可回退；预览 10 条；执行后书库可见
+- [ ] **S-2**: theme/locale/时区切换持久；导出下载文件；重置 `AlertDialog` 二次确认 + 备份门槛
+- [ ] **全局**: `pnpm build` 无类型错误；`pnpm test` 全绿；无硬编码中英文（全走 `t()`）
