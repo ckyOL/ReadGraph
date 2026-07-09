@@ -2,9 +2,9 @@
 
 > **适用范围**: ReadGraph 前端全体贡献者与 AI 编码代理
 > **生效日期**: 2026-07-01
-> **权威来源**: 本文档为 i18n 细规则的唯一权威；骨架见 [docs/app-spec.md §8.5](app-spec.md) 与 [docs/design-decisions.md 国际化选型](design-decisions.md)，冲突时以本文档为准。
+> **权威来源**: 本文档为 i18n 细规则的唯一权威；骨架见 [ui-navigation §5 国际化与本地化骨架](specs/ui-navigation.md#5-国际化与本地化骨架) 与 [docs/design-decisions.md 国际化选型](design-decisions.md)，冲突时以本文档为准。
 
-ReadGraph 支持双语（`zh-CN` / `en`），方案为 `react-i18next`（纯前端、离线可用，见 app-spec §1 约束）。新增或修改 UI 时**必须**遵守以下规则。
+ReadGraph 支持双语（`zh-CN` / `en`），方案为 `react-i18next`（纯前端、离线可用，见 [app-spec §1](app-spec.md) 约束）。新增或修改 UI 时**必须**遵守以下规则。
 
 ## 1. 禁止硬编码用户可见文本
 
@@ -33,7 +33,7 @@ ReadGraph 支持双语（`zh-CN` / `en`），方案为 `react-i18next`（纯前�
 ## 5. 切换与渲染同步
 
 - 通过 `useLocale()`（`src/hooks/use-locale.ts`）读写 locale：写偏好 + `changeLanguage`。
-- 切换时同步 `document.documentElement.lang`；`index.html` `lang` 默认 `zh-CN`，随当前 locale 切换（app-spec §8.5）。
+- 切换时同步 `document.documentElement.lang`；`index.html` `lang` 默认 `zh-CN`，随当前 locale 切换（[ui-navigation §5](specs/ui-navigation.md#5-国际化与本地化骨架)）。
 - 一次切换必须在同一 `setLocale` 调用内完成「持久化 + `i18n.changeLanguage` + `<html lang>` 同步」，不得只改 store 不重建 UI 文本。
 
 ## 6. 静态文本自检
@@ -50,5 +50,5 @@ ReadGraph 支持双语（`zh-CN` / `en`），方案为 `react-i18next`（纯前�
 
 ## 8. 测试要求
 
-- locale / `useLocale` 行为需有 Vitest 覆盖（对应 app-spec §8.8）：`getStoredLocale` 非法值降级、切换后 `<html lang>` 更新、偏好持久化后 reload 保留。
+- locale / `useLocale` 行为需有 Vitest 覆盖（对应 [ui-navigation §8 测试清单](specs/ui-navigation.md#8-测试清单)）：`getStoredLocale` 非法值降级、切换后 `<html lang>` 更新、偏好持久化后 reload 保留。
 - 新增可见页面/组件的渲染测试应断言 `t()` 取值路径，不应断言具体中英文字面量（除非断言回退语言）。

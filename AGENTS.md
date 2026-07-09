@@ -41,6 +41,8 @@ Preferred targeted commands:
 ```
 ReadGraph/
 ├─ docs/                 # Specs, design decisions, data models (source of truth)
+├─ docs/specs/           # Feature specs: ui-navigation, data-layer, import-pipeline, reading-profile, settings
+├─ docs/tasks/           # Milestone task breakdowns (e.g. ui-unified-batch)
 ├─ docs/metadata/        # Entity schemas: book, catalog-record, borrow-cycle, source, internal-schema
 ├─ docs/metadata/parsers/  # Parser design + contribution guide
 ├─ szlib_scraper/        # Standalone Python tool fetching Shenzhen Library borrow history
@@ -91,7 +93,7 @@ Follow **SDD + TDD** ([docs/ai-agent-workflow-rules.md](docs/ai-agent-workflow-r
 - Unit/integration: **Vitest**. E2E: **Playwright**.
 - Run locally: `pnpm test`. New core logic must ship with test cases.
 
-> The acceptance gates and test-plan checklist per feature live in [docs/app-spec.md §6](docs/app-spec.md); the SDD+TDD workflow itself is authoritative in [docs/ai-agent-workflow-rules.md](docs/ai-agent-workflow-rules.md).
+> The feature spec index and acceptance gates live in [docs/app-spec.md §6](docs/app-spec.md) and the per-feature specs under [docs/specs/](docs/specs/); the SDD+TDD workflow itself is authoritative in [docs/ai-agent-workflow-rules.md](docs/ai-agent-workflow-rules.md).
 
 ## Contributing a Parser
 

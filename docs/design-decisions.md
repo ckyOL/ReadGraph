@@ -145,9 +145,9 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
    - ECharts 依赖面极小（仅 `zrender` + `tslib`），零 lodash，零 d3 vendor 包。
    - Recharts 3.x 携 `lodash`（全量）、`victory-vendor`（打包整片 d3 生态）、外加 `react-smooth`/`eventemitter3`/`recharts-scale`/`react-is`/`tiny-invariant`/`clsx`。transitive 依赖面越大，审计与 lockfile diff 越重，与 [npm-supply-chain-security] 的「依赖最小化」原则相悖。
    - pnpm 严格隔离虽防幽灵依赖，但无法消除 transitive 依赖面与 audit 负担。
-3. **能力贴合规格**（见 [app-spec §6 #4 阅读画像与图表规格]、本文件数据模型）：
+3. **能力贴合规格**（见 [reading-profile 阅读画像与图表规格](./specs/reading-profile.md)、本文件数据模型）：
    - 需要的视觉：分类法 treemap（CLC/DDC 分布）、借阅甘特带（同条码多次借阅的时间线 spine）、海量借阅记录稳定渲染、中文标签友好。
-   - ECharts：canvas 渲染、海量数据稳、treemap/heatmap/自定义 series 为强项，中文生态与复杂交互原生友好——与 [app-spec §2] 选 ECharts 的理由一致。
+   - ECharts：canvas 渲染、海量数据稳、treemap/heatmap/自定义 series 为强项，中文生态与复杂交互原生友好——与 [app-spec §2](./app-spec.md) 选 ECharts 的理由一致。
    - Recharts：SVG 渲染、大数据量退化、treemap/甘特非强项，偏柱线饼基础图。
 4. **shadcn 集成代价**：放弃 `Chart` 即插即用，需自写一层薄适配——把 shadcn CSS 变量（`--background`/`--foreground`/`--chart-1..5` 等）映射成 echarts theme 的 color palette 与坐标轴/tooltip 样式，并随 `dark` class 切主题。该适配代码进 `src/lib/echarts-theme.ts`，本地落盘可控，符合「源码落本地可控」取向，工作量可控。
 
@@ -183,7 +183,7 @@ Agent 实现要点：
 
 ## UI 设计方向：A 编目终端（主壳）+ B 阅读图谱（画像页）
 
-**决策**：UI 主壳采用方向 A「编目终端」气质，唯阅读画像页（/profile）采用方向 B「阅读图谱」语言。完整规格见 [app-spec §8 UI 导航规格](./app-spec.md#8-ui-导航规格)。
+**决策**：UI 主壳采用方向 A「编目终端」气质，唯阅读画像页（/profile）采用方向 B「阅读图谱」语言。完整规格见 [UI 导航规格](./specs/ui-navigation.md)。
 
 **主壳（A 编目终端）**：左侧窄导航 + 主区表格主导，密实、可排序可筛选，像图书馆 OPAC 检索台。
 - 色彩：中性墨黑/纸白奠定底色，单一克制强调色（深茶青方向，具体由 shadcn `--primary` 令牌定）；分类号芯片用强调或语义色。
