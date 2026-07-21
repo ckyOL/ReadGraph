@@ -12,11 +12,15 @@
 
 ## 前置依赖任务（供应链审查门）
 
-- [ ] **D-1** 引入 `dexie-react-hooks`（`useLiveQuery`）。候选版本在引入时复核锁定。`pnpm add dexie-react-hooks@<精确版本>` → `pnpm verify` & `pnpm audit --audit-level=high` 通过才提交 `package.json`/`pnpm-lock.yaml`。用途：[data-layer §12](../specs/data-layer.md#12-react-性能规则引用)「UI 响应式由 `dexie-react-hooks` `useLiveQuery` 直连 Dexie」。
-- [ ] **D-2** 引入 `echarts@5.6.0`（候选，见 [reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。按 `echarts/core` + 注册图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer` 引入，不走 `echarts` barrel（`bundle-barrel-imports`）。
-- [ ] **D-3** 引入 `comlink`（Worker，[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `stats-worker.ts`，大数据聚合下放）。候选版本在引入时复核锁定。
-- [ ] **D-4** 评估 `date-fns@4.1.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) 可选）：若月/年桶与轴标签无 locale 格式化刚需则不引入，沿用 `Date` UTC getter + `Intl`（`computeProfileStats` 已按此实现，无 date-fns 依赖）。决策在 Tests(Red) 阶段最终裁定并记录。
-- [ ] **D-5** 引入 Playwright（E2E，[ui-navigation §8](../specs/ui-navigation.md#8-测试清单)/[reading-profile §7](../specs/reading-profile.md#7-测试清单)）作为 devDependency；配置 `playwright.config.ts` + 首次 `playwright install`（浏览器二进制）按供应链/平台约束处理。
+- [x] **D-1** 引入 `dexie-react-hooks@4.4.0`（`useLiveQuery`）。用途：[data-layer §12](../specs/data-layer.md#12-react-性能规则引用)「UI 响应式由 `dexie-react-hooks` `useLiveQuery` 直连 Dexie」。
+  - 版本决策：实现指南曾列 `1.1.7`（旧 major）；与当前 `dexie@4.4.4` 对齐的稳定版为 `4.4.0`（peer：`dexie >=4.2.0-alpha.1 <5`、`react >=16`），发布 2026-03-18（>7d 冷却）。Apache-2.0，0 传递依赖，无 lifecycle 脚本。
+- [x] **D-2** 引入 `echarts@5.6.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。按 `echarts/core` + 注册图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer` 引入，不走 `echarts` barrel（`bundle-barrel-imports`）。
+  - 供应链：发布 2024-12-28；传递 `zrender@5.6.1` + `tslib@2.3.0`；Apache-2.0 / BSD-3-Clause。`pnpm audit --audit-level=high` 通过。
+  - 已知 moderate：GHSA-fgmj-fm8m-jvvx（echarts &lt;6.1.0 XSS）。未达 high 门禁；规格仍钉 5.6.0。阶段 2 图表落地时 tooltip/标签走文本模式、不把未消毒 HTML 注入 `formatter`；若升 6.x 需先改 reading-profile 规格。
+- [x] **D-3** 引入 `comlink@4.4.2`（Worker，[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `stats-worker.ts`，大数据聚合下放）。发布 2024-11-07，Apache-2.0，0 传递依赖，无 lifecycle 脚本。
+- [x] **D-4** 评估 `date-fns@4.1.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) 可选）：**不引入**。`computeProfileStats` 已使用 `Date` UTC getter + `Intl` 完成月/年桶与轴标签，无 locale 格式化刚需，故沿用现有实现，不增加 date-fns 依赖。
+- [x] **D-5** 引入 `@playwright/test@1.61.1`（E2E，[ui-navigation §8](../specs/ui-navigation.md#8-测试清单)/[reading-profile §7](../specs/reading-profile.md#7-测试清单)）作为 devDependency；配置 `playwright.config.ts` + `e2e/smoke.spec.ts`；`pnpm exec playwright install chromium` 浏览器二进制本地安装（不入库）。
+  - 版本决策：实现指南候选 `1.53.0`；复核锁定 `1.61.1`（发布 2026-06-23，>7d 冷却，Microsoft/Apache-2.0）。脚本：`test:e2e`。门禁：`pnpm verify` + `pnpm audit --audit-level=high` + `pnpm build` + `pnpm test` + smoke E2E 绿。
 
 ## 阶段 0：全局 Provider 与主题骨架（[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)，[data-layer §8](../specs/data-layer.md#8-用户偏好) 后置项）
 
@@ -76,8 +80,11 @@
 
 - 2026-07-08 建档：[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约) 纯函数聚合、[§3](../specs/reading-profile.md#3-echarts-主题与薄适配层) `buildTheme` 已 TDD 落地（`src/lib/profile-stats.ts`、`src/lib/echarts-theme.ts`，20 suites/196 tests 绿）；阶段 0–4 待启动，依赖面（D-1~D-5）需先经供应链审查。
 - 2026-07-08 补 S-1：[settings](../specs/settings.md)「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
+- 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。
+- 2026-07-21 前置依赖门关闭：D-1~D-5 全部完成。锁定 `dexie-react-hooks@4.4.0`、`echarts@5.6.0`、`comlink@4.4.2`、`@playwright/test@1.61.1`；`pnpm verify` / `audit --audit-level=high` / `build` / `test`（21 suites / 206 tests）/ `test:e2e` smoke 绿。记录 echarts moderate XSS（GHSA-fgmj-fm8m-jvvx，规格仍钉 5.6.0）。下一推进：阶段 0（P0-1 主题 Provider）。
+
 - 2026-07-08 文档重构：app-spec.md 拆分为 hub + specs/ 目录；§8–§12 对应 [ui-navigation](../specs/ui-navigation.md)/[data-layer](../specs/data-layer.md)/[import-pipeline](../specs/import-pipeline.md)/[reading-profile](../specs/reading-profile.md)/[settings](../specs/settings.md)；本文件交叉引用已更新为文件链接。
-- 推进建议顺序：D-1 → 阶段 0 → 阶段 1 → D-2/D-3 → 阶段 2 → 阶段 3 → S-1 → S-2/S-3；ECharts 与 Worker（D-2/D-3）在阶段 1 完成后再引入，以降低单批次依赖审查面。
+- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
 
 
 ---
@@ -100,24 +107,25 @@
 | Repository | `src/db/repositories.ts` → `createRepositories(db)` | ✅ 六实体 CRUD |
 | 重置/导出导入 | `src/db/reset.ts` `export-import.ts` `backup.ts` | ✅ 纯函数已绿 |
 | 纯函数 | `src/lib/profile-stats.ts` `echarts-theme.ts` `time.ts` 等 | ✅ 已绿 |
-| 未装依赖 | `dexie-react-hooks` `echarts` `comlink` `@playwright/test` | ❌ 见 B 节 |
+| 运行时依赖 | `dexie-react-hooks@4.4.0` `echarts@5.6.0` `comlink@4.4.2` | ✅ 2026-07-21 已锁定 |
+| E2E | `@playwright/test@1.61.1` + `playwright.config.ts` + `e2e/smoke.spec.ts` | ✅ 烟测绿；浏览器二进制本地 install |
 
-### B. 依赖引入（精确版本 + 命令）
+### B. 依赖引入（精确版本 + 命令）— 已执行
 
 ```bash
-# D-1: 响应式查询（阶段 0 前置）
-pnpm add dexie-react-hooks@1.1.7
-# D-2: 图表（阶段 2 前置）
+# D-1: 响应式查询（与 dexie@4.x 对齐；勿用旧 major 1.1.7）
+pnpm add dexie-react-hooks@4.4.0
+# D-2: 图表（reading-profile 规格钉 5.6.0）
 pnpm add echarts@5.6.0
-# D-3: Worker（阶段 2 前置，大数据聚合下放）
+# D-3: Worker（大数据聚合下放）
 pnpm add comlink@4.4.2
-# D-5: E2E（阶段 2 后，与 Playwright 测试同步）
-pnpm add -D @playwright/test@1.53.0 && pnpm exec playwright install
+# D-5: E2E
+pnpm add -D @playwright/test@1.61.1 && pnpm exec playwright install chromium
 ```
 
-每次 add 后跑：`pnpm build && pnpm test && pnpm audit --audit-level=high`，全绿才提交 `package.json` + `pnpm-lock.yaml`。
+每次 add 后跑：`pnpm verify && pnpm build && pnpm test && pnpm audit --audit-level=high`，全绿才提交 `package.json` + `pnpm-lock.yaml`。
 
-> 版本为候选；若上述版本不存在或 audit 报 high，选最近稳定版，记录决策到本文件状态节。
+> 已锁定版本见上表。echarts moderate XSS 见 D-2 备注；升 6.x 需先改规格。
 
 ### C. 文件级任务清单（建/改哪些文件）
 

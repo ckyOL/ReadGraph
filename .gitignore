@@ -49,3 +49,10 @@ pnpm-debug.log*
 
 # Test/build artifacts
 coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Local pnpm store (should not be committed)
+.pnpm-store/
