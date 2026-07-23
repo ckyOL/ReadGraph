@@ -12,9 +12,9 @@
 - **关键词**：蔦屋書店、手工纸、编目卡、书库终端、数据密集、可扫读、无阴影、完全直角、瑠璃紺、白群、CJK 留白。
 - **主要参考**：
   - **主气质**：代官山 蔦屋書店 — 书店/文化复合、 craft paper 米色背景、完全直角、无阴影、信息密度。
-  - **纸墨/和风**：中川政七商店 — 和纸余白、游ゴシック+明朝、灰阶。
-  - **CJK 排版**：&Premium — 杂志式 line-height 1.7–1.8、轻字间、欧文先头字体栈。
-  - **对比**：Casa BRUTUS — 不用纯白×纯黑，而用温暖纸白×铁黑。
+  - **纸墨/和风**：中川政七商店 — 和纸余白、游ゴシック正文 + 明朝展示标题、灰阶。
+  - **CJK 排版**：&Premium — 杂志式 line-height 1.7–1.8、轻字重（300）、欧文先头字体栈。（其正文 letter-spacing 实为 normal，宽松感来自行高与字重；其全局 palt 手法本项目不采用。）
+  - **对比/组件**：Casa BRUTUS — 白地 + 1px 细罫线的 square outline CTA、欧文先头字体栈、彻底扁平。（其本体实为纯白×纯黑；本项目采用纸白×铁黑是自主决策，贴近蔦屋 craft paper 方向。）
 - **氛围**：安静、克制、工作向。让书籍本身成为主角，UI 退居背景。
 
 ---
@@ -29,9 +29,11 @@
 |-------|----------|----------|------|
 | `--primary` | `#27477A` | `#73B3C1` | 瑠璃紺 / 白群 |
 | `--primary-foreground` | `#FFFFFF` | `#1F1F1D` | — |
+| `--selection` | `rgba(39,71,122,0.18)` | `rgba(115,179,193,0.28)` | 瑠璃紺 18% / 白群 28% |
 
 - `#27477A`（瑠璃紺）让人联想到图书馆书脊与蓝染，沉稳且具书卷气。
 - 暗色模式下切换为 `#73B3C1`（白群），保证暖黑底上的可读性。
+- `::selection` 使用主色低透明度面，不用系统默认蓝。
 
 ### 2.2 背景/纸面
 
@@ -44,6 +46,7 @@
 | `--muted` | `#EAE0D5` | `#343434` | 生成 / 墨 |
 | `--input` | `#FFFFFF` | `#2A2A2A` | — |
 | `--border` | `#E8E4DC` | `#3A3A38` | — |
+| `--overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.6)` | 模态/抽屉遮罩 |
 
 - 背景采用接近蔦屋書店 `#f6f6f3` 但稍暖的 `#F9F7F2`（生成纸白）。
 - 暗色背景不用冷纯黑，而用 `#1F1F1D`（暖黑）。
@@ -54,19 +57,21 @@
 |-------|------|------|------|
 | `--foreground` | `#2A2A2A` | `#F0EDE5` | 铁黑 / 暖白 |
 | `--card-foreground` | `#2A2A2A` | `#F0EDE5` | — |
-| `--muted-foreground` | `#6E7972` | `#A99F96` | 利休鼠 / 浅茶鼠 |
+| `--muted-foreground` | `#666F68` | `#A99F96` | 深利休鼠 / 浅茶鼠 |
 
 - 文字不用纯黑 `#000000`，而用 `#2A2A2A`（铁黑），更贴合纸面。
+- `#666F68` 在 `#F9F7F2` 上对比度 4.86:1，满足 WCAG AA 普通文字（原 `#6E7972` 仅 4.23:1，故加深，仍在利休鼠色域内）。
 
 ### 2.4 辅助/状态色
 
 | 用途 | 亮色 | 暗色 | 色名 |
 |------|------|------|------|
-| 成功 / 二级强调 | `#687E52` | `#A9C087` | 松叶 / 若叶 |
+| 成功 / 二级强调 | `#61764B` | `#A9C087` | 松叶 / 若叶 |
 | 信息 / 三级 | `#576D79` | `#8A9DA8` | 蓝鼠 / 提亮蓝鼠 |
 | 破坏 / 错误 | `#AD3140` | `#D96A75` | 臙脂 / 浅臙脂 |
 
 - 分类号芯片、来源徽章、状态标签等使用这些低饱和语义色，不抢主色。
+- 亮色成功色取 `#61764B`：白字徽章对比度 5.0:1，满足 WCAG AA（原 `#687E52` 仅 4.47:1，仅降明度不改色相）。
 
 ### 2.5 图表色板
 
@@ -75,7 +80,7 @@ ECharts 薄适配层读取 `--chart-1..5` 与上述语义变量。
 | 令牌 | 亮色 | 暗色 |
 |-------|------|------|
 | `--chart-1` | `#27477A` | `#73B3C1` |
-| `--chart-2` | `#687E52` | `#A9C087` |
+| `--chart-2` | `#61764B` | `#A9C087` |
 | `--chart-3` | `#576D79` | `#8A9DA8` |
 | `--chart-4` | `#AD3140` | `#D96A75` |
 | `--chart-5` | `#998D86` | `#B0A89E` |
@@ -109,7 +114,35 @@ font-family:
 ```
 
 - 欧文由开头的系统无衬线字体负责，和文自动回退到后面的 CJK 字体。
-- 如需扩展日语优先，可通过 `html[lang^="ja"]` 调整字体顺序。
+- 上表为中文优先顺序。`html[lang^="ja"]` 时必须切换为日语优先栈（和字与汉字骨格不同，不可仅靠回退顺序）：
+
+```css
+html[lang^="ja"] body {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    sans-serif;
+}
+```
+
+**展示用明朝（书名、H1、编目卡标题）**
+
+中川政七商店式的书体对比：正文/UI 用黑体，书名与展示标题用明朝，强化书卷气。仅限展示场景，禁止用于表单、表格、按钮。
+
+```css
+.font-display {
+  font-family:
+    "Songti SC", "Noto Serif CJK SC", "Noto Serif SC", "SimSun",
+    "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP",
+    serif;
+  font-weight: 600;
+}
+```
+
+- `html[lang^="ja"]` 时将 `"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP"` 提至栈首。
 
 **等宽（编目卡数据）**
 
@@ -128,6 +161,7 @@ font-family:
 |------|------|------|------|--------|
 | H1 | 24px | 700 | 1.3 | CJK 0.02em / 欧文 normal |
 | H2 | 20px | 700 | 1.3 | CJK 0.02em / 欧文 normal |
+| 展示标题（明朝 `.font-display`） | 同 H1/H2 | 600 | 1.4 | CJK 0.04em / 欧文 normal |
 | 正文 | 14px | 400 | CJK 1.7 / 欧文 1.5 | CJK 0.02em / 欧文 normal |
 | 标签 / 说明 | 12px | 500 | 1.4 | CJK 0.04em / 欧文 normal |
 | 等宽代码 | 13px | 400 | 1.5 | normal |
@@ -142,7 +176,17 @@ font-family:
 - 短 CJK 标签/按钮：`letter-spacing: 0.04em`（缓解拥挤）。
 - 不全局使用 `palt`；仅在大标题尝试使用，且不支持时自动回退。
 
-### 3.4 禁则与折行
+### 3.4 和欧混植（数值・记号的组法）
+
+- **数字一律半角**：ISBN、分类号、日期、数量、价格均用半角数字，禁止全角数字。
+- **日期格式**：表格内 ISO `YYYY-MM-DD`；详情/卡片用本地化长格式 `2026年5月8日`（ja 界面可附全角曜日：`2026年5月8日（金）`——半角数字 + 全角括弧，蔦屋書店式）。
+- **表格数字列**加 `font-variant-numeric: tabular-nums`，保证等宽对齐。
+- **CJK 与欧文/数字混排**：不加手工空格；渐进增强使用 `text-autospace: normal` 自动产生和欧间间隔，不支持时自然密排。
+- **约物压缩**：不使用 `palt`；渐进增强使用 `text-spacing-trim: space-start`（行头约物半角化，无 `palt` 的字宽副作用）。
+- **日文折行**：`html[lang^="ja"]` 可渐进增强 `word-break: auto-phrase`（短语级折行）。
+- **纵书**：不使用，仅横排。
+
+### 3.5 禁则与折行
 
 ```css
 /* 正文 / 标题 */
@@ -158,8 +202,9 @@ line-break: strict;
 
 - 行头禁止：`）」』】〕〉》」】、。，．・：；？！`
 - 行末禁止：`（「『【〔〈《「【`
+- 行头小假名（ゃゅょっ等）与长音（ー）由 `line-break: strict` 依 JIS X 4051 自动处理，无需手工列表。
 
-### 3.5 语言切换
+### 3.6 语言切换
 
 ```css
 html[lang^="en"] body {
@@ -219,7 +264,7 @@ html[lang^="zh"], html[lang^="ja"], html[lang^="ko"] body {
 
 - 分类号芯片：背景 `#EAE0D5`，文字 `#2A2A2A`，圆角 0px
 - 来源徽章：背景 `#F0EDE5`，文字 `#576D79`
-- 借阅中状态：背景 `#687E52`，文字 `#FFFFFF`
+- 借阅中状态：背景 `#61764B`，文字 `#FFFFFF`
 - 已归还状态：背景 `#6E7972`，文字 `#FFFFFF`
 - 错误：背景 `#AD3140`，文字 `#FFFFFF`
 
@@ -232,6 +277,13 @@ html[lang^="zh"], html[lang^="ja"], html[lang^="ko"] body {
 - **选中（Selected）**：主色背景 + 主前景色，或 1px 主色边框。
 - **禁用（Disabled）**：`opacity: 0.5`，`cursor: not-allowed`，不另改颜色。
 - **加载（Loading）**：骨架屏使用 `--muted` / `--muted-foreground`，禁止动画渐变。
+
+### 4.6 文本截断
+
+- 书名：最多 2 行，超出用 `-webkit-line-clamp: 2` 省略。
+- 作者、出版社、来源等单行元信息：1 行 `text-overflow: ellipsis`。
+- 分类号、ISBN、条码：不截断，使用 `.break-code` 折行（见 3.5）。
+- 省略处提供 `title` 属性或 Tooltip 显示全文。
 
 ---
 
@@ -268,6 +320,7 @@ ReadGraph 以**完全扁平**为基础。与蔦屋書店、中川政七商店一
 | 2 | 反转面（主色背景 + 白文字） | 导航选中、强调带 |
 
 - `box-shadow` 仅允许用于模态、抽屉、sticky 顶栏，且为 `0 1px 2px rgba(0,0,0,0.08)` 等极弱阴影。
+- 边框为装饰性分隔，对背景对比度约 1.2:1，低于 WCAG 非文字元素 3:1 的建议值。组件识别不依赖边框（聚焦有 2px 主色 outline、输入框聚焦变色兼底），这是与蔦屋書店（`#dadada` 同样低对比）一致的有意取舍，勿当作缺陷“修正”。
 
 ---
 
@@ -294,6 +347,8 @@ ReadGraph 以**完全扁平**为基础。与蔦屋書店、中川政七商店一
 - CJK 正文使用 `line-height: 1.7`、`letter-spacing: 0.02em`。
 - 仅使用系统字体，不加载网络字体。
 - 分类号、ISBN、条码使用等宽字体。
+- 书名与展示标题使用明朝（`.font-display`），与黑体正文形成书体对比。
+- 数字一律半角；表格数字列使用 `tabular-nums`。
 - 影不用或极少使用，用面色与 1px 边框构建层级。
 - 根据语言切换更新 `html[lang]`，应用 CJK 排版。
 - 列表/表格优先支持扫读：用字号与字重区分书名、作者、日期、状态，不过度依赖颜色。
@@ -308,6 +363,9 @@ ReadGraph 以**完全扁平**为基础。与蔦屋書店、中川政七商店一
 - 不强制折断长条码/ID 导致布局崩坏（使用 `break-all` 或 `overflow`）。
 - 不装饰性使用渐变、霓虹、大阴影。
 - 不使用大型营销式 hero 或装饰性插图，避免分散对书籍数据的注意力。
+- 不在表单、表格、按钮中使用明朝体（`.font-display` 仅限书名/展示标题）。
+- 不使用全角数字。
+- 不依赖边框颜色传达可交互性（边框为装饰性分隔，见第 6 节）。
 
 ---
 
@@ -325,18 +383,24 @@ Brand: ReadGraph（个人阅读档案 / 图书馆 OPAC 终端）
 文字：#2A2A2A / 暗色 #F0EDE5
 次级：#F0EDE5 / 暗色 #343434
 弱化：#EAE0D5 / 暗色 #343434
-强调：#687E52 / 暗色 #A9C087
+强调：#61764B / 暗色 #A9C087
 破坏：#AD3140 / 暗色 #D96A75
-边框：#E8E4DC / 暗色 #3A3A38
+边框：#E8E4DC / 暗色 #3A3A38（装饰性分隔，不依赖其对比度）
+遮罩：rgba(0,0,0,0.5) / 暗色 rgba(0,0,0,0.6)
+选区：rgba(39,71,122,0.18) / 暗色 rgba(115,179,193,0.28)
 
 圆角：0px
 阴影：无（扁平设计）
 正文：14px；CJK 行高 1.7、字间距 0.02em；欧文行高 1.5、字间距 normal
 字体栈：system sans + PingFang SC / Hiragino Sans GB / Microsoft YaHei / Noto Sans CJK SC / Hiragino Kaku Gothic ProN / Yu Gothic
 等宽：SF Mono / Menlo / Noto Sans Mono CJK SC
+明朝（.font-display，仅书名/展示标题）：Songti SC / Noto Serif CJK SC / Hiragino Mincho ProN / Yu Mincho；ja 时和文明朝提至栈首
+ja 时无衬线栈切换为 Hiragino Kaku Gothic ProN / Yu Gothic / Noto Sans JP 优先
 不加载网络字体，不使用 dark: 覆盖，全部使用 CSS 变量。
 Focus: 2px solid var(--primary) / outline-offset 1px
 Hover: 背景 --secondary / --muted；链接下划线
 Disabled: opacity 0.5
 Touch target: min 44px × 44px
+数字半角；表格数字 tabular-nums；书名 2 行 clamp，元信息 1 行省略
+渐进增强：text-autospace / text-spacing-trim / ja 时 word-break: auto-phrase；不全局 palt
 ```
