@@ -7,13 +7,28 @@
 
 - **主壳（全站导航、书库、时间线、导入、设置）= 方向 A「编目终端」**：左侧窄导航 + 主区表格主导，密实、可排序可筛选，像图书馆 OPAC 检索台。
 - **阅读画像页（/profile）= 方向 B「阅读图谱」**：图表是主角，全幅图谱语言，ECharts 数据色只在图谱发力。
-- **视觉基线**（方向锚定，具体令牌由 `shadcn init` 落 CSS 变量）：
-  - 色彩：中性墨黑/纸白奠定底色，**单一克制强调色**（深茶青方向，具体由 shadcn `--primary` 令牌定）；分类号芯片（`Badge`）用强调色或语义色。
+- **视觉基线**（方向锚定，具体令牌由 `shadcn init` 落 CSS 变量；色值与 CJK 排版规则详见根目录 **`DESIGN.md`**）：
+  - 色彩：以「和纸/生成」与「墨/鉄黑」奠定纸墨感，单一克制强调色取 **瑠璃紺**，呼应图书馆书脊与蓝染；暗色模式转为 **白群**。辅助/状态色与完整色表见 `DESIGN.md` §2。
   - 暗色模式：暖黑底 + 暖白文字，不取全黑冷黑单色调；见 §4。
+  - 造型：完全直角（`--radius: 0`）、无阴影，继承蔦屋書店式平面纸墨感。
   - 等宽呈现：`metaId`、`barcode`、分类号 `code`、ISBN 一律走等宽字（本地打包字体，见 [design-decisions](../design-decisions.md) 安全与隐私），像「编目卡」标签条。
   - 分类法芯片：CLC/DDC 分类号是一等视觉元素（本项目核心心智模型：物理副本 × 书目合并 × 多分类法）。
   - 禁单色主导：勿让界面读成单一色族（尤其避开米/沙、纯灰一统）。
+  - CJK 适配：中文/日文/韩文排版与欧文排版在字高、行距、字间、禁则上差异显著；本系统以 `zh-CN` 为首期 locale，同时预留日文/韩文扩展位。具体规则见 `DESIGN.md` §3。
 - **取向护栏**：A 面密实、可扫读、界面克制工作向；C（阅读手帐）的「温度感」仅作为书目详情的卷卡式细节吸收，不进主架构。
+
+## 1.1 设计令牌与 CJK 排版
+
+> 完整色表、shadcn 变量映射、CJK 字体栈、行高/字间、禁则折行等设计令牌，已集中到项目根目录 **`DESIGN.md`**。本规格仅引用其结论，不再重复展开。
+
+- 主强调色：**瑠璃紺**（亮）/ **白群**（暗）。
+- 底色：生成纸白（亮）/ 暖黑（暗）。
+- 文字：铁黑（亮）/ 暖白（暗）。
+- 圆角：**0px**，无阴影。
+- CJK 正文：`line-height: 1.7`、`letter-spacing: 0.02em`。
+- 等宽字体用于 `metaId`、`barcode`、分类号、ISBN。
+
+实现层通过 shadcn CSS 变量 + Tailwind v4 `@theme inline` 落地；组件内禁止手写 `dark:` 覆盖。
 
 ## 2. 路由树
 
@@ -60,6 +75,7 @@ src/routes/
 ## 4. 主题与暗色模式骨架
 
 - shadcn CSS 变量 + Tailwind v4（`@theme inline`）；暗色用 class 策略（根 `<html class="dark">`），不取 `prefers-color-scheme` 唯一驱动，`auto` 模式监听系统并应用 class。
+- 具体色值与变量映射详见 `DESIGN.md`：明色强调色 **瑠璃紺**，暗色强调色切换为 **白群**；背景与前景色值亦见 `DESIGN.md`。
 - 主题令牌用语义色（`bg-background`/`text-foreground`/`text-muted-foreground` 等），**禁手写 `dark:` 覆盖**（见 shadcn `styling.md`）。
 - 偏好落 `localStorage` key `readgraph:preferences`，读写走 schema 校验（引用 `client-localstorage-schema` 规则，Zod 校验 `UserPreferences`，[data-layer §8 用户偏好](data-layer.md#8-用户偏好)）。
 - ECharts 主题：thin adapter（`src/lib/echarts-theme.ts`）把 shadcn `--chart-1..5` 等变量映射为 echarts palette + 坐标轴/tooltip 样式，随 `.dark` 切换重建主题（[reading-profile §3](reading-profile.md#3-echarts-主题与薄适配层)）。
