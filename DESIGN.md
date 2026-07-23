@@ -9,7 +9,7 @@
 
 - **设计方向**：书库终端（Library OPAC Terminal）+ 阅读图谱。
 - **密度**：中高。书库、时间线、导入向导以表格/列表为主，可排序、可筛选；阅读画像页以图表为主。
-- **关键词**：蔦屋書店、手工纸、编目卡、无阴影、完全直角、瑠璃紺、白群、CJK 留白。
+- **关键词**：蔦屋書店、手工纸、编目卡、书库终端、数据密集、可扫读、无阴影、完全直角、瑠璃紺、白群、CJK 留白。
 - **主要参考**：
   - **主气质**：代官山 蔦屋書店 — 书店/文化复合、 craft paper 米色背景、完全直角、无阴影、信息密度。
   - **纸墨/和风**：中川政七商店 — 和纸余白、游ゴシック+明朝、灰阶。
@@ -223,6 +223,16 @@ html[lang^="zh"], html[lang^="ja"], html[lang^="ko"] body {
 - 已归还状态：背景 `#6E7972`，文字 `#FFFFFF`
 - 错误：背景 `#AD3140`，文字 `#FFFFFF`
 
+### 4.5 交互状态
+
+所有状态仅通过颜色/不透明度/边框变化表达，不使用阴影或动效。
+
+- **聚焦（Focus）**：`outline: 2px solid var(--primary)`，`outline-offset: 1px`。
+- **悬停（Hover）**：背景切换至 `--secondary`（亮色）/ `--muted`（暗色）；文字链接使用下划线。
+- **选中（Selected）**：主色背景 + 主前景色，或 1px 主色边框。
+- **禁用（Disabled）**：`opacity: 0.5`，`cursor: not-allowed`，不另改颜色。
+- **加载（Loading）**：骨架屏使用 `--muted` / `--muted-foreground`，禁止动画渐变。
+
 ---
 
 ## 5. 布局原则
@@ -286,6 +296,8 @@ ReadGraph 以**完全扁平**为基础。与蔦屋書店、中川政七商店一
 - 分类号、ISBN、条码使用等宽字体。
 - 影不用或极少使用，用面色与 1px 边框构建层级。
 - 根据语言切换更新 `html[lang]`，应用 CJK 排版。
+- 列表/表格优先支持扫读：用字号与字重区分书名、作者、日期、状态，不过度依赖颜色。
+- 保持业务工具密度：8px 基础间距、44px 最小触摸目标、表单与表格严格对齐。
 
 ### 禁止
 
@@ -295,6 +307,7 @@ ReadGraph 以**完全扁平**为基础。与蔦屋書店、中川政七商店一
 - 不全局对 CJK 正文使用 `palt`。
 - 不强制折断长条码/ID 导致布局崩坏（使用 `break-all` 或 `overflow`）。
 - 不装饰性使用渐变、霓虹、大阴影。
+- 不使用大型营销式 hero 或装饰性插图，避免分散对书籍数据的注意力。
 
 ---
 
@@ -322,4 +335,8 @@ Brand: ReadGraph（个人阅读档案 / 图书馆 OPAC 终端）
 字体栈：system sans + PingFang SC / Hiragino Sans GB / Microsoft YaHei / Noto Sans CJK SC / Hiragino Kaku Gothic ProN / Yu Gothic
 等宽：SF Mono / Menlo / Noto Sans Mono CJK SC
 不加载网络字体，不使用 dark: 覆盖，全部使用 CSS 变量。
+Focus: 2px solid var(--primary) / outline-offset 1px
+Hover: 背景 --secondary / --muted；链接下划线
+Disabled: opacity 0.5
+Touch target: min 44px × 44px
 ```
