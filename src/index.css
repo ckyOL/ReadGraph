@@ -2,45 +2,91 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  /* 字体栈：中文优先；html[lang^="ja"] 切换为日语优先。
+     遵循 DESIGN.md §3：不加载网络字体，仅使用本地系统字体。 */
+  --font-stack-sans-zh:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", "Noto Sans SC",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP",
+    sans-serif;
+
+  --font-stack-sans-ja:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    sans-serif;
+
+  --font-stack-serif-zh:
+    "Songti SC", "Noto Serif CJK SC", "Noto Serif SC", "SimSun",
+    "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP",
+    serif;
+
+  --font-stack-serif-ja:
+    "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP",
+    "Songti SC", "Noto Serif CJK SC", "Noto Serif SC", "SimSun",
+    serif;
+
+  --font-stack-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono",
+    "Noto Sans Mono CJK SC", "Noto Sans Mono", monospace;
+
+  --font-stack-active-sans: var(--font-stack-sans-zh);
+  --font-stack-active-serif: var(--font-stack-serif-zh);
+
+  font-family: var(--font-stack-active-sans);
   color-scheme: light dark;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* 品牌与语义色，见 DESIGN.md §2 */
+  --background: #F9F7F2;
+  --foreground: #2A2A2A;
+  --card: #FFFFFF;
+  --card-foreground: #2A2A2A;
+  --popover: #FFFFFF;
+  --popover-foreground: #2A2A2A;
+  --primary: #27477A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F0EDE5;
+  --secondary-foreground: #2A2A2A;
+  --muted: #EAE0D5;
+  --muted-foreground: #666F68;
+  --accent: #F0EDE5;
+  --accent-foreground: #2A2A2A;
+  --destructive: #AD3140;
+  --destructive-foreground: #FFFFFF;
+  --border: #E8E4DC;
+  --input: #E8E4DC;
+  --ring: #27477A;
+  --chart-1: #27477A;
+  --chart-2: #61764B;
+  --chart-3: #576D79;
+  --chart-4: #AD3140;
+  --chart-5: #998D86;
+  --radius: 0px;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --selection: rgba(39, 71, 122, 0.18);
+
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #2A2A2A;
+  --sidebar-primary: #27477A;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0EDE5;
+  --sidebar-accent-foreground: #2A2A2A;
+  --sidebar-border: #E8E4DC;
+  --sidebar-ring: #27477A;
+}
+
+html[lang^="ja"] {
+  --font-stack-active-sans: var(--font-stack-sans-ja);
+  --font-stack-active-serif: var(--font-stack-serif-ja);
 }
 
 * { box-sizing: border-box; }
@@ -51,8 +97,11 @@ body {
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: var(--font-stack-active-sans);
+  --font-heading: var(--font-stack-active-sans);
+  --font-serif: var(--font-stack-active-serif);
+  --font-display: var(--font-stack-active-serif);
+  --font-mono: var(--font-stack-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -84,6 +133,8 @@ body {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-overlay: var(--overlay);
+  --color-selection: var(--selection);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -94,47 +145,77 @@ body {
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #1F1F1D;
+  --foreground: #F0EDE5;
+  --card: #2A2A2A;
+  --card-foreground: #F0EDE5;
+  --popover: #2A2A2A;
+  --popover-foreground: #F0EDE5;
+  --primary: #73B3C1;
+  --primary-foreground: #1F1F1D;
+  --secondary: #343434;
+  --secondary-foreground: #F0EDE5;
+  --muted: #343434;
+  --muted-foreground: #A99F96;
+  --accent: #343434;
+  --accent-foreground: #F0EDE5;
+  --destructive: #D96A75;
+  --destructive-foreground: #1F1F1D;
+  --border: #3A3A38;
+  --input: #3A3A38;
+  --ring: #73B3C1;
+  --chart-1: #73B3C1;
+  --chart-2: #A9C087;
+  --chart-3: #8A9DA8;
+  --chart-4: #D96A75;
+  --chart-5: #B0A89E;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --selection: rgba(115, 179, 193, 0.28);
+
+  --sidebar: #2A2A2A;
+  --sidebar-foreground: #F0EDE5;
+  --sidebar-primary: #73B3C1;
+  --sidebar-primary-foreground: #1F1F1D;
+  --sidebar-accent: #343434;
+  --sidebar-accent-foreground: #F0EDE5;
+  --sidebar-border: #3A3A38;
+  --sidebar-ring: #73B3C1;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
   }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html:lang(zh),
+  html:lang(ja),
+  html:lang(ko) {
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+  }
+  ::selection {
+    background: var(--selection);
+  }
+}
+
+/* 和欧混植渐进增强工具类，见 DESIGN.md §3.4 */
+@utility text-autospace {
+  text-autospace: normal;
+}
+
+@utility text-spacing-trim-start {
+  text-spacing-trim: space-start;
+}
+
+@utility break-auto-phrase {
+  word-break: auto-phrase;
+}
+
+@utility tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
