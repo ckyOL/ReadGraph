@@ -25,10 +25,11 @@
 ## 阶段 0：全局 Provider 与主题骨架（[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)，[data-layer §8](../specs/data-layer.md#8-用户偏好) 后置项）
 
 - [ ] **P0-1（Spec 已就位）** 主题 Provider：实现 `src/hooks/use-theme.ts` + Provider，装配到 `__root.tsx`。
+  - **前置已就位**：DESIGN.md 设计令牌（纸墨色板/`--radius:0`/CJK 字体栈）已于 2026-07-23 落到 `src/index.css`（commit `603b7d4`）；本任务只剩 React 侧 hook + Provider + `<html class="dark">` 切换，不重写 CSS 变量。
   - 读写走 `readPreferences()`/`writePreferences()`（[data-layer §8](../specs/data-layer.md#8-用户偏好) 已落地，本任务不改 schema）。
   - 任务：把 `theme: 'light'|'dark'|'auto'` 套用到根 `<html>` 的 `class="dark"`；`auto` 模式监听 `prefers-color-scheme` 并应用 class。
   - 测试（Vitest，Red 先行）：Provider 装配、`auto` 跟随系统、`light`/`dark` 切换 + reload 持久（mock `localStorage`/`matchMedia`）。
-  - 关联：[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)「auto 模式监听系统并应用 class」、`rendering-conditional-render`、`client-localstorage-schema`。
+  - 关联：[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)「auto 模式监听系统并应用 class」、`rendering-conditional-render`、`client-localstorage-schema`；色值/CJK 排版见根目录 [DESIGN.md](../../DESIGN.md) §2/§3。
 - [ ] **P0-2** ECharts 主题重建回调契约：消费方（`use-profile-stats` 或 chart 组件层）在 `.dark` 切换时调用 `buildTheme` 重建并 `setOption` 重应用；旧实例 `dispose` 防泄漏（[reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层)）。随 Hook 任务一起落地。
 
 ## 阶段 1：数据响应式 Hook（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `use-profile-stats.ts`，依赖 D-1）
@@ -83,8 +84,9 @@
 - 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。
 - 2026-07-21 前置依赖门关闭：D-1~D-5 全部完成。锁定 `dexie-react-hooks@4.4.0`、`echarts@5.6.0`、`comlink@4.4.2`、`@playwright/test@1.61.1`；`pnpm verify` / `audit --audit-level=high` / `build` / `test`（21 suites / 206 tests）/ `test:e2e` smoke 绿。记录 echarts moderate XSS（GHSA-fgmj-fm8m-jvvx，规格仍钉 5.6.0）。下一推进：阶段 0（P0-1 主题 Provider）。
 
-- 2026-07-08 文档重构：app-spec.md 拆分为 hub + specs/ 目录；§8–§12 对应 [ui-navigation](../specs/ui-navigation.md)/[data-layer](../specs/data-layer.md)/[import-pipeline](../specs/import-pipeline.md)/[reading-profile](../specs/reading-profile.md)/[settings](../specs/settings.md)；本文件交叉引用已更新为文件链接。
 - 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
+
+- 2026-07-23 UI 设计令牌落地：新增根目录 `DESIGN.md`（蔦屋書店气质：瑠璃紺/白群主色、生成纸白/暖黑底、完全直角、无阴影、CJK 排版规则），色表与字体栈从 `ui-navigation.md`/`design-decisions.md` 抽离集中；`src/index.css` 按 DESIGN.md 落 CSS 变量、zh-ja 双字体栈、`::selection`、`:lang()` 行高切换，移除 `@fontsource-variable/geist` 网络字体依赖。**P0-1 前置 CSS 已就位，仅需 React 侧 hook/Provider。**
 
 
 ---
@@ -106,6 +108,7 @@
 | DB | `src/db/db.ts` → `ReadGraphDB` class | ✅ 类已定义；**无全局单例**，见 D 节接线 |
 | Repository | `src/db/repositories.ts` → `createRepositories(db)` | ✅ 六实体 CRUD |
 | 重置/导出导入 | `src/db/reset.ts` `export-import.ts` `backup.ts` | ✅ 纯函数已绿 |
+| 设计令牌/CSS | 根目录 `DESIGN.md` + `src/index.css` | ✅ 2026-07-23：纸墨色板/`--radius:0`/无阴影/zh-ja 双字体栈/`::selection`/CJK 行高切换已落；Geist 网络字体已移除 |
 | 纯函数 | `src/lib/profile-stats.ts` `echarts-theme.ts` `time.ts` 等 | ✅ 已绿 |
 | 运行时依赖 | `dexie-react-hooks@4.4.0` `echarts@5.6.0` `comlink@4.4.2` | ✅ 2026-07-21 已锁定 |
 | E2E | `@playwright/test@1.61.1` + `playwright.config.ts` + `e2e/smoke.spec.ts` | ✅ 烟测绿；浏览器二进制本地 install |
