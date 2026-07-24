@@ -11,6 +11,8 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar'
 
+import { ThemeProvider } from '@/hooks/use-theme'
+
 const navItems = [
   { to: '/', key: 'dashboard' as const },
   { to: '/library', key: 'library' as const },
@@ -27,26 +29,28 @@ export const Route = createRootRoute({
 function RootLayout() {
   const { t } = useTranslation('nav')
   return (
-    <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader>
-          <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarMenu>
-            {navItems.map((item) => (
-              <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton asChild>
-                  <Link to={item.to}>{t(item.key)}</Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarContent>
-      </Sidebar>
-      <SidebarInset>
-        <Outlet />
-      </SidebarInset>
-    </SidebarProvider>
+    <ThemeProvider>
+      <SidebarProvider>
+        <Sidebar>
+          <SidebarHeader>
+            <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.to}>
+                  <SidebarMenuButton asChild>
+                    <Link to={item.to}>{t(item.key)}</Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset>
+          <Outlet />
+        </SidebarInset>
+      </SidebarProvider>
+    </ThemeProvider>
   )
 }

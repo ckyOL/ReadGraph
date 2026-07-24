@@ -24,13 +24,13 @@
 
 ## 阶段 0：全局 Provider 与主题骨架（[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)，[data-layer §8](../specs/data-layer.md#8-用户偏好) 后置项）
 
-- [ ] **P0-1（Spec 已就位）** 主题 Provider：实现 `src/hooks/use-theme.ts` + Provider，装配到 `__root.tsx`。
+- [x] **P0-1（Spec 已就位）** 主题 Provider：实现 `src/hooks/use-theme.ts` + Provider，装配到 `__root.tsx`。
   - **前置已就位**：DESIGN.md 设计令牌（纸墨色板/`--radius:0`/CJK 字体栈）已于 2026-07-23 落到 `src/index.css`（commit `603b7d4`）；本任务只剩 React 侧 hook + Provider + `<html class="dark">` 切换，不重写 CSS 变量。
   - 读写走 `readPreferences()`/`writePreferences()`（[data-layer §8](../specs/data-layer.md#8-用户偏好) 已落地，本任务不改 schema）。
   - 任务：把 `theme: 'light'|'dark'|'auto'` 套用到根 `<html>` 的 `class="dark"`；`auto` 模式监听 `prefers-color-scheme` 并应用 class。
   - 测试（Vitest，Red 先行）：Provider 装配、`auto` 跟随系统、`light`/`dark` 切换 + reload 持久（mock `localStorage`/`matchMedia`）。
   - 关联：[ui-navigation §4](../specs/ui-navigation.md#4-主题与暗色模式骨架)「auto 模式监听系统并应用 class」、`rendering-conditional-render`、`client-localstorage-schema`；色值/CJK 排版见根目录 [DESIGN.md](../../DESIGN.md) §2/§3。
-- [ ] **P0-2** ECharts 主题重建回调契约：消费方（`use-profile-stats` 或 chart 组件层）在 `.dark` 切换时调用 `buildTheme` 重建并 `setOption` 重应用；旧实例 `dispose` 防泄漏（[reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层)）。随 Hook 任务一起落地。
+- [x] **P0-2** ECharts 主题重建回调契约：消费方（`use-profile-stats` 或 chart 组件层）在 `.dark` 切换时调用 `buildTheme` 重建并 `setOption` 重应用；旧实例 `dispose` 防泄漏（[reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层)）。随 Hook 任务一起落地。
 
 ## 阶段 1：数据响应式 Hook（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `use-profile-stats.ts`，依赖 D-1）
 
@@ -82,7 +82,7 @@
 - 2026-07-08 建档：[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约) 纯函数聚合、[§3](../specs/reading-profile.md#3-echarts-主题与薄适配层) `buildTheme` 已 TDD 落地（`src/lib/profile-stats.ts`、`src/lib/echarts-theme.ts`，20 suites/196 tests 绿）；阶段 0–4 待启动，依赖面（D-1~D-5）需先经供应链审查。
 - 2026-07-08 补 S-1：[settings](../specs/settings.md)「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
 - 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。
-- 2026-07-21 前置依赖门关闭：D-1~D-5 全部完成。锁定 `dexie-react-hooks@4.4.0`、`echarts@5.6.0`、`comlink@4.4.2`、`@playwright/test@1.61.1`；`pnpm verify` / `audit --audit-level=high` / `build` / `test`（21 suites / 206 tests）/ `test:e2e` smoke 绿。记录 echarts moderate XSS（GHSA-fgmj-fm8m-jvvx，规格仍钉 5.6.0）。下一推进：阶段 0（P0-1 主题 Provider）。
+- 2026-07-24 阶段 0 完成：`src/hooks/use-theme.tsx`（`useTheme`/`ThemeProvider`/`useEChartsTheme`）+ `src/routes/__root.tsx` 装配 + 18 Vitest 覆盖；`light`/`dark`/`auto` 切 class、`auto` 跟随 `prefers-color-scheme`、reload 经 `readPreferences` 持久；`pnpm build`/`pnpm test`/`pnpm test:e2e` smoke 全绿。下一推进：阶段 1（H-1 `use-profile-stats`）。
 
 - 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
 
@@ -101,7 +101,7 @@
 | 层 | 已有文件 | 状态 |
 |----|---------|------|
 | 路由桩 | `src/routes/*.tsx`（6 页 + __root） | 桩：仅标题+副标题，需替换为真实 UI |
-| AppShell | `src/routes/__root.tsx` | ✅ Sidebar + Outlet 已接；缺 theme Provider |
+| AppShell | `src/routes/__root.tsx` | ✅ Sidebar + Outlet + ThemeProvider 已接 |
 | settings | `src/routes/settings.tsx` | ✅ 语言切换已接；缺 theme/时区/导出/重置/来源管理 |
 | shadcn 组件 | `src/components/ui/`（15 件） | ✅ 全装好，直接 import 用 |
 | i18n | `src/i18n/` + `src/hooks/use-locale.ts` | ✅ 骨架在用；各页 key 需补 |
@@ -190,7 +190,7 @@ settings.reset.backupRequired   "请先导出备份" / "Export backup first"
 
 ### F. 每 task 验收 checklist
 
-- [ ] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
+- [x] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
 - [ ] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
 - [ ] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
 - [ ] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
