@@ -15,5 +15,10 @@
   "settings.subtitle": "偏好与系统",
   "settings.language.label": "语言",
   "settings.language.zhCN": "简体中文",
-  "settings.language.en": "English"
+  "settings.language.en": "English",
+  "settings.preferences.theme": "主题",
+  "settings.preferences.themeLight": "浅色",
+  "settings.preferences.themeDark": "深色",
+  "settings.preferences.themeAuto": "跟随系统",
+  "settings.preferences.timezone": "时区"
 }
