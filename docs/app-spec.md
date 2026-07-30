@@ -37,7 +37,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 
 ## 2. 技术栈与版本基线
 
-> 严格遵循 [npm-supply-chain-security](./npm-supply-chain-security.md)：精确版本号、禁止 `^`/`*`、依赖最小化、通过冷却期审查后引入。本表中的版本号需在引入前使用「新依赖安全审查清单」核验；确切版本在 §5 三表中已锁定或标注「安装时核验」。
+> 严格遵循 [npm-supply-chain-security](./npm-supply-chain-security.md)：依赖最小化、新增走 §3「新依赖安全审查清单」+ 7 天冷却（`minimumReleaseAge`）;版本范围 `^` 可用（由 `pnpm-lock.yaml` frozen 提交 + 冷却兜底）。本表版本在 §5 三表中锁定或标注「安装时核验」。
 
 | 类别 | 选型 | 来源 / 引入节点 | 备注 |
 |------|------|----------------|------|
@@ -46,7 +46,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 静态检查（Lint） | Oxlint | `react-ts` 模板自带 `.oxlintrc.json` | 单包零依赖，替代 ESLint，减少依赖面 |
 | 单元测试 | Vitest | **模板不含，本里程碑单独 `pnpm add -D`**（§5.1） | 与 Vite 原生集成 |
 | 类型检查 | TypeScript | 模板自带 tsc project refs 配置 | `pnpm build` 含 `tsc -b` |
-| Lockfile 校验 | lockfile-lint | 本里程碑引入 | CI 脚步（pnpm-lock.yaml 适配见 §5） |
+| Lockfile 校验 | `pnpm verify`（frozen 安装内建供应链复校验） | 本里程碑引入（§5 见)） |
 | 路由 | TanStack Router + `@tanstack/router-plugin`（Vite 插件，文件路由 + 类型安全 codegen） | 待规格阶段引入（§5.2） | 仅用路由库 + Vite 插件，**不用** TanStack Start 服务端运行时 |
 | 状态管理 | Zustand | 待规格阶段锁定 | 最小 boilerplate |
 | 本地数据库 | Dexie.js + dexie-react-hooks | 待规格阶段锁定 | 响应式 IndexedDB |
@@ -115,7 +115,7 @@ pnpm build                        # 类型检查 + 生产构建
 pnpm preview                      # 预览生产构建
 pnpm lint                          # 静态检查（Oxlint）
 pnpm test                          # 单元测试（Vitest）
-pnpm lockfile-lint                # Lockfile 完整性校验
+pnpm verify                        # 安装(frozen) + 供应链策略复校验
 pnpm audit --audit-level=high     # 安全审计
 ```
 
@@ -123,36 +123,39 @@ pnpm audit --audit-level=high     # 安全审计
 
 ## 5. 安全基线
 
-本仓库根 `.npmrc` 仍是 pnpm 与 npm 共用的配置入口。下表把 [npm-supply-chain-security §2.1](./npm-supply-chain-security.md#21-项目级-npmrc) 的强制项逐一映射到 pnpm 的等价机制，并标注 pnpm 的增益与差异。任何人或 AI 代理**不得**弱化下列任何一条：
+本仓库供应链安全由 **pnpm 11 原生执行**，配置入口是 `pnpm-workspace.yaml`（策略）+ `.npmrc`（仅注册表/认证）。详见 [npm-supply-chain-security §2-3](./npm-supply-chain-security.md)。
 
-| 安全规范项 | npm 机制 | pnpm 等价 / 差异 | 状态 |
-|-----------|---------|----------------|------|
-| 禁止安装脚本 | `.npmrc: ignore-scripts=true` | pnpm 同样读取 `.npmrc`，对应 `pnpm install --ignore-scripts`（已由 `.npmrc` 默认开启） | ✅ 一致 |
-| 精确版本锁定 | `.npmrc: save-exact=true` | pnpm 尊重 `save-exact`，`pnpm add` 写入精确版本号 | ✅ 一致 |
-| 仅官方注册表 | `.npmrc: registry=https://registry.npmjs.org/` | pnpm 共用此 registry 配置 | ✅ 一致 |
-| 强制 HTTPS | `.npmrc: strict-ssl=true` | pnpm 尊重 `strict-ssl` | ✅ 一致 |
-| 安全审计 | `.npmrc: audit=true`/`audit-level=high` | `pnpm audit --audit-level=high`（CI 显式调用） | ✅ 一致 |
-| Lockfile 提交与审查 | `package-lock.json` + `npm ci` | `pnpm-lock.yaml` 提交;CI 用 `pnpm install --frozen-lockfile`;`lockfile-lint` 需用 `--path pnpm-lock.yaml --type pnpm` 适配 | ✅ 等价 |
-| 新包冷却期 7 天 | `.npmrc: min-release-age=7d` | ✅ pnpm 11.7+ 已支持 `minimumReleaseAge`（npm v11.16+ 与 pnpm 11.7+ 行为等价） | ✅ 一致 |
-| 禁止幽灵依赖 | 约定 + 人工审查 | ✅ pnpm 默认严格依赖隔离，未声明的包无法被 import | ✅ 增益 |
-| 禁止 `--force` / `--legacy-peer-deps` | 规范禁止 | pnpm 对应禁止 `--force` / `--shamefully-hoist`（后者破坏隔离性，禁止使用） | ✅ 等价 |
+> [!CAUTION]
+> 自 pnpm 11 起，pnpm **只从 `.npmrc` 读注册表与认证**；`ignore-scripts`/`save-exact`/`min-release-age`/`audit` 等**不再被 pnpm 读取**。安全策略写在 `.npmrc` 是「自检通过、实际失效」的假合规。下列条目均以 pnpm 11 真实生效来源为准。
+
+| 安全规范项 | pnpm 11 生效来源 | 状态 |
+|-----------|----------------|------|
+| 禁止依赖安装脚本 | pnpm v10+ 默认禁用，`allowBuilds` 白名单逐包放行；`strictDepBuilds` 默认 `true` | ✅ 默认开启 |
+| 版本锁定 | `pnpm-lock.yaml` frozen 提交 + `minimumReleaseAge: 10080`；`^` 范围可用（CI frozen 安装走锁文件精确版） | ✅ |
+| 仅官方注册表 | `.npmrc: registry=https://registry.npmjs.org/`（pnpm 仍读此类设置） | ✅ |
+| 强制 HTTPS | `.npmrc: strict-ssl=true`；pnpm 11 `strictSsl` 默认即 `true` | ✅ |
+| 安全审计 | `pnpm audit --audit-level=high`（命令，非配置；`pnpm audit` script 已配） | ✅ |
+| Lockfile 提交与冻结 | `pnpm-lock.yaml` 提交并审 diff；CI `pnpm install --frozen-lockfile --ignore-scripts` 内置整树供应链复校验 | ✅ |
+| 新包冷却期 7 天 | `pnpm-workspace.yaml: minimumReleaseAge: 10080`（分钟，对所有依赖含传递生效；显式配置后 `minimumReleaseAgeStrict` 默认 `true`） | ✅ 真正强制（旧 `.npmrc: min-release-age=7d` 在 pnpm 11 下不被读取，已移除） |
+| 阻断异源传递依赖 | pnpm `blockExoticSubdeps` 默认 `true`（拦截 git URL / 直链 tarball） | ✅ 默认开启 |
+| 禁止幽灵依赖 | pnpm 默认严格依赖隔离，未声明包无法 import | ✅ 增益 |
+| 禁止 `--force` / `--shamefully-hoist` | 规范禁止（npm 对应禁 `--force` / `--legacy-peer-deps`） | ✅ |
 
 ### 冷却期补偿控制
 
-pnpm 11.7+ 已通过 `minimumReleaseAge` 与 `pnpm-workspace.yaml` 执行冷却期；下列仍作为双保险，确保跨旧版 pnpm 或在 `minimumReleaseAgeStrict` 未开启时不漏：
+`pnpm-workspace.yaml: minimumReleaseAge: 10080` 已在安装时对**所有 lock 条目**强制 7 天冷却（CI `pnpm install --frozen-lockfile` 会复校验）。下列作为流程双保险：
 
-1. **PR 审查清单**：新增/升级依赖时，审查者按 [npm-supply-chain-security §4.1](./npm-supply-chain-security.md#41-添加新依赖-安全审查清单) 核验「最新版本发布时间是否超过 7 天」，未满则在 PR 中拒绝;审查时可查 `pnpm view <pkg> time` 或注册表页面。
-2. **自动化兜底**：在依赖更新机器人（Renovate / Dependabot）配置 `minimumReleaseAge: 7 days`，使自动 PR 不会在包发布 7 天内提出升级。
-3. **保留 `.npmrc: min-release-age=7d`**：pnpm 11.7+ 与 npm v11.16+ 均解析此设置;**不得删除该行**。
+1. **PR 审查清单**：新增/升级依赖时，审查者按 [npm-supply-chain-security §5.1](./npm-supply-chain-security.md#51-添加新依赖-安全审查清单) 核验「目标版本发布 ≥ 7 天」，未满在 PR 中拒绝；可 `pnpm view <pkg> time` 查发布时间。
+2. **自动化兜底**：在依赖更新机器人（Renovate / Dependabot）配置 `minimumReleaseAge: 7 days`，使自动 PR 不在发布 7 天内提升级。
 
 以下红线任何一条被弱化即视为安全事件：
 
-- `ignore-scripts=true`
-- `save-exact=true`
-- `registry=https://registry.npmjs.org/` + `strict-ssl=true`
+- `pnpm-workspace.yaml: minimumReleaseAge: 10080`
+- `.npmrc: registry=https://registry.npmjs.org/` + `strict-ssl=true`
 - `pnpm-lock.yaml` 必须提交并审查 diff
-- 新依赖必须按 §4.1 走「新依赖安全审查清单」并在 PR 中归档结论
-- 不允许 `^` / `*` 版本范围;不允许 `--force` / `--legacy-peer-deps` / `--shamefully-hoist`
+- 新依赖必须按 [§5.1 审查清单](./npm-supply-chain-security.md#51-添加新依赖-安全审查清单) 在 PR 中归档结论
+- 不允许 `^` / `~` / `*` 版本范围；不允许 `--force` / `--shamefully-hoist`
+- 不得设 `dangerouslyAllowAllBuilds: true`，不得关闭 `blockExoticSubdeps`/`strictDepBuilds`
 
 ### 5.1 脚手架基底：Vite 官方 `react-ts` 模板
 
@@ -169,7 +172,7 @@ pnpm install --ignore-scripts
 
 | 产物 | 说明 | 处置 |
 |------|------|------|
-| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ~6.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | ⚠️ 全为 caret/`~`;**安装前必须全部改为精确版本** |
+| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ~6.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | caret/`~` 可保留（pnpm 11 frozen 锁文件兜底）；按需调整版本 |
 | `tsconfig.json` + `tsconfig.app.json` + `tsconfig.node.json` | project references、`moduleResolution: bundler`、`verbatimModuleSyntax`、`moduleDetection: force`、`erasableSyntaxOnly`、`noUnusedLocals/Parameters` | ✅ 直接沿用;按本目录结构补 `src` include 与别名 |
 | `vite.config.ts` | 仅 `@vitejs/plugin-react` | ✅ 沿用;后续在此追加 `@tailwindcss/vite` 与 `@tanstack/router-plugin` |
 | `index.html` | `lang="en"`、含 `/favicon.svg`、示例标题 | 改 `lang="zh-CN"`、标题改 "ReadGraph"、按需替换 favicon |
@@ -181,10 +184,9 @@ pnpm install --ignore-scripts
 
 **模板不含但本里程碑需补的项**：
 
-1. **Vitest**：模板无测试配置。需 `pnpm add -D vitest`（精确版本，经 §5 冷却期审查后），新增 `vitest.config.ts`，并补脚本 `test`/`test:watch`。
-2. **lockfile-lint**：模板无该 devDep。需 `pnpm add -D lockfile-lint`，并在 CI 校验脚本里使用 `--path pnpm-lock.yaml --type pnpm`。
-3. **`engines`/`engineStrict`**：模板 `package.json` 无。按 [npm-supply-chain-security §2.2] 补 `node>=20`、`npm>=10`。
-4. **`security:check` 脚本**：补一键自检脚本（对照安全规范附录 A）。
+1. **Vitest**：模板无测试配置。需 `pnpm add -D vitest`（经 §5 冷却期审查后），新增 `vitest.config.ts`，并补脚本 `test`/`test:watch`。
+2. **lockfile 校验**：用 `pnpm verify`（frozen 安装内建供应链复校验），无需外部 `lockfile-lint`。
+3. **`engines`**：模板 `package.json` 无。按 [npm-supply-chain-security §6] 补 `node>=20`（pnpm 无需 `npm` 引擎）。
 
 ### 5.2 增量接入：UI 与路由
 
@@ -192,8 +194,8 @@ pnpm install --ignore-scripts
 
 | 层 | 公式 | 引入的依赖（最小集，待锁定） | 安全约束 |
 |----|------|--------------------------|---------|
-| 样式（Tailwind v4） | `pnpm add -D tailwindcss @tailwindcss/vite` + 在 `vite.config.ts` 加插件 + CSS `@import "tailwindcss";` | `tailwindcss`、`@tailwindcss/vite` | 精确版本;逐件走 §5 冷却期审查;与 shadcn 同批接入 |
-| UI 组件（shadcn/ui） | `pnpm dlx shadcn@latest init` 初始化，随后 `shadcn add <component>` **按需**逐件把组件源码落到 `src/components/ui/` | 每组件自身依赖（`clsx`、`tailwind-merge`、`class-variance-authority`、`lucide-react`、对应 `@radix-ui/react-*`） | 源码落本地可控;每次 `add` 都是一次新依赖引入事件，须跑 §5 安全审查清单;写入的 caret 范围需即时归零为精确版本 |
+| 样式（Tailwind v4） | `pnpm add -D tailwindcss @tailwindcss/vite` + 在 `vite.config.ts` 加插件 + CSS `@import "tailwindcss";` | `tailwindcss`、`@tailwindcss/vite` | 逐件走 §5 冷却期审查;与 shadcn 同批接入 |
+| UI 组件（shadcn/ui） | `pnpm dlx shadcn@latest init` 初始化，随后 `shadcn add <component>` **按需**逐件把组件源码落到 `src/components/ui/` | 每组件自身依赖（`clsx`、`tailwind-merge`、`class-variance-authority`、`lucide-react`、对应 `@radix-ui/react-*`） | 源码落本地可控;每次 `add` 都是一次新依赖引入事件，须跑 §5 安全审查清单（`^` 范围可保留，frozen 锁文件兜底） |
 | 路由（TanStack Router） | `pnpm add @tanstack/react-router` + `pnpm add -D @tanstack/router-plugin` | `@tanstack/react-router`、`@tanstack/router-plugin` | **仅用路由库 + Vite 插件**;禁用 `@tanstack/react-start` 等带服务端运行时 |
 
 接入顺序建议：先 Tailwind（v4）→ 再 `shadcn init` → 再按页面实际需要 `shadcn add <component>` → 最后接 TanStack Router 插件。任一步执行前先在规格中明确「本步要落到哪些文件、加入哪些依赖」，避免边装边改。
@@ -223,8 +225,10 @@ pnpm install --ignore-scripts
 ## 7. 校验命令速查
 
 ```bash
-# 一键安全配置自检（对照安全规范附录 A）
-pnpm security:check
+pnpm verify                      # 安装(frozen) + 整树供应链策略复校验
+pnpm audit --audit-level=high    # 已知漏洞审计
+pnpm build                       # 类型检查 + 生产构建
+pnpm test                        # 单元测试
 ```
 
-预期输出：`ignore-scripts`/`save-exact`/`audit`/`strict-ssl`/`registry` 均为预期值;`min-release-age` 在 pnpm 11.7+ 与 npm v11.16+ 下均生效（见 §5）。
+> `pnpm verify` 在 frozen 安装时会对每条 `pnpm-lock.yaml` 条目重跑 `minimumReleaseAge` 策略；安全基线见 §5。

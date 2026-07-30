@@ -7,7 +7,7 @@
 
 **范围**：定义阅读画像页（`/profile`，方向 B「阅读图谱」）的统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据与大文件退化策略。本里程碑**不实现**导入管线增量（属 [导入管线规格](import-pipeline.md)）、不新增 Object Store/索引（属 [数据层规格](data-layer.md)）、不改 Repository 接口（仅消费现有读取方法 + `useLiveQuery`）。统计与图表**只读**：不写库、不触发迁移、不修改实体。
 
-**依赖**（本里程碑拟新增，精确版本与冷却期审查在引入时按 [npm-supply-chain-security §4.1](../npm-supply-chain-security.md) 落地，下表版本为锁定候选；最终 pin 以 PR 中的 `pnpm verify`/`audit`/`security:check` 通过为准）：
+**依赖**（本里程碑拟新增，审查在引入时按 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 落地，下表为版本候选；最终以 PR 中的 `pnpm verify`/`audit` 通过为准）：
 
 | 包 | 类型 | 版本候选 | 用途 |
 |----|------|---------|------|

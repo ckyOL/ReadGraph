@@ -8,7 +8,7 @@
 
 **范围**：定义 Dexie 数据库 schema（库名 `readgraph`）、实体 Zod 校验、Repository 接口与实现、版本迁移策略、原子系统重置、整库导出/导入。本里程碑**不实现**导入管线（Parser、去重算法、借还配对属 [导入管线规格](import-pipeline.md)）、不接 UI Provider（DB Provider 在 UI 里程碑落地，仅消费本层暴露的 db 句柄与 Repository）。
 
-**依赖**（本里程碑锁定的精确版本，已过 [npm-supply-chain-security §4.1](../npm-supply-chain-security.md) 冷却期审查）：
+**依赖**（本里程碑锁定，已过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 冷却期审查）：
 
 | 包 | 类型 | 版本 | 用途 |
 |----|------|------|------|

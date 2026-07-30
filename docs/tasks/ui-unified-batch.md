@@ -8,7 +8,7 @@
 
 - **进入条件**：规格已就位（ui-navigation / data-layer / import-pipeline / reading-profile 全部已补）；数据层与导入管线纯函数/Parser 测试为绿；本批次**不重复**已有纯函数/Parser 实现。
 - **不在本批次**：新增 Object Store/索引、Repository 接口改动、Parser 逻辑改动、聚合契约改动（`computeProfileStats`/`buildTheme` 已绿）。
-- **依赖面共识**：本批次会一次性引入三条运行时依赖，按 [npm-supply-chain-security §4.1](../npm-supply-chain-security.md) 审查锁定（精确版本、`pnpm verify`/`audit`/`security:check` 通过、冷却期满足）。
+- **依赖面共识**：本批次一次性引入三条运行时依赖，按 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 审查（`pnpm verify`/`audit` 通过、冷却期满足；^ 范围可，frozen 锁文件兜底）。
 
 ## 前置依赖任务（供应链审查门）
 
@@ -113,7 +113,7 @@
 | 运行时依赖 | `dexie-react-hooks@4.4.0` `echarts@5.6.0` `comlink@4.4.2` | ✅ 2026-07-21 已锁定 |
 | E2E | `@playwright/test@1.61.1` + `playwright.config.ts` + `e2e/smoke.spec.ts` | ✅ 烟测绿；浏览器二进制本地 install |
 
-### B. 依赖引入（精确版本 + 命令）— 已执行
+### B. 依赖引入（锁定版本 + 命令）— 已执行
 
 ```bash
 # D-1: 响应式查询（与 dexie@4.x 对齐；勿用旧 major 1.1.7）

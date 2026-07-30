@@ -45,8 +45,8 @@ ReadGraph 支持双语（`zh-CN` / `en`），方案为 `react-i18next`（纯前�
 
 ## 7. 新增 i18n/l10n 依赖
 
-- `react-i18next` / `i18next` 已锁定精确版本（见 `package.json`）。
-- 如引入日期/排序等 l10n 库（如 `date-fns` locale 包、`Intl` polyfill），按 [docs/npm-supply-chain-security.md §4.1 新依赖安全审查清单](npm-supply-chain-security.md) 完成审查，并遵守 `save-exact` / `ignore-scripts` / 7 天冷却期。
+- `react-i18next` / `i18next` 已在 `package.json` 锁定（见 `pnpm-lock.yaml`）。
+- 如引入日期/排序等 l10n 库（如 `date-fns` locale 包、`Intl` polyfill），按 [docs/npm-supply-chain-security.md §3 审查清单](npm-supply-chain-security.md) 完成审查，并遵守 7 天冷却期（`pnpm-workspace.yaml: minimumReleaseAge: 10080`）。版本范围 `^` 可用，frozen 锁文件兜底。
 
 ## 8. 测试要求
 

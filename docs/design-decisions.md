@@ -153,7 +153,7 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 
 **约束**：
 - 若后续 ECharts 缺少某 shadcn 令牌对应的能力，优先在薄适配层补齐，不为单图种回退到 Recharts。
-- ECharts 首次引入时按 [npm-supply-chain-security §4.1] 走依赖审查、精确版本（`save-exact` 归零 caret）、过 `pnpm verify`/`audit`/`security:check`。
+- ECharts 首次引入时按 [npm-supply-chain-security §3] 走依赖审查、过 `pnpm verify`/`audit`（`^` 范围可，frozen 锁文件兜底）。
 - 不使用 Recharts、不安装 shadcn `Chart` 组件。
 
 ---

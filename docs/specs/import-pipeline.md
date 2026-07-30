@@ -7,7 +7,7 @@
 
 **范围**：定义 Parser 注册表、纯函数导入管线（`importPipeline`）、时区转换契约、ISBN 处理、书目/编目去重合并算法、借还配对算法、错误与警告模型、ID 确定性派生，并落地一个真实 Parser（`szlib`，见 [parsers/szlib-parser](../metadata/parsers/szlib-parser.md)）。本里程碑**只交付纯函数与测试**，**不接 UI 向导**（属 [UI 导航规格 §3 导入页](ui-navigation.md#3-各功能页布局与空状态)）、**不写 IndexedDB**（写入是调用方职责，管线只返回 `PipelineResult`）；`importDatabase(replay)` 端到端装配留待 UI 里程碑接本管线，本里程碑由 `importPipeline` 提供纯函数基础。
 
-**依赖**（本里程碑锁定的精确版本，需过 [npm-supply-chain-security §4.1](../npm-supply-chain-security.md) 冷却期审查）：
+**依赖**（本里程碑锁定，需过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 冷却期审查）：
 
 | 包 | 类型 | 版本 | 用途 |
 |----|------|------|------|

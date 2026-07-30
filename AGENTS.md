@@ -62,7 +62,7 @@ pnpm install --frozen-lockfile   # CI-required; never plain install
 pnpm dev                          # Vite dev server
 pnpm build                        # type-check + production build
 pnpm test                         # Vitest unit/integration tests
-pnpm lockfile-lint                # validate pnpm-lock.yaml
+pnpm verify                        # 安装(frozen) + 供应链策略复校验
 pnpm audit --audit-level=high     # security audit
 ```
 
@@ -79,7 +79,7 @@ uv run szlib_scraper.py
 ## Coding Style & Naming Conventions
 
 - TypeScript strict mode, React 19, Tailwind + shadcn/ui components, Dexie + Zod for data.
-- Pin exact versions (`save-exact=true`); no `^`/`*` ranges, no `--force`/`--shamefully-hoist`.
+- 版本范围可用 `^`：pnpm 11 下 `pnpm-lock.yaml` frozen 提交 + `minimumReleaseAge: 10080`（7 天冷却）即真正的版本护栏；CI 必须 `--frozen-lockfile`。禁 `--force`/`--shamefully-hoist`。新增依赖仍走 [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md) 审查清单。
 - Times are stored as **UTC** ISO 8601; Parsers convert local time using `source.timezone` (e.g. `Asia/Shanghai`).
 - Dedup physical copies by `sourceId + barcode`, merge books by `isbn13`, fall back to title+author (flag for review).
 - UI 文案禁止硬编码：可见文本必须经 `react-i18next` 的 `t()` 取值，不得在 JSX 中直接写中英文字面量。
@@ -103,4 +103,4 @@ Parsers implement the `SourceParser` interface under `src/parsers/` and must run
 
 This repo uses **Conventional Commits**, seen in history as `feat:`, `docs:`, `refactor(scope):`, `fix:`. Keep messages short and scoped (e.g. `refactor(metadata): add metaIdKey`).
 
-PRs should: reference the spec/issue, describe the data flow change, attach desensitized sample data for parser work, and confirm `pnpm install --frozen-lockfile`, `pnpm build`, and tests pass. Do not weaken [.npmrc](.npmrc) security settings; any new dependency needs the supply-chain review checklist in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md).
+PRs should: reference the spec/issue, describe the data flow change, attach desensitized sample data for parser work, and confirm `pnpm install --frozen-lockfile`, `pnpm build`, and tests pass. Do not weaken security settings in [.npmrc](.npmrc) (registry/`strict-ssl`) or `pnpm-workspace.yaml` (`minimumReleaseAge: 10080`); any new dependency needs the supply-chain review checklist in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md).

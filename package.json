@@ -17,9 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "lockfile-lint": "pnpm install --frozen-lockfile --ignore-scripts",
     "audit": "pnpm audit --audit-level=high",
-    "security:check": "node scripts/security-check.mjs",
     "verify": "pnpm install --frozen-lockfile --ignore-scripts"
   },
   "dependencies": {

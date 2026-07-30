@@ -1,3 +1,7 @@
+# 供应链安全策略（pnpm 11 原生执行）
+# 等价于旧 .npmrc 的 min-release-age，但 .npmrc 在 pnpm 11 下不再被读取
+# 见 docs/npm-supply-chain-security.md
+minimumReleaseAge: 10080  # 7 天冷却：拒绝安装发布不满 7 天的版本（含传递依赖）
 minimumReleaseAgeExclude:
   - '@oxlint/binding-android-arm-eabi@1.72.0'
   - '@oxlint/binding-android-arm64@1.72.0'
