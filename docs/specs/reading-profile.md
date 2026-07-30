@@ -11,7 +11,7 @@
 
 | 包 | 类型 | 版本候选 | 用途 |
 |----|------|---------|------|
-| `echarts` | runtime | `5.6.0` | canvas 渲染、treemap/自定义 series/柱图；依赖面仅 `zrender`+`tslib`（见 [design-decisions](../design-decisions.md) 图表选型） |
+| `echarts` | runtime | `6.1.0` | canvas 渲染、treemap/自定义 series/柱图；依赖面 `zrender@6.1.0`+`tslib`（v6 升级见 [echarts6-migration-assessment](../echarts6-migration-assessment.md)，无实例化调用，色板/轴/tooltip theme 字段不变） |
 | `date-fns` | runtime | `4.1.0` | 月份/年份桶的 locale 友好格式化与区间生成（按需引入子模块；时间转换仍走已落地的 `date-fns-tz`） |
 
 > `date-fns` 为可选：月份桶与 duration 直方图可用 `Date` 的 UTC getter + `Intl` 完成，若实现期评估后无 locale 格式化刚需则不引入，以缩小依赖面。是否引入在 Tests(Red) 阶段最终裁定。
@@ -103,6 +103,9 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 主题随暗色切换：`use-profile-stats` 监听根 `.dark`（沿用 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架) theme Provider 信号），变化时重建 theme 并更新各图实例；旧实例 `dispose` 防泄漏。
 - 数据色（蓝宝石/青绿方向）**只在本页发力**，其余界面保持冷静灰（[design-decisions](../design-decisions.md) 阅读图谱方向 B）。
 - import 策略：`echarts` 核按需引入 `echarts/core` + 注册的图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer`，不走 `echarts` barrel；shadcn 组件按需 import（`bundle-barrel-imports`）。ECharts 初始化组件用 `lazy()`/动态 import 在 `/profile` 激活时加载（`bundle-dynamic-imports`、`bundle-conditional`）。
+- **v6 实例化约束**（图表实例化落地时必须遵守，规避 v6 breaking，见 [echarts6-migration-assessment](../echarts6-migration-assessment.md) §5.3）：
+  - `option.legend.top`/`bottom` 显式声明锚定位置，不依赖 v6 默认（v6 legend 默认移到底部，与本页图谱块竖向堆叠布局冲突）。
+  - 若使用 `axisName`（轴标题），显式设 `grid.outerBoundsMode: 'none'`（或对应轴 `nameMoveOverlap: false`），避免 v6 默认开启的外溢/重叠规避导致轴位微移。
 
 ## 4. UI 设计说明
 
