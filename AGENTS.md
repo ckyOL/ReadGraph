@@ -55,7 +55,7 @@ Design intent lives in docs before code. Read [README.md](README.md), [docs/desi
 
 ## Build, Test, and Development Commands
 
-The frontend uses **pnpm** with a locked supply chain (see [.npmrc](.npmrc)):
+The frontend uses **pnpm 11** with a locked supply chain (see [pnpm-workspace.yaml](pnpm-workspace.yaml) and [.npmrc](.npmrc)):
 
 ```bash
 pnpm install --frozen-lockfile   # CI-required; never plain install
@@ -84,7 +84,7 @@ uv run szlib_scraper.py
 - Dedup physical copies by `sourceId + barcode`, merge books by `isbn13`, fall back to title+author (flag for review).
 - UI 文案禁止硬编码：可见文本必须经 `react-i18next` 的 `t()` 取值，不得在 JSX 中直接写中英文字面量。
 
-> These are one-line summaries. Canonical rules for UTC storage and dedup live in [docs/design-decisions.md](docs/design-decisions.md); exact-version and supply-chain rules live in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md); i18n rules live in [docs/i18n-conventions.md](docs/i18n-conventions.md).
+> These are one-line summaries. Canonical rules for UTC storage and dedup live in [docs/design-decisions.md](docs/design-decisions.md); supply-chain and version-range rules live in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md); i18n rules live in [docs/i18n-conventions.md](docs/i18n-conventions.md).
 
 ## Testing Guidelines
 
