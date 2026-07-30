@@ -14,9 +14,9 @@
 
 - [x] **D-1** 引入 `dexie-react-hooks@4.4.0`（`useLiveQuery`）。用途：[data-layer §12](../specs/data-layer.md#12-react-性能规则引用)「UI 响应式由 `dexie-react-hooks` `useLiveQuery` 直连 Dexie」。
   - 版本决策：实现指南曾列 `1.1.7`（旧 major）；与当前 `dexie@4.4.4` 对齐的稳定版为 `4.4.0`（peer：`dexie >=4.2.0-alpha.1 <5`、`react >=16`），发布 2026-03-18（>7d 冷却）。Apache-2.0，0 传递依赖，无 lifecycle 脚本。
-- [x] **D-2** 引入 `echarts@5.6.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。按 `echarts/core` + 注册图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer` 引入，不走 `echarts` barrel（`bundle-barrel-imports`）。
-  - 供应链：发布 2024-12-28；传递 `zrender@5.6.1` + `tslib@2.3.0`；Apache-2.0 / BSD-3-Clause。`pnpm audit --audit-level=high` 通过。
-  - 已知 moderate：GHSA-fgmj-fm8m-jvvx（echarts &lt;6.1.0 XSS）。未达 high 门禁；规格仍钉 5.6.0。阶段 2 图表落地时 tooltip/标签走文本模式、不把未消毒 HTML 注入 `formatter`；若升 6.x 需先改 reading-profile 规格。
+- [x] **D-2** 引入 `echarts@6.1.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。按 `echarts/core` + 注册图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer` 引入，不走 `echarts` barrel（`bundle-barrel-imports`）。
+  - 供应链：发布 2026-07-22（>7d 冷却）；传递 `zrender@6.1.0` + `tslib@2.3.0`；Apache-2.0 / BSD-3-Clause。`pnpm audit --audit-level=high` 通过。
+  - 版本演进：原锁定 `5.6.0`，于 2026-07-30 升至 `6.1.0`（修 `GHSA-fgmj-fm8m-jvvx` XSS，已达 high 门禁基线之上）。v6 breaking 对本仓零源码冲突——接触面仅为 `buildTheme()` 纯函数适配器，无图表实例化。图表实例化落地（阶段 2 C-1~C-5）须遵守 [reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层) v6 实例化约束（legend 显式锚定、`grid.outerBoundsMode`）。
 - [x] **D-3** 引入 `comlink@4.4.2`（Worker，[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `stats-worker.ts`，大数据聚合下放）。发布 2024-11-07，Apache-2.0，0 传递依赖，无 lifecycle 脚本。
 - [x] **D-4** 评估 `date-fns@4.1.0`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) 可选）：**不引入**。`computeProfileStats` 已使用 `Date` UTC getter + `Intl` 完成月/年桶与轴标签，无 locale 格式化刚需，故沿用现有实现，不增加 date-fns 依赖。
 - [x] **D-5** 引入 `@playwright/test@1.61.1`（E2E，[ui-navigation §8](../specs/ui-navigation.md#8-测试清单)/[reading-profile §7](../specs/reading-profile.md#7-测试清单)）作为 devDependency；配置 `playwright.config.ts` + `e2e/smoke.spec.ts`；`pnpm exec playwright install chromium` 浏览器二进制本地安装（不入库）。
@@ -83,6 +83,7 @@
 - 2026-07-08 补 S-1：[settings](../specs/settings.md)「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
 - 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。
 - 2026-07-24 阶段 0 完成：`src/hooks/use-theme.tsx`（`useTheme`/`ThemeProvider`/`useEChartsTheme`）+ `src/routes/__root.tsx` 装配 + 18 Vitest 覆盖；`light`/`dark`/`auto` 切 class、`auto` 跟随 `prefers-color-scheme`、reload 经 `readPreferences` 持久；`pnpm build`/`pnpm test`/`pnpm test:e2e` smoke 全绿。下一推进：阶段 1（H-1 `use-profile-stats`）。
+- 2026-07-30 依赖升级同步：`echarts` 5.6.0 → 6.1.0（修 `GHSA-fgmj-fm8m-jvvx` XSS，`zrender` 5.6.1 → 6.1.0；接触面仅 `buildTheme()` 纯函数适配器，零源码冲突）、`typescript` 6.0.3 → 7.0.2、`@tanstack/router-plugin` routeTree 重新生成。`tsc --noEmit` + Vitest 22 suites/224 tests 全绿。阶段 2 图表实例化落地时须遵守 [reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层) v6 实例化约束。
 
 - 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
 
@@ -110,7 +111,7 @@
 | 重置/导出导入 | `src/db/reset.ts` `export-import.ts` `backup.ts` | ✅ 纯函数已绿 |
 | 设计令牌/CSS | 根目录 `DESIGN.md` + `src/index.css` | ✅ 2026-07-23：纸墨色板/`--radius:0`/无阴影/zh-ja 双字体栈/`::selection`/CJK 行高切换已落；Geist 网络字体已移除 |
 | 纯函数 | `src/lib/profile-stats.ts` `echarts-theme.ts` `time.ts` 等 | ✅ 已绿 |
-| 运行时依赖 | `dexie-react-hooks@4.4.0` `echarts@5.6.0` `comlink@4.4.2` | ✅ 2026-07-21 已锁定 |
+| 运行时依赖 | `dexie-react-hooks@4.4.0` `echarts@6.1.0` `comlink@4.4.2` | ✅ 已锁定（echarts 2026-07-30 升 6.1.0） |
 | E2E | `@playwright/test@1.61.1` + `playwright.config.ts` + `e2e/smoke.spec.ts` | ✅ 烟测绿；浏览器二进制本地 install |
 
 ### B. 依赖引入（锁定版本 + 命令）— 已执行
@@ -118,8 +119,8 @@
 ```bash
 # D-1: 响应式查询（与 dexie@4.x 对齐；勿用旧 major 1.1.7）
 pnpm add dexie-react-hooks@4.4.0
-# D-2: 图表（reading-profile 规格钉 5.6.0）
-pnpm add echarts@5.6.0
+# D-2: 图表（reading-profile 规格钉 6.1.0；v6 实例化约束见 §3）
+pnpm add echarts@6.1.0
 # D-3: Worker（大数据聚合下放）
 pnpm add comlink@4.4.2
 # D-5: E2E
@@ -128,7 +129,7 @@ pnpm add -D @playwright/test@1.61.1 && pnpm exec playwright install chromium
 
 每次 add 后跑：`pnpm verify && pnpm build && pnpm test && pnpm audit --audit-level=high`，全绿才提交 `package.json` + `pnpm-lock.yaml`。
 
-> 已锁定版本见上表。echarts moderate XSS 见 D-2 备注；升 6.x 需先改规格。
+> 已锁定版本见上表。echarts v6 实例化约束（legend 锚定、`grid.outerBoundsMode`）见 D-2 备注 / [reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层)。
 
 ### C. 文件级任务清单（建/改哪些文件）
 

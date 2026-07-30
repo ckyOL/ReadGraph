@@ -172,7 +172,7 @@ pnpm install --ignore-scripts
 
 | 产物 | 说明 | 处置 |
 |------|------|------|
-| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ~6.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | caret/`~` 可保留（pnpm 11 frozen 锁文件兜底）；按需调整版本 |
+| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ^7.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | caret/`~` 可保留（pnpm 11 frozen 锁文件兜底）；按需调整版本 |
 | `tsconfig.json` + `tsconfig.app.json` + `tsconfig.node.json` | project references、`moduleResolution: bundler`、`verbatimModuleSyntax`、`moduleDetection: force`、`erasableSyntaxOnly`、`noUnusedLocals/Parameters` | ✅ 直接沿用;按本目录结构补 `src` include 与别名 |
 | `vite.config.ts` | 仅 `@vitejs/plugin-react` | ✅ 沿用;后续在此追加 `@tailwindcss/vite` 与 `@tanstack/router-plugin` |
 | `index.html` | `lang="en"`、含 `/favicon.svg`、示例标题 | 改 `lang="zh-CN"`、标题改 "ReadGraph"、按需替换 favicon |
