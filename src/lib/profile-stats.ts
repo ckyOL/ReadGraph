@@ -49,14 +49,14 @@ const DDC_FIRST_LEVEL: Record<string, string> = {
   '9': 'History & geography',
 }
 
-interface ProfileStatsInput {
+export interface ProfileStatsInput {
   books: Book[]
   catalogRecords: CatalogRecord[]
   borrowCycles: BorrowCycle[]
   sources: Source[]
 }
 
-interface ProfileStatsOptions {
+export interface ProfileStatsOptions {
   classificationSystem: ClassificationSystem | null
   range: { from: Date | null; to: Date | null } | null
   displayTimezone: string
@@ -91,7 +91,7 @@ interface GanttLane {
   intervals: GanttInterval[]
 }
 
-interface ProfileStatsResult {
+export interface ProfileStatsResult {
   summary: {
     totalBooks: number
     totalCycles: number

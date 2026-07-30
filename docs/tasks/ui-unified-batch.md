@@ -34,11 +34,11 @@
 
 ## 阶段 1：数据响应式 Hook（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖) `use-profile-stats.ts`，依赖 D-1）
 
-- [ ] **H-1** `src/profile/use-profile-stats.ts`：`useLiveQuery` 取 `books`/`catalogRecords`/`borrowCycles`/`sources` 实体 → 派生 `ProfileStatsResult`。
+- [x] **H-1** `src/profile/use-profile-stats.ts`：`useLiveQuery` 取 `books`/`catalogRecords`/`borrowCycles`/`sources` 实体 → 派生 `ProfileStatsResult`。
   - 小数据同步 `useMemo` 调 `computeProfileStats`；大数据（聚合耗时阈值候选 > 50ms，[reading-profile §5](../specs/reading-profile.md#5-数据契约与边界)）走 `stats-worker.ts`（依赖 D-3，留接口、Worker 启用条件后续配置）。
   - 输入与导航保持响应：分类体系切换与时间范围变化用 `useDeferredValue` 延迟重算（`rerender-use-deferred-value`）。
-- [ ] **H-2** `src/profile/stats-worker.ts`：Comlink 包装，接收实体 + opts，纯函数跑 `computeProfileStats`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。本批次交付包装与启用阈值，不在 `computeProfileStats` 内放时钟/存储读。
-- [ ] **H-3 测试（Vitest，Red 先行）**：Hook 在小数据下同步产出与 `computeProfileStats` 直调等价；`useLiveQuery` 未就绪返回 `undefined`/`null`（渲染 `Skeleton` 契约）；切换分类体系触发重算（mock `useLiveQuery` / Dexie）。
+- [x] **H-2** `src/profile/stats-worker.ts`：Comlink 包装，接收实体 + opts，纯函数跑 `computeProfileStats`（[reading-profile §1](../specs/reading-profile.md#1-范围与依赖)）。本批次交付包装与启用阈值，不在 `computeProfileStats` 内放时钟/存储读。
+- [x] **H-3 测试（Vitest，Red 先行）**：Hook 在小数据下同步产出与 `computeProfileStats` 直调等价；`useLiveQuery` 未就绪返回 `undefined`/`null`（渲染 `Skeleton` 契约）；切换分类体系触发重算（mock `useLiveQuery` / Dexie）。
 
 ## 阶段 2：阅读画像页与图表组件（[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)，依赖 D-1/D-2/D-3）
 
@@ -84,6 +84,7 @@
 - 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。
 - 2026-07-24 阶段 0 完成：`src/hooks/use-theme.tsx`（`useTheme`/`ThemeProvider`/`useEChartsTheme`）+ `src/routes/__root.tsx` 装配 + 18 Vitest 覆盖；`light`/`dark`/`auto` 切 class、`auto` 跟随 `prefers-color-scheme`、reload 经 `readPreferences` 持久；`pnpm build`/`pnpm test`/`pnpm test:e2e` smoke 全绿。下一推进：阶段 1（H-1 `use-profile-stats`）。
 - 2026-07-30 依赖升级同步：`echarts` 5.6.0 → 6.1.0（修 `GHSA-fgmj-fm8m-jvvx` XSS，`zrender` 5.6.1 → 6.1.0；接触面仅 `buildTheme()` 纯函数适配器，零源码冲突）、`typescript` 6.0.3 → 7.0.2、`@tanstack/router-plugin` routeTree 重新生成。`tsc --noEmit` + Vitest 22 suites/224 tests 全绿。阶段 2 图表实例化落地时须遵守 [reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层) v6 实例化约束。
+- 2026-07-30 阶段 1 完成：`src/profile/use-profile-stats.ts`（`useProfileStats`/`ProfileStatsState`/`WORKER_THRESHOLD=5000`）+ `src/profile/stats-worker.ts`（Comlink `expose` 纯函数 `compute`）+ `src/db/db-instance.ts`（Dexie 浏览器单例）+ `ProfileStatsInput`/`Options`/`Result` 类型导出上移为 public；小数据同步 `useMemo` 派生与直调等价、大数据 `borrowCycles ≥ 5000` 走 Worker（`new Worker(url, {type:'module'})` + `wrap`），opts 经 `useDeferredValue` 延迟重算；H-3 Vitest 4 例覆盖未就绪/同步等价/空库/CLC↔DDC 重算。`tsc --noEmit` + Vitest 23 suites/228 tests + `pnpm build` 全绿。下一推进：阶段 2（C-1~C-7 图表组件）。
 
 - 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
 
@@ -192,7 +193,7 @@ settings.reset.backupRequired   "请先导出备份" / "Export backup first"
 ### F. 每 task 验收 checklist
 
 - [x] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
-- [ ] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
+- [x] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
 - [ ] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
 - [ ] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
 - [ ] **G-2**: 表格可排序/搜索；分类号 `Badge` 渲染；空态 `Empty`
