@@ -102,4 +102,13 @@ describe('szlibParser.parse', () => {
     const b = szlibParser.parse(JSON.stringify(sample), source)
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
+
+  it('周期标注消费行行号 _rowIndexes：借出在前（时间升序，文件行序为倒序）', () => {
+    const cyc = res.borrowCycles.find((c) => c.barcode === 'F4401001911110')
+    expect(cyc).toBeDefined()
+    const idxs = (cyc as Record<string, unknown>)._rowIndexes as number[] | undefined
+    // 文件行序归还在前（rowIndex 1）、借出在后（rowIndex 4）；
+    // 周期按时间升序消费，故标注 [借出, 归还] = [4, 1]。
+    expect(idxs).toEqual([4, 1])
+  })
 })

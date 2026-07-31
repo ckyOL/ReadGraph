@@ -5,6 +5,22 @@ import { importPipeline, type ExistingState, type ImportMeta } from './pipeline'
 import { szlibParser } from './szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
 
+type SzRow = {
+  date: string
+  time: string
+  optype: string
+  metaid?: number
+  title: string
+  barcode: string
+  ISBN?: string
+  addr?: string
+}
+
+/** 构造一条 szlib 形状原始行（文件行序即数组序）。 */
+function mkRow(p: SzRow): Record<string, unknown> {
+  return { metatable: 'bibliosm', callno: '', ...p }
+}
+
 const source: Source = {
   id: 'src-szlib',
   type: 'library',
@@ -118,3 +134,165 @@ describe('importPipeline — 端到端 szlib', () => {
     expect(r.importLog.stats.newBooks).toBe(0)
   })
 })
+
+describe('importPipeline — 第二次导入不破坏既有周期（回归）', () => {
+  function runBatch(rows: Record<string, unknown>[], impId: string) {
+    const m: ImportMeta = {
+      ...meta,
+      id: impId,
+      importedAt: new Date(`2026-07-01T00:00:00.000Z`),
+    }
+    return importPipeline(
+      rows.map((d, i) => ({
+        id: `${impId}-raw-${i + 1}`,
+        importLogId: impId,
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      empty,
+      m,
+    )
+  }
+
+  const bookA = mkRow({ date: '20260301', time: '10:00:00', optype: '读者借出', metaid: 1001, title: '甲书/ 甲著', barcode: 'B0001', ISBN: '9780000000001' })
+  const bookARet = mkRow({ date: '20260305', time: '10:00:00', optype: '读者还回文献', metaid: 1001, title: '甲书/ 甲著', barcode: 'B0001', ISBN: '9780000000001' })
+  const bookB = mkRow({ date: '20260302', time: '10:00:00', optype: '读者借出', metaid: 1002, title: '乙书/ 乙著', barcode: 'B0002', ISBN: '9780000000002' })
+  const bookC = mkRow({ date: '20260303', time: '10:00:00', optype: '读者借出', metaid: 1003, title: '丙书/ 丙著', barcode: 'B0003', ISBN: '9780000000003' })
+
+  it('批次 A 导入后，导入不含其 barcode 的批次 B：A 的周期保持原 bookId/catalogRecordId', () => {
+    const first = runBatch([bookARet, bookA, bookB], 'imp-A')
+    expect(first.borrowCycles).toHaveLength(2)
+    const aCycles = first.borrowCycles.filter((c) => c.barcode === 'B0001')
+    expect(aCycles).toHaveLength(1)
+    expect(aCycles[0]!.bookId).not.toBe('')
+
+    // 批次 B：只含丙书（与 A 无共享 barcode）。旧版会把 A 的周期错挂到丙书。
+    const second = importPipeline(
+      [bookC].map((d, i) => ({
+        id: `imp-B-raw-${i + 1}`,
+        importLogId: 'imp-B',
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      {
+        books: first.books,
+        catalogRecords: first.catalogRecords,
+        borrowCycles: first.borrowCycles,
+      },
+      { ...meta, id: 'imp-B' },
+    )
+
+    const afterA = second.borrowCycles.find((c) => c.id === aCycles[0]!.id)!
+    expect(afterA.bookId).toBe(aCycles[0]!.bookId)
+    expect(afterA.catalogRecordId).toBe(aCycles[0]!.catalogRecordId)
+    // 丙书的周期必须挂到丙书，而不是兜底到本批次第一本书。
+    const cBook = second.books.find((b) => b.title === '丙书')!
+    const cCycle = second.borrowCycles.find((c) => c.barcode === 'B0003')!
+    expect(cCycle.bookId).toBe(cBook.id)
+  })
+
+  it('修复：既有周期被旧版错挂后，重新导入即按唯一 barcode 修回正确书目', () => {
+    const first = runBatch([bookARet, bookA, bookB], 'imp-A')
+    const aCycle = first.borrowCycles.find((c) => c.barcode === 'B0001')!
+    const otherBook = first.books.find((b) => b.title === '乙书')!
+    const corrupted: ExistingState = {
+      books: first.books,
+      catalogRecords: first.catalogRecords,
+      borrowCycles: first.borrowCycles.map((c) =>
+        c.id === aCycle.id ? { ...c, bookId: otherBook!.id, catalogRecordId: '' } : c,
+      ),
+    }
+    // 重新导入同一文件（existing 为损坏态）：周期应修回甲书。
+    const third = importPipeline(
+      [bookARet, bookA].map((d, i) => ({
+        id: `imp-A2-raw-${i + 1}`,
+        importLogId: 'imp-A2',
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      corrupted,
+      { ...meta, id: 'imp-A2' },
+    )
+    const aBook = third.books.find((b) => b.title === '甲书')!
+    const after = third.borrowCycles.find((c) => c.id === aCycle.id)!
+    expect(after.bookId).toBe(aBook.id)
+    expect(after.catalogRecordId).not.toBe('')
+  })
+
+  it('空条码多书：同一空 barcode 不同 metaid 的行各自成书成周期，互不串挂', () => {
+    // 两本书都无条码，文件行序与时间序相反（归还行在前），
+    // 且混入自助查询行（空条码、metaid 0）——旧版会因行错位把周期串挂/漏挂。
+    const rows = [
+      mkRow({ date: '20260303', time: '09:00:00', optype: '自助查询', metaid: 0, title: '', barcode: '' }),
+      mkRow({ date: '20260310', time: '10:00:00', optype: '读者还回文献', metaid: 2002, title: '乙书/ 乙著', barcode: '', ISBN: '9780000002002' }),
+      mkRow({ date: '20260302', time: '08:00:00', optype: '自助查询', metaid: 0, title: '', barcode: '' }),
+      mkRow({ date: '20260309', time: '10:00:00', optype: '读者借出', metaid: 2002, title: '乙书/ 乙著', barcode: '', ISBN: '9780000002002' }),
+      mkRow({ date: '20260305', time: '10:00:00', optype: '读者还回文献', metaid: 2001, title: '甲书/ 甲著', barcode: '', ISBN: '9780000002001' }),
+      mkRow({ date: '20260301', time: '10:00:00', optype: '读者借出', metaid: 2001, title: '甲书/ 甲著', barcode: '', ISBN: '9780000002001' }),
+    ]
+    const r = runBatch(rows, 'imp-empty')
+    const bookByTitle = new Map(r.books.map((b) => [b.title, b]))
+    expect(r.books).toHaveLength(2)
+    expect(r.catalogRecords).toHaveLength(2)
+    expect(r.borrowCycles).toHaveLength(2)
+    for (const c of r.borrowCycles) {
+      const cr = r.catalogRecords.find((x) => x.id === c.catalogRecordId)!
+      const expectTitle = cr.metaIdKey === '2001' ? '甲书' : '乙书'
+      expect(bookByTitle.get(expectTitle)!.id).toBe(c.bookId)
+      // 借出/归还日期取自各自书的行：甲 03-01→03-05，乙 03-09→03-10。
+      expect(c.borrowedAt.getTime()).toBe(
+        new Date(expectTitle === '甲书' ? '2026-03-01T02:00:00.000Z' : '2026-03-09T02:00:00.000Z').getTime(),
+      )
+      expect(c.returnedAt!.getTime()).toBe(
+        new Date(expectTitle === '甲书' ? '2026-03-05T02:00:00.000Z' : '2026-03-10T02:00:00.000Z').getTime(),
+      )
+      // rawRecordIds 只含借出/还回行（不含自助查询），且借出在前。
+      const rawById = new Map(r.rawRecords.map((rr) => [rr.id, rr] as const))
+      const rawRows = c.rawRecordIds.map((id) => rawById.get(id)!)
+      expect(rawRows).toHaveLength(2)
+      const optypes = rawRows.map((rr) => (rr.data as { optype?: string }).optype)
+      expect(optypes[0]).toBe('读者借出')
+      expect(optypes[1]).toBe('读者还回文献')
+    }
+  })
+
+  it('文件行序与时间序相反时，rawRecordIds 仍按借出→归还对齐', () => {
+    const borrow = mkRow({ date: '20260301', time: '10:00:00', optype: '读者借出', metaid: 3001, title: '丁书/ 丁著', barcode: 'B3001', ISBN: '9780000003001' })
+    const ret = mkRow({ date: '20260310', time: '10:00:00', optype: '读者还回文献', metaid: 3001, title: '丁书/ 丁著', barcode: 'B3001', ISBN: '9780000003001' })
+    // 文件序：归还在前、借出在后。
+    const rows = [ret, borrow]
+    const r = runBatch(rows, 'imp-order')
+    const cyc = r.borrowCycles[0]!
+    expect(r.rawRecords).toHaveLength(2)
+    expect(cyc.rawRecordIds).toHaveLength(2)
+    expect(cyc.rawRecordIds[0]).toBe(borrowRowId(r.rawRecords, '20260301'))
+    expect(cyc.rawRecordIds[1]).toBe(borrowRowId(r.rawRecords, '20260310'))
+    expect(cyc.borrowedAt.getTime()).toBe(new Date('2026-03-01T02:00:00.000Z').getTime())
+    expect(cyc.returnedAt!.getTime()).toBe(new Date('2026-03-10T02:00:00.000Z').getTime())
+  })
+})
+
+function borrowRowId(rows: RawRecord[], date: string): string {
+  return rows.find((r) => (r.data as { date?: string }).date === date)!.id
+}

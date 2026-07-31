@@ -22,6 +22,8 @@ export interface CandidateCatalog {
 export interface CandidateCycle {
   sourceId: string
   barcode: string | null
+  /** 周期归属原始行的 metaIdKey（同 barcode 多编目时按行消歧；pipeline 填充）。 */
+  metaIdKey?: string | null
   borrowedAt: Date
   returnedAt: Date | null
   status: 'borrowed' | 'returned' | 'unknown'

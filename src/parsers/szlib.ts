@@ -137,8 +137,14 @@ export const szlibParser: SourceParser = {
       })
     }
     const borrowCycles: Partial<BorrowCycle>[] = []
+    // 周期标注其消费的原始行（文件行号，与 buildRawRecords.rowIndex 一致）；
+    // pipeline 按行号取 rawRecordIds 与 metaid 消歧（瞬态字段，不入库）。
+    const pushCycle = (c: Partial<BorrowCycle>, rows: RawRow[]): void => {
+      ;(c as Record<string, unknown>)._rowIndexes = rows.map((r) => r.rowIndex)
+      borrowCycles.push(c)
+    }
     for (const g of byBarcode.values()) {
-      let openCycle: { borrowedAt: Date; borrowLocation: string | null } | null = null
+      let openCycle: { borrowedAt: Date; borrowLocation: string | null; rows: RawRow[] } | null = null
       for (const rr of g.sorted) {
         const { optype } = rr.data
         let utc: Date
@@ -150,20 +156,20 @@ export const szlibParser: SourceParser = {
         }
         if (optype === '读者借出') {
           if (openCycle) {
-            borrowCycles.push({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>)
+            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, openCycle.rows)
           }
-          openCycle = { borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null }
+          openCycle = { borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null, rows: [rr] }
         } else if (optype === '读者还回文献') {
           if (openCycle) {
-            borrowCycles.push({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: utc, status: 'returned', borrowLocation: openCycle.borrowLocation, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>)
+            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: utc, status: 'returned', borrowLocation: openCycle.borrowLocation, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [...openCycle.rows, rr])
             openCycle = null
           } else {
-            borrowCycles.push({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: utc, returnedAt: utc, status: 'unknown', borrowLocation: null, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>)
+            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: utc, returnedAt: utc, status: 'unknown', borrowLocation: null, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [rr])
           }
         }
       }
       if (openCycle) {
-        borrowCycles.push({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>)
+        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, openCycle.rows)
       }
     }
     const books: Partial<Book>[] = []

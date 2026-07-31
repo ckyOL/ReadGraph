@@ -76,7 +76,6 @@ export function importPipeline(
   //    这里转换为 CandidateCatalog 列表，逐条确定 barcode 与 bookId。
   const candidates: CandidateCatalog[] = []
   const candidateBarcodes: string[] = []
-  const validRows: RawRecord[] = rows.filter((r) => r.parseStatus !== 'skipped')
 
   // parseRes.books 已按出现顺序去重；用其在 parseRes.catalogRecords 内的
   // barcode 关联。简化装配：循环 catalogRecords，每条对应一个候选。
@@ -111,8 +110,13 @@ export function importPipeline(
   // 4. 实际产出 Books + CatalogRecords（ID 确定性派生，§10.4）。
   const newBooks: Book[] = []
   const newCatalogRecords: CatalogRecord[] = []
-  const crIdByBarcode = new Map<string, string>()
-  const bookIdByCrIndex = new Map<number, string>()
+  // 编目 ID 按「派生输入」缓存：同输入恒同 id；同 barcode 多候选（如空条码行按
+  // metaid 消歧）不会互相覆盖（旧版按 barcode 缓存会让后者复用前者的 id）。
+  const crIdByDerived = new Map<string, string>()
+  // barcode → 本批次编目 ID 列表：供周期关联判定唯一/歧义。
+  const crIdsByBarcode = new Map<string, string[]>()
+  // metaIdKey → 本批次编目：同 barcode 多编目时按原始行 metaid 消歧。
+  const crByMetaKey = new Map<string, CatalogRecord>()
 
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i]!
@@ -127,8 +131,11 @@ export function importPipeline(
       cand.isPlaceholder || !metaIdKey
         ? `${sourceId}|${barcode}`
         : `${sourceId}|${metaIdKey}`
-    const cId = crIdByBarcode.get(barcode) ?? makeCrId(crDerivedInput)
-    crIdByBarcode.set(barcode, cId)
+    const cId = crIdByDerived.get(crDerivedInput) ?? makeCrId(crDerivedInput)
+    crIdByDerived.set(crDerivedInput, cId)
+    const bcCrs = crIdsByBarcode.get(barcode) ?? []
+    bcCrs.push(cId)
+    crIdsByBarcode.set(barcode, bcCrs)
 
     let bookId = bookIdByBarcode.get(barcode)
     if (!bookId || bookId.startsWith('new:')) {
@@ -160,9 +167,7 @@ export function importPipeline(
         parallelTitles: (bookPartial.parallelTitles ?? []) as string[],
       })
     }
-    bookIdByCrIndex.set(i, bookId)
-
-    newCatalogRecords.push({
+    const newCr: CatalogRecord = {
       id: cId,
       bookId,
       sourceId,
@@ -172,39 +177,35 @@ export function importPipeline(
       classifications: (cr.classifications ?? []) as CatalogRecord['classifications'],
       createdAt: now,
       updatedAt: now,
-    })
+    }
+    newCatalogRecords.push(newCr)
+    if (metaIdKey) crByMetaKey.set(`${sourceId}|${metaIdKey}`, newCr)
   }
 
-  // 5. 装配候选 BorrowCycle（parseRes 产出的周期逐个映射 rawRecordIds）。
-  //    规则：同 barcode 内的周期按 parseRes 顺序排定，rawRecordIds 取该周期
-  //    对应的 rows（按 barcode 过滤后第 k 个借/还操作）。这里采用简化但确定性
-  //    的关联：同 barcode 下按 parseRes 周期序号依次取 validRows 中该 barcode 的操作行。
-  const cyclesByBarcode = new Map<string, RawRecord[]>()
-  for (const r of validRows) {
-    const bc = String((r.data as { barcode?: unknown }).barcode ?? '')
-    if (!cyclesByBarcode.has(bc)) cyclesByBarcode.set(bc, [])
-    cyclesByBarcode.get(bc)!.push(r)
-  }
+  // 5. 装配候选 BorrowCycle：rawRecordIds 直接取自 Parser 在周期上标注的
+  //    消费行文件行号（_rowIndexes，与 buildRawRecords.rowIndex 一致），
+  //    不再按 barcode 游标猜行——旧法会混入自助查询/续借等无效行（metaid=0）
+  //    导致行错位、metaid 消歧失效（空条码多书时周期错挂或无主）。
+  const rowByIdx = new Map(rows.map((r) => [r.rowIndex, r] as const))
   const candidateCycles: CandidateCycle[] = []
-  const cycleBarcodeCursor = new Map<string, number>()
   for (const cyc of parseRes.borrowCycles) {
-    const bc = String(cyc.barcode ?? '')
-    const arr = cyclesByBarcode.get(bc) ?? []
-    let cursor = cycleBarcodeCursor.get(bc) ?? 0
+    const rowIndexes = (cyc as Record<string, unknown>)._rowIndexes as
+      | number[]
+      | undefined
     const rawIds: string[] = []
-    // 借出取一行，归还取同行/下行使 rawRecordIds 稳定；此处取同 cursor 行。
-    if (cursor < arr.length) {
-      rawIds.push(arr[cursor]!.id)
-      cursor++
+    for (const ri of rowIndexes ?? []) {
+      const r = rowByIdx.get(ri)
+      if (r) rawIds.push(r.id)
     }
-    if (cyc.status === 'returned' && cursor < arr.length) {
-      rawIds.push(arr[cursor]!.id)
-      cursor++
-    }
-    cycleBarcodeCursor.set(bc, cursor)
+    // 周期归属原始行的 metaid（同 barcode 多编目时按行消歧；0/缺失视为无）。
+    const firstRow = rowIndexes?.length ? rowByIdx.get(rowIndexes[0]!) : undefined
+    const rowMetaId = (firstRow?.data as { metaid?: unknown } | undefined)?.metaid
+    const metaIdKey =
+      rowMetaId != null && rowMetaId !== 0 ? String(rowMetaId) : null
     candidateCycles.push({
       sourceId: cyc.sourceId ?? source.id,
       barcode: cyc.barcode ?? null,
+      metaIdKey,
       borrowedAt: cyc.borrowedAt ?? now,
       returnedAt: cyc.returnedAt ?? null,
       status: cyc.status ?? 'unknown',
@@ -221,23 +222,69 @@ export function importPipeline(
   )
   warnings.push(...cyWarnings)
 
+  // 周期 → 编目/书目 关联索引：
+  // - 全量编目（既有 + 本批次）按 sourceId+barcode：修复既有周期错挂。
+  // - 本批次新编目按 id 与 metaIdKey：为新周期解析归属。
+  const crByBarcodeFull = new Map<string, CatalogRecord>()
+  // barcode → 去重编目 ID 集合（重导同文件时既有/新编目同 id，不算歧义）。
+  const barcodeCrIds = new Map<string, Set<string>>()
+  for (const cr of [...existing.catalogRecords, ...newCatalogRecords]) {
+    const bcKey = `${cr.sourceId}|${cr.barcodes[0] ?? ''}`
+    if (!crByBarcodeFull.has(bcKey)) crByBarcodeFull.set(bcKey, cr)
+    const ids = barcodeCrIds.get(bcKey) ?? new Set<string>()
+    ids.add(cr.id)
+    barcodeCrIds.set(bcKey, ids)
+  }
+  const crById = new Map(newCatalogRecords.map((cr) => [cr.id, cr] as const))
+  const crByMetaKeyFull = new Map<string, CatalogRecord>()
+  for (const cr of [...existing.catalogRecords, ...newCatalogRecords]) {
+    if (cr.metaIdKey) crByMetaKeyFull.set(`${cr.sourceId}|${cr.metaIdKey}`, cr)
+  }
+
+  // 新周期 → 候选对齐（dedupe 输出 = existing + 未跳过候选，按序）。
+  const newCandidateByKey = new Map<string, CandidateCycle>()
+  for (let i = 0; i < candidateCycles.length; i++) {
+    const cand = candidateCycles[i]!
+    if (skippedFlags[i]) continue
+    newCandidateByKey.set(
+      `${cand.sourceId}|${cand.barcode ?? ''}|${cand.borrowedAt.getTime()}`,
+      cand,
+    )
+  }
+
   const finalCycles: BorrowCycle[] = cycles.map((c) => {
+    // 既有周期：保持原关联；仅当其 barcode 在全量编目里唯一命中时修复
+    // （旧版会把 barcode 不在本批次的周期兜底错挂到本批次第一本书，
+    // 例如第二次导入时破坏首次导入的既有周期关联）。
+    if (c.id) {
+      const bcKey = `${c.sourceId}|${c.barcode ?? ''}`
+      const cr = crByBarcodeFull.get(bcKey)
+      if (
+        cr &&
+        (barcodeCrIds.get(bcKey)?.size ?? 0) === 1 &&
+        (cr.id !== c.catalogRecordId || cr.bookId !== c.bookId)
+      ) {
+        return { ...c, bookId: cr.bookId, catalogRecordId: cr.id }
+      }
+      return c
+    }
+    // 新周期：barcode 唯一命中 → 该编目；同 barcode 多编目/缺失 → 按行 metaIdKey 消歧。
     const rawKey = c.rawRecordIds.slice().sort().join(',')
-    const id = c.id ? c.id : cyId(`${meta.id}|${rawKey}`)
-    // 关联 catalogRecordId/bookId（按 barcode 找 crId）。
+    const id = cyId(`${meta.id}|${rawKey}`)
     const bc = c.barcode ?? ''
-    const crIdForBc = crIdByBarcode.get(bc) ?? ''
-    const bookIdForBc = (() => {
-      const found = bookIdByBarcode.get(bc)
-      if (found && !found.startsWith('new:')) return found
-      const cr = newCatalogRecords.find((x) => x.barcodes.includes(bc))
-      return cr?.bookId ?? bookIdByCrIndex.get(0) ?? ''
-    })()
+    const bcCrs = crIdsByBarcode.get(bc) ?? []
+    const cand = newCandidateByKey.get(
+      `${c.sourceId}|${bc}|${c.borrowedAt.getTime()}`,
+    )
+    let cr: CatalogRecord | undefined
+    if (bcCrs.length === 1) cr = crById.get(bcCrs[0]!)
+    else if (cand?.metaIdKey)
+      cr = crByMetaKeyFull.get(`${c.sourceId}|${cand.metaIdKey}`)
     return {
       ...c,
       id,
-      bookId: bookIdForBc,
-      catalogRecordId: crIdForBc,
+      bookId: cr?.bookId ?? '',
+      catalogRecordId: cr?.id ?? '',
     }
   })
 
@@ -253,9 +300,25 @@ export function importPipeline(
   }
 
   // 7. 回填 rawRecord 的 bookId/borrowCycleId/parseStatus（简化：有效行 success）。
+  //    bookId 取真实书目 id（跳过 bookIdByBarcode 里的 'new:' 占位标记——旧版
+  //    会把 'new:…' 直接写进 rawRecord.bookId）；空条码行按 metaid 消歧。
+  const cycleIdByRawId = new Map<string, string>()
+  for (const c of finalCycles) {
+    for (const rid of c.rawRecordIds) cycleIdByRawId.set(rid, c.id)
+  }
   for (const r of rows) {
     const bc = String((r.data as { barcode?: unknown }).barcode ?? '')
-    r.bookId = bookIdByBarcode.get(bc) ?? r.bookId
+    const byBc = bookIdByBarcode.get(bc)
+    let bookId = byBc && !byBc.startsWith('new:') ? byBc : undefined
+    if (!bookId) {
+      const metaId = (r.data as { metaid?: unknown }).metaid
+      if (metaId != null && metaId !== 0) {
+        bookId = crByMetaKeyFull.get(`${r.sourceId}|${String(metaId)}`)?.bookId
+      }
+    }
+    if (bookId) r.bookId = bookId
+    const cycId = cycleIdByRawId.get(r.id)
+    if (cycId) r.borrowCycleId = cycId
     if (r.parseStatus === 'success' || r.parseStatus === undefined) {
       r.parseStatus = 'success'
     }
