@@ -31,7 +31,7 @@ Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv venv && uv pip sync requir
 - Stack: TS strict, React 19, Tailwind + shadcn/ui, Dexie + Zod. pnpm 11 with
   `minimumReleaseAge: 10080` is the version guard; `--force`/`--shamefully-hoist` forbidden;
   new deps need the supply-chain checklist (`docs/npm-supply-chain-security.md`).
-- Commits: Conventional Commits, short and scoped (e.g. `refactor(metadata): add metaIdKey`).
+- Commits: Conventional Commits, short and scoped (e.g. `refactor(metadata): add metaIdKey`), subject and body written in English.
 - Parsers: implement `SourceParser` under `src/parsers/`, in-browser only (no Node-only APIs),
   built on real captured data — see `docs/metadata/parsers/contributing-parser.md`.
 - Canonical rules: `docs/design-decisions.md` (times, dedup), `docs/i18n-conventions.md`,
