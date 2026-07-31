@@ -54,12 +54,12 @@
 
 ## 阶段 3：书库 / 时间线 / 导入向导 / Dashboard（[ui-navigation §3](../specs/ui-navigation.md#3-各功能页布局与空状态)，依赖 D-1，复用 [import-pipeline](../specs/import-pipeline.md) 已落地引擎）
 
-- [ ] **G-1 Dashboard（/）**：概览统计卡片（藏书数/周期数/在借数/最近导入）+ 最近借阅列表 + 快速入口；空态 `Empty` + 首次导入引导。
-- [ ] **G-2 书库列表（/library）**：`Table` 密实列表（书名/作者/ISBN13/来源徽标/分类号芯片/借阅次数），可搜索筛选排序;空态 `Empty` + 导入引导。
-- [ ] **G-3 书目详情（/library/$bookId）**：卷卡式 `Card`（书目元数据 + 各 `CatalogRecord` + `BorrowCycle` 时间线小图）；`$bookId` 走 z.string() 校验 loader 入参（[ui-navigation §2](../specs/ui-navigation.md#2-路由树)）。
-- [ ] **G-4 时间线（/timeline）**：横向时间轴脊柱，按 `borrowedAt` 排列所有 `BorrowCycle`；`status='borrowed'` 强调态；可按来源/状态筛选；空态 `Empty`。
-- [ ] **G-5 导入向导（/import，多步）**：来源选择/创建 → 文件选择与编码检测 → 前 10 条预览与字段映射 → 执行 → 导入报告（统计 + `ParseWarning` 列表）。复用 [import-pipeline](../specs/import-pipeline.md) 已落地 Parser/pipeline，UI 层不重算去重/配对;来源选择支持 [source](../metadata/source.md) `SOURCE_TEMPLATES`；大文件导入下放 Web Worker（[ui-navigation §6](../specs/ui-navigation.md#6-数据契约与边界)）。每步可回退。
-- [ ] **G-6 测试（Vitest + Playwright）**：[ui-navigation §8](../specs/ui-navigation.md#8-测试清单) — AppShell 渲染与路由懒加载；侧栏六页跳转/高亮/移动端折叠；暗色/locale 切换持久；空 Dashboard → 导入入口；导入向导关键路径（模板建来源→选文件→预览→执行→报告→落库→书库可见，脱敏夹具）；分类号芯片渲染（CLC/DDC code↔category 映射）；日期/时区纯函数 UTC↔displayTimezone↔source.timezone（应已部分随 data-layer / import-pipeline 有覆盖，对齐补缺）。
+- [x] **G-1 Dashboard（/）**：概览统计卡片（藏书数/周期数/在借数/最近导入）+ 最近借阅列表 + 快速入口；空态 `Empty` + 首次导入引导。
+- [x] **G-2 书库列表（/library）**：`Table` 密实列表（书名/作者/ISBN13/来源徽标/分类号芯片/借阅次数），可搜索筛选排序;空态 `Empty` + 导入引导。
+- [x] **G-3 书目详情（/library/$bookId）**：卷卡式 `Card`（书目元数据 + 各 `CatalogRecord` + `BorrowCycle` 时间线小图）；`$bookId` 走 z.string() 校验 loader 入参（[ui-navigation §2](../specs/ui-navigation.md#2-路由树)）。
+- [x] **G-4 时间线（/timeline）**：横向时间轴脊柱，按 `borrowedAt` 排列所有 `BorrowCycle`；`status='borrowed'` 强调态；可按来源/状态筛选；空态 `Empty`。
+- [x] **G-5 导入向导（/import，多步）**：来源选择/创建 → 文件选择与编码检测 → 前 10 条预览与字段映射 → 执行 → 导入报告（统计 + `ParseWarning` 列表）。复用 [import-pipeline](../specs/import-pipeline.md) 已落地 Parser/pipeline，UI 层不重算去重/配对;来源选择支持 [source](../metadata/source.md) `SOURCE_TEMPLATES`；大文件导入下放 Web Worker（[ui-navigation §6](../specs/ui-navigation.md#6-数据契约与边界)）。每步可回退。
+- [x] **G-6 测试（Vitest + Playwright）**：[ui-navigation §8](../specs/ui-navigation.md#8-测试清单) — AppShell 渲染与路由懒加载；侧栏六页跳转/高亮/移动端折叠；暗色/locale 切换持久；空 Dashboard → 导入入口；导入向导关键路径（模板建来源→选文件→预览→执行→报告→落库→书库可见，脱敏夹具）；分类号芯片渲染（CLC/DDC code↔category 映射）；日期/时区纯函数 UTC↔displayTimezone↔source.timezone（应已部分随 data-layer / import-pipeline 有覆盖，对齐补缺）。
 
 ## 阶段 4：设置与系统重置规格（[app-spec §6](../app-spec.md#6-功能规格索引) #5，规格已补 [settings](../specs/settings.md)）
 
@@ -88,7 +88,9 @@
 
 - 2026-07-31 阶段 2 完成：`src/routes/profile.tsx` 图表主导布局（工具条 SegmentedControl 分类体系 / Select 时间范围 / displayTimezone 只显示；`useTransition` + Skeleton；整页/部件空态与 ErrorBoundary 降级）+ 四图组件（`charts/use-echarts.ts` 薄适配：`echarts/core` + Treemap/Bar/Custom + CanvasRenderer 按需注册、`.dark` 重建 theme 并 dispose 防泄漏；`ClassificationTreemap` 一级高亮 + tooltip、下钻 TODO；`BorrowGantt` lane=bookId:barcode、`useDeferredValue` now 锚定在借端点、`GANTT_THRESHOLD=5000` dataZoom + 12000 矩形封顶；`BorrowVolumeBar` displayTimezone 轴标签；`DurationDistribution` 5 档桶 + `—` 空样本）+ `e2e/profile.spec.ts` 5 例（空态跳 /import、canvas 非空、范围切换重绘、暗色持久、150-lane 大库不崩；修复大库夹具缺 `id` 主键导致 bulkPut 事务回滚、页面误判空态的用例缺陷）。`tsc --noEmit` + Vitest 23 suites/228 tests + `pnpm build` + E2E 7 例全绿。下一推进：阶段 3（G-1~G-6 书库/时间线/导入向导/Dashboard）。
 
-- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ ~~阶段 2~~ → 阶段 3 → S-1 → S-2/S-3。
+- 2026-07-31 阶段 3 完成：Dashboard（`/` 统计卡片 + 最近借阅 + 快速入口 + 空态）、书库列表（`/library` 搜索/来源筛选/列排序、分类号芯片 `ClassificationBadge`、待复核徽标、空态）、书目详情（`/library/$bookId` `parseParams` z.string() 校验入参；卷卡元数据 + 馆藏记录 + 借阅历史；书不存在空态）、时间线（横向脊柱按 `borrowedAt` 排列、在借强调、来源/状态筛选、空态）、导入向导（模板建来源→文件选择+`detectAndDecode` 编码检测→前 10 条预览→执行→报告；`src/import/run-import.ts` 编排复用 `importPipeline`，≥50MB 走 `import-worker.ts` Comlink 下放；每步可回退）。共享纯函数：`src/lib/classification.ts`（CLC/DDC 一级表从 profile-stats 抽离，芯片与聚合同源）、`encoding.ts`（UTF-8 fatal → GBK 回退）、`display-time.ts`（UTC→displayTimezone）、`source-templates.ts`（SOURCE_TEMPLATES）。**修复潜在 pipeline bug**：选书帮占位行共享 `metaId` 时 `crDerivedInput` 走 metaIdKey 派生同 id（bulkPut 后者覆盖前者，独立 Book 契约被破坏）→ 占位候选改按 `sourceId+barcode` 派生（§10.6 第 4 条）。`__root.tsx` 加 `SidebarTrigger` + 移动端导航点击收起 Sheet。Vitest 28 suites/260 tests + `tsc -b`/`pnpm build` + E2E 22 例（`e2e/app.spec.ts` 12 例：六页导航/高亮、移动端折叠、空态×3、暗色/locale 持久、书库搜索排序+详情、向导关键路径→落库→书库可见→Dashboard 统计）全绿。下一推进：阶段 4（S-2/S-3 设置页）。
+
+- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ ~~阶段 2~~ → ~~阶段 3~~ → S-1 → S-2/S-3。
 
 - 2026-07-23 UI 设计令牌落地：新增根目录 `DESIGN.md`（蔦屋書店气质：瑠璃紺/白群主色、生成纸白/暖黑底、完全直角、无阴影、CJK 排版规则），色表与字体栈从 `ui-navigation.md`/`design-decisions.md` 抽离集中；`src/index.css` 按 DESIGN.md 落 CSS 变量、zh-ja 双字体栈、`::selection`、`:lang()` 行高切换，移除 `@fontsource-variable/geist` 网络字体依赖。**P0-1 前置 CSS 已就位，仅需 React 侧 hook/Provider。**
 
@@ -197,10 +199,10 @@ settings.reset.backupRequired   "请先导出备份" / "Export backup first"
 - [x] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
 - [x] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
 - [x] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
-- [ ] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
-- [ ] **G-2**: 表格可排序/搜索；分类号 `Badge` 渲染；空态 `Empty`
-- [ ] **G-3**: 书目元数据 + CatalogRecord 列表 + 借阅时间线
-- [ ] **G-4**: 时间线按 borrowedAt 排序；在借状态区分
-- [ ] **G-5**: 向导每步可回退；预览 10 条；执行后书库可见
+- [x] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
+- [x] **G-2**: 表格可排序/搜索；分类号 `Badge` 渲染；空态 `Empty`
+- [x] **G-3**: 书目元数据 + CatalogRecord 列表 + 借阅时间线
+- [x] **G-4**: 时间线按 borrowedAt 排序；在借状态区分
+- [x] **G-5**: 向导每步可回退；预览 10 条；执行后书库可见
 - [ ] **S-2**: theme/locale/时区切换持久；导出下载文件；重置 `AlertDialog` 二次确认 + 备份门槛
-- [ ] **全局**: `pnpm build` 无类型错误；`pnpm test` 全绿；无硬编码中英文（全走 `t()`）
+- [x] **全局**: `pnpm build` 无类型错误；`pnpm test` 全绿；无硬编码中英文（全走 `t()`）
