@@ -156,6 +156,44 @@ describe('dedupeBorrowCycles', () => {
     expect(r.warnings.some((w) => w.type === 'duplicate')).toBe(true)
   })
 
+  it('批次内重复（同批两条相同行）仅保留一条，记 duplicate 警告', () => {
+    const cand: Parameters<typeof dedupeBorrowCycles>[0][number] = {
+      sourceId: 'szlib',
+      barcode: 'B1',
+      borrowedAt: t,
+      returnedAt: t2,
+      status: 'returned',
+      borrowLocation: null,
+      returnLocation: null,
+      rawRecordIds: ['r2'],
+    }
+    const r = dedupeBorrowCycles([cand, { ...cand, rawRecordIds: ['r9'] }], [])
+    expect(r.skippedFlags).toEqual([false, true])
+    expect(r.cycles).toHaveLength(1)
+    expect(r.warnings.filter((w) => w.type === 'duplicate')).toHaveLength(1)
+  })
+
+  it('批次内重复不干扰不同 borrowedAt 的合法周期', () => {
+    const cand: Parameters<typeof dedupeBorrowCycles>[0][number] = {
+      sourceId: 'szlib',
+      barcode: 'B1',
+      borrowedAt: t,
+      returnedAt: t2,
+      status: 'returned',
+      borrowLocation: null,
+      returnLocation: null,
+      rawRecordIds: ['r2'],
+    }
+    const later = new Date('2026-07-01T00:00:00.000Z')
+    const r = dedupeBorrowCycles(
+      [cand, { ...cand, borrowedAt: later, rawRecordIds: ['r7'] }],
+      [],
+    )
+    expect(r.skippedFlags).toEqual([false, false])
+    expect(r.cycles).toHaveLength(2)
+    expect(r.warnings).toEqual([])
+  })
+
   it('时间重叠（同 barcode 同 borrowedAt 但 status 返回）记 unpaired_record', () => {
     const existing = [{ id: 'cy-1', bookId: 'bk', catalogRecordId: 'cr', sourceId: 'szlib', barcode: 'B1', borrowedAt: t, returnedAt: t2, status: 'returned' as const, borrowLocation: null, returnLocation: null, rawRecordIds: ['r1'], createdAt: t, updatedAt: t }]
     const tMid = new Date('2026-05-15T01:00:00.000Z')

@@ -153,6 +153,11 @@ export function dedupeBorrowCycles(
   const cycles = [...existingCycles]
   const skippedFlags: boolean[] = candidates.map(() => false)
 
+  // 批次内已接受候选的精确键（sourceId+barcode+borrowedAt）。
+  // 同一批次内重复行（如爬虫分页边界重复记录）也会各自成为候选，
+  // 必须与已接受的批内候选比对，否则同批重复会产出多条相同周期。
+  const batchKeys = new Set<string>()
+
   const timeOverlap = (a: BorrowCycle, b: BorrowCycle): boolean => {
     if (a.barcode !== b.barcode || a.sourceId !== b.sourceId) return false
     // b 的借出落在 a 的开区间（a.borrowedAt, a.returnedAt）内即时间重叠。
@@ -160,6 +165,7 @@ export function dedupeBorrowCycles(
   }
 
   candidates.forEach((cand, i) => {
+    const exactKey = `${cand.sourceId}|${cand.barcode ?? ''}|${cand.borrowedAt.getTime()}`
     for (const ex of existingCycles) {
       if (
         ex.sourceId === cand.sourceId &&
@@ -188,23 +194,33 @@ export function dedupeBorrowCycles(
         break
       }
     }
-    if (!skippedFlags[i]) {
-      cycles.push({
-        id: '',
-        bookId: '',
-        catalogRecordId: '',
-        sourceId: cand.sourceId,
-        barcode: cand.barcode,
-        borrowedAt: cand.borrowedAt,
-        returnedAt: cand.returnedAt,
-        status: cand.status,
-        borrowLocation: cand.borrowLocation,
-        returnLocation: cand.returnLocation,
-        rawRecordIds: cand.rawRecordIds,
-        createdAt: cand.borrowedAt,
-        updatedAt: cand.borrowedAt,
+    if (skippedFlags[i]) return
+    // 批次内去重：同批已有完全相同（sourceId+barcode+borrowedAt）的候选时跳过。
+    if (batchKeys.has(exactKey)) {
+      skippedFlags[i] = true
+      warnings.push({
+        type: 'duplicate',
+        message: `BorrowCycle 重复（批次内）：sourceId=${cand.sourceId} barcode=${cand.barcode ?? ''} borrowedAt=${cand.borrowedAt.toISOString()}`,
+        recordRef: cand.rawRecordIds.map((r) => `raw:${r}`).join(','),
       })
+      return
     }
+    batchKeys.add(exactKey)
+    cycles.push({
+      id: '',
+      bookId: '',
+      catalogRecordId: '',
+      sourceId: cand.sourceId,
+      barcode: cand.barcode,
+      borrowedAt: cand.borrowedAt,
+      returnedAt: cand.returnedAt,
+      status: cand.status,
+      borrowLocation: cand.borrowLocation,
+      returnLocation: cand.returnLocation,
+      rawRecordIds: cand.rawRecordIds,
+      createdAt: cand.borrowedAt,
+      updatedAt: cand.borrowedAt,
+    })
   })
 
   return { cycles, warnings, skippedFlags }

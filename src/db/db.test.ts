@@ -1,22 +1,150 @@
 import { beforeEach, afterEach, describe, it, expect } from 'vitest'
 
-import { ReadGraphDB } from '@/db/db'
+import { ReadGraphDB, dedupeBorrowCycleRows } from '@/db/db'
 import { createRepositories } from '@/db/repositories'
 import type { Book, BorrowCycle, CatalogRecord } from '@/types/entities'
 import {
   createTestDB, closeTestDB,
-  makeBook, makeCatalog, makeCycle, makeSource,
+  makeBook, makeCatalog, makeCycle, makeSource, installFakeIndexedDB,
 } from '@/db/test-helpers'
 
 let db: ReadGraphDB
 beforeEach(() => { db = createTestDB() })
 afterEach(async () => { await closeTestDB(db) })
 
+describe('dedupeBorrowCycleRows（v2 迁移纯函数）', () => {
+  const t = new Date('2025-01-01T00:00:00.000Z')
+  function mk(
+    id: string,
+    over: Partial<BorrowCycle> = {},
+  ): BorrowCycle {
+    return {
+      id,
+      bookId: 'b1',
+      catalogRecordId: 'cr',
+      sourceId: 'srcA',
+      borrowedAt: t,
+      returnedAt: new Date(t.getTime() + 86400000),
+      status: 'returned' as const,
+      borrowLocation: null,
+      returnLocation: null,
+      rawRecordIds: [],
+      barcode: 'BC1',
+      createdAt: t,
+      updatedAt: t,
+      ...over,
+    }
+  }
+
+  it('无重复时原样保留', () => {
+    const a = mk('c1', { borrowedAt: new Date('2025-01-01T00:00:00Z') })
+    const b = mk('c2', { borrowedAt: new Date('2025-02-01T00:00:00Z') })
+    const { kept, deleteIds, repoint } = dedupeBorrowCycleRows([a, b])
+    expect(kept).toHaveLength(2)
+    expect(deleteIds).toEqual([])
+    expect(repoint.size).toBe(0)
+  })
+
+  it('同 (sourceId, barcode, borrowedAt) 保留 rawRecordIds 最全者并合并溯源', () => {
+    const a = mk('c1', { rawRecordIds: ['r1'], barcode: 'BC1' })
+    const b = mk('c2', { rawRecordIds: ['r2', 'r3'], barcode: 'BC1' })
+    const { kept, deleteIds, repoint } = dedupeBorrowCycleRows([a, b])
+    expect(deleteIds).toEqual(['c1'])
+    expect(repoint.get('c1')).toBe('c2')
+    expect(kept).toHaveLength(1)
+    expect(kept[0]!.id).toBe('c2')
+    expect(kept[0]!.rawRecordIds).toEqual(['r1', 'r2', 'r3'])
+  })
+
+  it('并列 rawRecordIds 时保留 id 较小者', () => {
+    const a = mk('c1', { rawRecordIds: ['r1'] })
+    const b = mk('c2', { rawRecordIds: ['r2'] })
+    const { deleteIds, kept } = dedupeBorrowCycleRows([a, b])
+    expect(deleteIds).toEqual(['c2'])
+    expect(kept[0]!.id).toBe('c1')
+  })
+
+  it('不同 sourceId 或不同 barcode 不归并', () => {
+    const a = mk('c1', { sourceId: 'srcA', barcode: 'BC1' })
+    const b = mk('c2', { sourceId: 'srcB', barcode: 'BC1' })
+    const c = mk('c3', { sourceId: 'srcA', barcode: 'BC2' })
+    const { kept, deleteIds } = dedupeBorrowCycleRows([a, b, c])
+    expect(kept).toHaveLength(3)
+    expect(deleteIds).toEqual([])
+  })
+})
+
 describe('DB schema', () => {
   it('exposes six tables', () => {
     expect([...db.tables.map((t) => t.name)].sort()).toEqual(
       ['books', 'borrowCycles', 'catalogRecords', 'importLogs', 'rawRecords', 'sources'].sort(),
     )
+  })
+  it('declares version 2', () => {
+    expect(db.verno).toBe(2)
+  })
+
+  it('v1 → v2 升级清理存量重复周期并重指 rawRecords', async () => {
+    installFakeIndexedDB()
+    const name = `rg-mig-${Math.random().toString(36).slice(2)}`
+    const t = new Date('2025-01-01T00:00:00.000Z')
+    // 手工构造 v1 库：仅建两张表（Dexie 升级时会补齐其余表），写入重复周期。
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open(name, 1)
+      req.onupgradeneeded = () => {
+        const raw = req.result
+        raw.createObjectStore('borrowCycles', { keyPath: 'id' })
+        raw.createObjectStore('rawRecords', { keyPath: 'id' })
+      }
+      req.onsuccess = () => {
+        const raw = req.result
+        const tx = raw.transaction(['borrowCycles', 'rawRecords'], 'readwrite')
+        const mk = (id: string, rawIds: string[]) => ({
+          id,
+          bookId: 'b1',
+          catalogRecordId: 'cr',
+          sourceId: 'srcA',
+          borrowedAt: t,
+          returnedAt: new Date(t.getTime() + 86400000),
+          status: 'returned',
+          borrowLocation: null,
+          returnLocation: null,
+          rawRecordIds: rawIds,
+          barcode: 'BC1',
+          createdAt: t,
+          updatedAt: t,
+        })
+        tx.objectStore('borrowCycles').add(mk('c1', ['r1']))
+        tx.objectStore('borrowCycles').add(mk('c2', ['r2', 'r3']))
+        tx.objectStore('rawRecords').add({
+          id: 'rr1',
+          importLogId: 'log1',
+          sourceId: 'srcA',
+          data: {},
+          rowIndex: 1,
+          borrowCycleId: 'c1',
+          bookId: null,
+          parseStatus: 'success',
+          parseNote: null,
+        })
+        tx.oncomplete = () => {
+          raw.close()
+          resolve()
+        }
+        tx.onerror = () => reject(tx.error)
+      }
+      req.onerror = () => reject(req.error)
+    })
+
+    const upgraded = new ReadGraphDB(name)
+    await upgraded.open()
+    const cycles = await upgraded.borrowCycles.toArray()
+    expect(cycles).toHaveLength(1)
+    expect(cycles[0]!.id).toBe('c2')
+    expect(cycles[0]!.rawRecordIds).toEqual(['r1', 'r2', 'r3'])
+    const rr = await upgraded.rawRecords.get('rr1')
+    expect(rr!.borrowCycleId).toBe('c2')
+    upgraded.close()
   })
   it('books indexes match internal-schema', () => {
     const idx = db.books.schema
