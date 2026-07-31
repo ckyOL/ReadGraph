@@ -139,6 +139,7 @@
   "settings.language.label": "Language",
   "settings.language.zhCN": "简体中文",
   "settings.language.en": "English",
+  "settings.preferences.title": "Preferences",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light",
   "settings.preferences.themeDark": "Dark",
