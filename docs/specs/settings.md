@@ -58,7 +58,7 @@ src/
 
 ## 6. 来源归属
 
-- `Source` 由**导入向导**创建：用户从 [source](../metadata/source.md) `SOURCE_TEMPLATES` 模板挑选（模板绑定 `parserId`，即 parser 适配的目标馆），或随 parser 适配预置；**设置页不提供来源管理**（不列、不编辑、不新建），来源管理与 parser 适配职责分离。
+- `Source` 由**导入页**自动落库：无来源时按 [source](../metadata/source.md) `SOURCE_TEMPLATES` 首个模板幂等创建（模板绑定 `parserId`，即 parser 适配的目标馆），或随 parser 适配预置；**设置页不提供来源管理**（不列、不编辑、不新建），来源管理与 parser 适配职责分离。
 - 删除 `Source` 不级联清表（与「不单次撤销」一致）；全量删除由系统重置统一处理，避免 dangling `catalogRecord.sourceId`/`borrowCycle.sourceId` 引用。
 - CRUD 契约仍属 [data-layer §4](data-layer.md#4-repository-接口)（`SourceRepository` + `sourceSchema`），本规格不新增接口。
 

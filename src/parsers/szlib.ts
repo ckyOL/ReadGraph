@@ -50,7 +50,7 @@ function szlibToUtc(date: string, time: string, timezone: string): Date {
 }
 export const szlibParser: SourceParser = {
   id: 'szlib',
-  name: 'Shenzhen Library（流通 API）',
+  name: 'Shenzhen Library',
   supportedFormats: ['json'],
   validate(rawData) {
     if (rawData == null) return false

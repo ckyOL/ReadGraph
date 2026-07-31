@@ -6,7 +6,7 @@ import { buildDesensitizedFixture } from './fixtures'
 /**
  * 阶段 3 E2E（ui-navigation §8 / G-6）：
  * AppShell 导航与高亮、移动端折叠、空态 → 导入入口、暗色/locale 持久、
- * 书库列表/详情、导入向导关键路径（模板建来源→文件→预览→执行→报告→落库→书库可见）。
+ * 书库列表/详情、导入关键路径（自动建源→文件→预览→执行→报告→落库→书库可见）。
  * 默认上下文 locale 为 en-US（无存储偏好 → browserLocale 'en'），断言用英文文案。
  */
 
@@ -148,15 +148,14 @@ test.describe('library list & detail (G-2/G-3)', () => {
   })
 })
 
-test.describe('import wizard critical path (G-5)', () => {
-  test('template source → file → preview → execute → report → library', async ({ page }) => {
+test.describe('import critical path (G-5)', () => {
+  test('auto source → file → preview → execute → report → library', async ({ page }) => {
     await page.goto('/import')
 
-    // 步骤 1：无来源 → 从模板创建。
-    await expect(page.getByText('深圳图书馆（流通 API）')).toBeVisible()
-    await page.getByRole('button', { name: /Create and continue|创建并继续/ }).click()
+    // 无来源 → 自动落库预置模板并选中（取代原「从模板创建」步骤）。
+    await expect(page.getByText('深圳图书馆').first()).toBeVisible()
 
-    // 步骤 2：选文件（脱敏 szlib 流水），编码自动检测。
+    // 选文件（脱敏 szlib 流水）：编码自动检测，预览立即呈现。
     const buffer = readFileSync('src/tests/fixtures/szlib-sample.json')
     await page.locator('input[type="file"]').setInputFiles({
       name: 'szlib-sample.json',
@@ -164,14 +163,10 @@ test.describe('import wizard critical path (G-5)', () => {
       buffer,
     })
     await expect(page.getByText(/Encoding: utf-8|编码: utf-8/)).toBeVisible()
-    await page.getByRole('button', { name: /Next|下一步/ }).click()
-
-    // 步骤 3：前 10 条预览。
     await expect(page.getByText(/First 10 rows preview|前 10 条预览/)).toBeVisible()
     await expect(page.getByText('再见绘梨').first()).toBeVisible()
-    await page.getByRole('button', { name: /Next|下一步/ }).click()
 
-    // 步骤 4：执行 → 报告。
+    // 执行 → 右侧栏报告。
     await page.getByRole('button', { name: /Start import|开始导入/ }).click()
     await expect(page.getByText(/Import complete|导入完成/)).toBeVisible({ timeout: 15000 })
     await expect(page.getByText(/New books|新增书目/)).toBeVisible()
@@ -183,7 +178,7 @@ test.describe('import wizard critical path (G-5)', () => {
     await page.getByRole('link', { name: /Go to library|去书库/ }).click()
     await expect(page).toHaveURL('/library')
     await expect(page.getByRole('link', { name: '再见绘梨' })).toBeVisible()
-    await expect(page.getByText('深圳图书馆（流通 API）').first()).toBeVisible()
+    await expect(page.getByText('深圳图书馆').first()).toBeVisible()
 
     // Dashboard 统计卡片。
     await page.goto('/')

@@ -34,7 +34,7 @@ interface Source {
    *   故用单一字段 parserId 同时作为来源唯一标识和 Parser 选择键，
    *   导入时按 source.parserId 在 Parser 注册表中查找匹配的解析器
    *   （要求 parser.id === source.parserId）。
-   * - 数据由对应来源的抓取工具（Scraper）从图书馆流通 API 抓取并产出 JSON，
+   * - 数据由对应来源的抓取工具（Scraper）从图书馆接口抓取并产出 JSON，
    *   parserId 与具体来源的 API/抓取产物形态绑定，而非与底层 ILS 厂商绑定。
    * - 示例: "pku-lib", "szlib"
    */
@@ -125,7 +125,7 @@ const SOURCE_TEMPLATES: Partial<Source>[] = [
   // === 图书馆 ===
   {
     type: 'library',
-    name: '深圳图书馆（流通 API）',
+    name: '深圳图书馆',
     parserId: 'szlib',
     timezone: 'Asia/Shanghai',
     library: {

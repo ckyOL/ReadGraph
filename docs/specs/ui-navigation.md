@@ -42,7 +42,7 @@ src/routes/
     index.tsx             书库列表（/library）
     $bookId.tsx           书目详情（/library/$bookId）
   timeline.tsx            借阅时间线脊柱（/timeline）
-  import.tsx              导入向导（/import）：来源→预览→执行→报告
+  import.tsx              导入（/import）：单页——来源选择 + 文件/预览 + 右侧报告
   profile.tsx             阅读画像（/profile）：图表主导（方向 B）
   settings.tsx            设置（/settings）：主题/locale/时区/系统重置
 ```
@@ -62,9 +62,9 @@ src/routes/
    - 空态：无 Book 时 `Empty` + 导入引导。
 3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
    - 空态：无周期 `Empty`。
-4. **导入（/import）**：多步向导（来源选择/创建 → 文件选择与编码检测 → 前 10 条预览与字段映射 → 执行 → 导入报告）。报告显示统计与 `ParseWarning` 列表。
-   - 每步可回退；来源选择支持从预置模板（[source](../metadata/source.md) `SOURCE_TEMPLATES`）挑选。
-   - 空态：无来源时引导从模板创建。
+4. **导入（/import）**：单页完成全部流程——顶部来源选择，主体区文件选择（选后即显示前 10 条预览与字段映射说明并可直接执行），右侧栏常驻导入报告（执行中进度 / 失败信息 / 完成后统计与 `ParseWarning` 列表）。
+   - 更换来源会清空已选文件与报告，避免跨来源脏预览。
+   - 空态：无来源时自动落库 [source](../metadata/source.md) `SOURCE_TEMPLATES` 首个模板并选中（幂等），不再提供「从模板创建」交互。
 5. **阅读画像（/profile）**：方向 B，图表主导、全幅。ECharts（thin adapter，见 [reading-profile](reading-profile.md)）渲染：
    - 分类法分布 treemap（CLC/DDC，取 Source 配置的默认分类体系）。
    - 借阅甘特带（同条码多次借阅 / 同书多次借阅的周期叠放）。
@@ -103,7 +103,7 @@ src/routes/
 
 ## 7. 用户故事
 
-- 作为新用户，首次打开空库 → 在 Dashboard 看到引导，一键进入导入向导，从模板创建「深圳图书馆」来源并完成一次导入，看到 Books/周期 入库。
+- 作为新用户，首次打开空库 → 在 Dashboard 看到引导，一键进入导入页，自动落库「深圳图书馆」来源，选文件完成一次导入，看到 Books/周期 入库。
 - 作为用户，在书库按分类号筛选、按借阅次数排序，点开某 Book 看 CatalogRecord 与借阅时间线。
 - 作为用户，在时间线按来源筛选，查看当前在借（status='borrowed'）。
 - 作为用户，在阅读画像看到分类法 treemap 与借阅甘特带，空数据时见导入入口。
@@ -124,7 +124,7 @@ src/routes/
 - 暗色切换持久：切换后 reload 仍为暗色。
 - locale 切换：中英文本切换且 `html[lang]` 更新。
 - 空态 → 导入：空 Dashboard 点导入入口到 `/import`。
-- 导入向导关键路径：模板建来源 → 选文件 → 预览 → 执行 → 报告 → 落库 → 书库可见（用脱敏夹具）。
+- 导入关键路径：自动建源 → 选文件 → 预览 → 执行 → 报告 → 落库 → 书库可见（用脱敏夹具）。
 - 阅读画像：ECharts canvas 非空像素（脱敏数据下）。
 - 系统重置：导出后确认流程完成，重置后空库。
 

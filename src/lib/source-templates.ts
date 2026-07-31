@@ -19,7 +19,7 @@ export interface SourceTemplate {
 export const SOURCE_TEMPLATES: SourceTemplate[] = [
   {
     type: 'library',
-    name: '深圳图书馆（流通 API）',
+    name: '深圳图书馆',
     parserId: 'szlib',
     timezone: 'Asia/Shanghai',
     library: {
