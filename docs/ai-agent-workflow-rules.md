@@ -30,6 +30,27 @@
 
 ---
 
+## 3. 进程生命周期管理（启动即登记，结束即清理）
+
+* 测试/验证期间启动的任何程序——`pnpm dev`（Vite 开发服务器）、Playwright 测试服务器、Puppeteer / headless Chrome、临时脚本等——在**任务完成或该进程不再被需要时必须立即关闭**，禁止遗留。
+* 任务收尾前必须核对本任务启动的进程是否已退出：`lsof -iTCP:<port> -sTCP:LISTEN` 确认端口已释放；仍存活的按 PID 关闭。
+* 关闭顺序：优先优雅退出（服务自身 shutdown、SIGTERM），无效再 SIGKILL。不得只 kill 前台进程而遗漏其派生的子进程（如 puppeteer 拉起的 headless Chrome）。
+* 禁止依赖/复用上一次会话遗留的进程；任务开始时若发现与本次无关的残留进程（历史 Vite、headless Chrome 等），先报告并清理，再开始工作。
+* 交付检查：任务结束前确认本任务启动的所有进程均已退出、监听端口全部释放，避免干扰后续任务或其他开发者的端口占用。
+
+---
+
+## 4. 并行 worktree 端口分配（Vite / preview）
+
+* 并行 worktree 开发时，**禁止**两个及以上 `pnpm dev` / `pnpm preview` 使用相同端口（默认 5173 / 4173）；禁止依赖 Vite 自动递增或静默复用被占端口。
+* 每个 worktree 启动 dev server 必须显式指定唯一端口：`pnpm dev --port <端口>` / `pnpm preview --port <端口>`；端口按 worktree 序数递增分配（worktree-1 → 5173，worktree-2 → 5174，…），并在任务说明中记录所用端口。
+* 启动前先确认端口空闲：`lsof -iTCP:<端口> -sTCP:LISTEN`；被占用时先关闭残留进程（见 §3），不得直接换靠默认递增。
+* 依赖 dev server 的自动化（Playwright baseURL、浏览器打开的 URL、hub `ready.port` 检查）必须与实际启动端口一致，禁止硬编码默认端口假设。
+* 并行执行 E2E 时，Playwright `webServer` 的 `pnpm build && pnpm preview --port 4173` 同样会冲突：各 worktree 用独立端口运行，或错开执行。
+* 并行任务结束，各自关闭本 worktree 启动的进程并释放端口。
+
+---
+
 ## 2. Agent 交互准则
 
 * **拒绝无需求直接编码**：如果用户仅提供一句模糊的“帮我写个登录页面”，你需要回答：“为了保证代码质量和架构合理性，请提供具体的规格说明（包括 UI 设计说明），或者我们可以先一起把规格定义清楚。”

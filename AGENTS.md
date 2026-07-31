@@ -64,6 +64,9 @@ pnpm build                        # type-check + production build
 pnpm test                         # Vitest unit/integration tests
 pnpm verify                        # 安装(frozen) + 供应链策略复校验
 pnpm audit --audit-level=high     # security audit
+
+> 任务期间启动的进程（`pnpm dev`、Playwright、Puppeteer/headless Chrome 等）必须在任务完成时立即关闭并释放端口，禁止遗留残留进程；完整规矩见 [docs/ai-agent-workflow-rules.md §3](docs/ai-agent-workflow-rules.md)。
+> 并行 worktree 开发时每个 worktree 必须显式分配互不冲突的端口（`pnpm dev --port <N>`），禁止依赖默认端口或自动递增；规矩见 [docs/ai-agent-workflow-rules.md §4](docs/ai-agent-workflow-rules.md)。
 ```
 
 For the scraper (Python >= 3.10, `uv` preferred):
