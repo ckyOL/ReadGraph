@@ -170,33 +170,42 @@ function DataSection() {
         <p className="text-xs text-muted-foreground">{t('settings.data.export.desc')}</p>
       </div>
 
-      {/* 导入备份 */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="w-32 shrink-0 text-sm text-muted-foreground">
-            {t('settings.data.import')}
-          </span>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <FileUpIcon />
-            {t('settings.data.import.choose')}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            aria-label={t('settings.data.import.choose')}
-            onClick={(e) => {
-              e.currentTarget.value = ''
-            }}
-            onChange={(e) => void handleFile(e.target.files?.[0])}
-          />
-          {importFile && <span className="text-sm font-medium">{importFile.name}</span>}
-        </div>
+      {/* 导入备份：标签 + 统一控件列（各行列同左边界，导入按钮右对齐形成统一右边界） */}
+      <div className="flex flex-wrap gap-3">
+        <span className="w-32 shrink-0 text-sm text-muted-foreground">
+          {t('settings.data.import')}
+        </span>
+        <div className="min-w-0 max-w-md flex-1 space-y-3">
+          {/* 文件选择行（文件名超宽时单行截断，不换行破坏列宽） */}
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              <FileUpIcon />
+              {t('settings.data.import.choose')}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              aria-label={t('settings.data.import.choose')}
+              onClick={(e) => {
+                e.currentTarget.value = ''
+              }}
+              onChange={(e) => void handleFile(e.target.files?.[0])}
+            />
+            {importFile && (
+              <span
+                className="min-w-0 flex-1 truncate text-sm font-medium"
+                title={importFile.name}
+              >
+                {importFile.name}
+              </span>
+            )}
+          </div>
 
-        <div className="flex flex-wrap items-end gap-3 pl-32">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">{t('settings.data.import.mode')}</span>
+          {/* 恢复模式 + 导入操作行 */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-muted-foreground">{t('settings.data.import.mode')}</span>
             <Select value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -206,24 +215,23 @@ function DataSection() {
                 <SelectItem value="replay">{t('settings.data.import.mode.replay')}</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              className="ml-auto"
+              disabled={!importFile || importState === 'running'}
+              onClick={() => void runImport()}
+            >
+              {t('settings.data.import.action')}
+            </Button>
           </div>
-          <Button
-            disabled={!importFile || importState === 'running'}
-            onClick={() => void runImport()}
-          >
-            {t('settings.data.import.action')}
-          </Button>
-        </div>
 
-        <p className="pl-32 text-xs text-muted-foreground">
-          {t(
-            importMode === 'snapshot'
-              ? 'settings.data.import.mode.snapshotDesc'
-              : 'settings.data.import.mode.replayDesc',
-          )}
-        </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              importMode === 'snapshot'
+                ? 'settings.data.import.mode.snapshotDesc'
+                : 'settings.data.import.mode.replayDesc',
+            )}
+          </p>
 
-        <div className="max-w-md pl-32">
           {importState === 'running' && (
             <div className="space-y-1">
               <p className="text-sm">{t('settings.data.import.running')}</p>
