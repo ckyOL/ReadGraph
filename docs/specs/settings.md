@@ -67,7 +67,7 @@ src/
 > UI 装配（S-2）归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4）；本节约定设计方向，不实现代码。
 
 - **布局**：设置页分两区——偏好区（主题/locale/displayTimezone）、数据区（导出备份 / 导入备份 / 系统重置）。各区以 `border-t` 分隔，不用嵌套卡片。
-- **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Combobox`（Popover + Command：搜索框 + 按国家分组列表，macOS 式**城市 · 国家**主标签 + 本地化名/当前偏移次要信息，DST 随季节变化，搜索城市或时区名）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
+- **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Combobox`（Popover + Command：搜索框 + 按国家分组列表，macOS 式**城市 · 国家**主标签 + 当前偏移次要信息，DST 随季节变化，搜索城市或时区名）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
 - **状态**：重置执行中用 `Progress`（事务很快，主要为网络下载的导出等待）；导入备份解析中用 `Spinner`；错误态 toast 提示（version 不匹配 / 字段非法），不写库。
 - **响应式**：移动端两区纵向堆叠。
 

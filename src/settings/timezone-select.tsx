@@ -17,9 +17,9 @@ interface TimezoneSelectProps {
 
 /**
  * IANA 时区 Combobox：搜索 + 按国家分组（settings 规格 §2/§7）。
- * 候选数据源 @vvo/tzdb（timezones.ts 按 locale 生成本地化名/偏移/国家分组），
- * 搜索经 cmdk 对 IANA 标识、别名、主要城市、国家名模糊匹配。
- * 当前值始终在列（非法持久值也可显示并重选）。
+ * 候选数据源 @vvo/tzdb（timezones.ts 按 locale 生成本地化城市/偏移/国家分组），
+ * 搜索经 cmdk 对城市、IANA 标识、别名、标准名、国家名模糊匹配。
+ * 条目主文本为城市、辅以当前偏移；当前值始终在列（非法持久值也可显示并重选）。
  */
 export function TimezoneSelect({
   value,
@@ -70,9 +70,6 @@ export function TimezoneSelect({
               <CommandGroup key={group.countryCode || group.countryLabel} heading={group.countryLabel}>
                 {group.zones.map((zone) => {
                   const main = zone.city || zone.localizedName
-                  const secondary = zone.city
-                    ? `${zone.localizedName} · ${zone.offsetLabel}`
-                    : zone.offsetLabel
                   return (
                     <CommandItem
                       key={zone.iana}
@@ -84,9 +81,9 @@ export function TimezoneSelect({
                       }}
                     >
                       <span className="truncate">{main}</span>
-                      {secondary && (
+                      {zone.offsetLabel && (
                         <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
-                          {secondary}
+                          {zone.offsetLabel}
                         </span>
                       )}
                       {zone.iana === value && <CheckIcon className="size-4 shrink-0" />}
