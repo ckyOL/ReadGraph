@@ -30,7 +30,22 @@ export function TimezoneSelect({
   const { t, i18n } = useTranslation('pages')
   const [open, setOpen] = useState(false)
   const groups = useMemo(() => getTimeZoneGroups(i18n.language, value), [i18n.language, value])
-  const selected = groups.flatMap((g) => g.zones).find((z) => z.iana === value)
+  const selectedEntry = groups
+    .flatMap((group) => group.zones.map((zone) => ({ zone, group })))
+    .find(({ zone }) => zone.iana === value)
+
+  // macOS 式标签：城市 · 国家 (偏移)；无城市（UTC/非法持久值）回退本地化名。
+  const triggerLabel = (() => {
+    const zone = selectedEntry?.zone
+    if (!zone) return value || t('settings.preferences.timezonePlaceholder')
+    const base = zone.city || zone.localizedName
+    const offset = zone.offsetLabel ? ` (${zone.offsetLabel})` : ''
+    const country =
+      selectedEntry.group.countryCode && selectedEntry.group.countryLabel
+        ? ` · ${selectedEntry.group.countryLabel}`
+        : ''
+    return `${base}${country}${offset}`
+  })()
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -42,11 +57,7 @@ export function TimezoneSelect({
           aria-label={t('settings.preferences.timezone')}
           className={cn('w-72 justify-between font-normal', className, triggerClassName)}
         >
-          <span className="truncate">
-            {selected
-              ? `${selected.localizedName} (${selected.offsetLabel})`
-              : value || t('settings.preferences.timezonePlaceholder')}
-          </span>
+          <span className="truncate">{triggerLabel}</span>
           <ChevronDownIcon className="size-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -57,23 +68,31 @@ export function TimezoneSelect({
             <CommandEmpty>{t('settings.preferences.timezoneEmpty')}</CommandEmpty>
             {groups.map((group) => (
               <CommandGroup key={group.countryCode || group.countryLabel} heading={group.countryLabel}>
-                {group.zones.map((zone) => (
-                  <CommandItem
-                    key={zone.iana}
-                    value={zone.iana}
-                    keywords={zone.searchTerms}
-                    onSelect={(iana) => {
-                      onValueChange(iana)
-                      setOpen(false)
-                    }}
-                  >
-                    <span className="truncate">{zone.localizedName}</span>
-                    <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
-                      {zone.offsetLabel}
-                    </span>
-                    {zone.iana === value && <CheckIcon className="size-4 shrink-0" />}
-                  </CommandItem>
-                ))}
+                {group.zones.map((zone) => {
+                  const main = zone.city || zone.localizedName
+                  const secondary = zone.city
+                    ? `${zone.localizedName} · ${zone.offsetLabel}`
+                    : zone.offsetLabel
+                  return (
+                    <CommandItem
+                      key={zone.iana}
+                      value={zone.iana}
+                      keywords={zone.searchTerms}
+                      onSelect={(iana) => {
+                        onValueChange(iana)
+                        setOpen(false)
+                      }}
+                    >
+                      <span className="truncate">{main}</span>
+                      {secondary && (
+                        <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
+                          {secondary}
+                        </span>
+                      )}
+                      {zone.iana === value && <CheckIcon className="size-4 shrink-0" />}
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
             ))}
           </CommandList>

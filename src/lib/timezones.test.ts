@@ -62,6 +62,33 @@ describe('getTimeZoneGroups', () => {
     expect(shanghai?.searchTerms).toContain('China') // tzdb 英文国家名
     expect(shanghai?.searchTerms).toContain('中国') // 本地化国家名
   })
+
+  it('macOS 式城市标签：zh 经 CLDR 本地化，en 回退 tzdb 英文城市', () => {
+    const zh = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    const zhShanghai = zh.flatMap((g) => g.zones).find((z) => z.iana === 'Asia/Shanghai')
+    expect(zhShanghai?.city).toBe('上海')
+    expect(zhShanghai?.searchTerms).toContain('上海')
+    const zhBerlin = zh.flatMap((g) => g.zones).find((z) => z.iana === 'Europe/Berlin')
+    expect(zhBerlin?.city).toBe('柏林')
+    const zhNy = zh.flatMap((g) => g.zones).find((z) => z.iana === 'America/New_York')
+    expect(zhNy?.city).toBe('纽约')
+
+    const en = getTimeZoneGroups('en', undefined, SUMMER)
+    const enShanghai = en.flatMap((g) => g.zones).find((z) => z.iana === 'Asia/Shanghai')
+    expect(enShanghai?.city).toBe('Shanghai') // tzdb mainCities[0]
+  })
+
+  it('zh 未覆盖时区回退 tzdb 英文城市；UTC 与非法持久值无城市', () => {
+    const zh = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    const atikokan = zh.flatMap((g) => g.zones).find((z) => z.iana === 'America/Atikokan')
+    expect(atikokan?.city).toBe('Atikokan')
+    const utc = zh.flatMap((g) => g.zones).find((z) => z.iana === 'Etc/UTC')
+    expect(utc?.city).toBe('')
+
+    const legacy = getTimeZoneGroups('zh-CN', 'Mars/Olympus', SUMMER)
+    const mars = legacy.flatMap((g) => g.zones).find((z) => z.iana === 'Mars/Olympus')
+    expect(mars?.city).toBe('')
+  })
 })
 
 describe('formatTimeZoneLabel', () => {

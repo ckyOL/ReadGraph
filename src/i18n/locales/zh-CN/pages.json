@@ -145,7 +145,7 @@
   "settings.preferences.themeDark": "深色",
   "settings.preferences.themeAuto": "跟随系统",
   "settings.preferences.timezone": "时区",
-  "settings.preferences.timezoneSearch": "搜索时区…",
+  "settings.preferences.timezoneSearch": "搜索城市或时区…",
   "settings.preferences.timezonePlaceholder": "选择时区…",
   "settings.preferences.timezoneEmpty": "未找到匹配时区",
   "settings.data.title": "数据",

@@ -13,6 +13,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "generate:cities": "node scripts/generate-tz-cities.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",

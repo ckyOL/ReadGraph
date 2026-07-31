@@ -25,7 +25,7 @@ src/
 - 读写沿用 [data-layer §8](data-layer.md#8-用户偏好)：`readPreferences()` / `writePreferences(patch)`，走 `localStorage` key `readgraph:preferences`，`userPreferencesSchema` 校验（`locale: 'zh-CN'|'en'`、`theme: 'light'|'dark'|'auto'`、`displayTimezone: string`）。
 - 主题应用由 `use-theme`（P0-1，统一 UI 里程碑）把 `theme` 套用到根 `<html class="dark">`；`auto` 监听 `prefers-color-scheme`。本规格不重定义 theme Provider 协议（见 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架)）。
 - `locale` 沿用 `src/lib/locale.ts` + `use-locale`（已落地，[ui-navigation §5](ui-navigation.md#5-国际化与本地化骨架)），设置页语言切换已就位。
-- `displayTimezone` 选择项：候选取 `@vvo/tzdb`（随 IANA tzdata 发版维护，含国家/主要城市/别名元数据），运行时经 Intl 计算各时区**当前**偏移（夏令时正确），本地化名称/偏移/国家名按当前 locale 由 Intl 生成；选择写入 `writePreferences({ displayTimezone })`；校验非空字符串，非法值降级默认（[data-layer §8](data-layer.md#8-用户偏好)）。
+- `displayTimezone` 选择项：候选取 `@vvo/tzdb`（随 IANA tzdata 发版维护，含国家/主要城市/别名元数据），运行时经 Intl 计算各时区**当前**偏移（夏令时正确），本地化名称/偏移/国家名按当前 locale 由 Intl 生成；主城市标签（macOS 式「城市 · 国家」）zh 下取 CLDR `exemplarCity` 映射（`src/lib/tz-cities.json`，`pnpm generate:cities` 可再生成，与 macOS 同源），未覆盖回退 tzdb 英文主要城市；选择写入 `writePreferences({ displayTimezone })`；校验非空字符串，非法值降级默认（[data-layer §8](data-layer.md#8-用户偏好)）。
 - UI 面禁止硬编码文案（[i18n-conventions](../i18n-conventions.md)），namespace `pages`（`settings.*`）：`settings.preferences.*` / `settings.language.*` / `settings.data.*` / `settings.reset.*` 子键在 S-2 接入时补双语 bundle。
 
 ## 3. 导出备份与文件格式
@@ -67,7 +67,7 @@ src/
 > UI 装配（S-2）归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4）；本节约定设计方向，不实现代码。
 
 - **布局**：设置页分两区——偏好区（主题/locale/displayTimezone）、数据区（导出备份 / 导入备份 / 系统重置）。各区以 `border-t` 分隔，不用嵌套卡片。
-- **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Combobox`（Popover + Command：搜索框 + 按国家分组列表，本地化名 + 当前偏移展示，DST 随季节变化）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
+- **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Combobox`（Popover + Command：搜索框 + 按国家分组列表，macOS 式**城市 · 国家**主标签 + 本地化名/当前偏移次要信息，DST 随季节变化，搜索城市或时区名）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
 - **状态**：重置执行中用 `Progress`（事务很快，主要为网络下载的导出等待）；导入备份解析中用 `Spinner`；错误态 toast 提示（version 不匹配 / 字段非法），不写库。
 - **响应式**：移动端两区纵向堆叠。
 

@@ -5,10 +5,13 @@
 // 无 Date.now() 于模块顶层，时间锚经 now 参数注入（默认调用时刻）。
 // 本模块只提供候选与标签，不写存储；非法持久值由 readPreferences 降级。
 import { getTimeZones } from '@vvo/tzdb'
+import zhCities from './tz-cities.json'
 
 export interface TimeZoneCandidate {
   /** IANA 标识（写入 UserPreferences.displayTimezone 的值） */
   iana: string
+  /** 主城市（macOS 式标签）：zh 下经 CLDR exemplarCity 本地化，未覆盖回退 tzdb 英文城市；无城市为空串 */
+  city: string
   /** 本地化名称：zh 下 Asia/Shanghai → 中国标准时间 */
   localizedName: string
   /** 当前偏移标签：GMT+8（夏令时期间自动变化） */
@@ -17,7 +20,7 @@ export interface TimeZoneCandidate {
   countryCode: string
   /** tzdb 英文国家名（仅作搜索词，显示用 group.countryLabel） */
   countryName: string
-  /** 搜索词：别名/缩写/国家（含本地化名）/大洲/主要城市/IANA 别名组 */
+  /** 搜索词：城市/本地化名/别名/缩写/国家（含本地化名）/大洲/主要城市/IANA 别名组 */
   searchTerms: string[]
 }
 
@@ -85,6 +88,18 @@ function localizedCountryLabel(locale: string, code: string, fallback: string): 
 }
 
 /**
+ * 主城市名：zh 下取 CLDR exemplarCity（macOS 同源），未覆盖/其他 locale 回退
+ * tzdb 英文主要城市；两者皆无（如 Etc/UTC）返回空串。
+ */
+function zoneCity(locale: string, iana: string, mainCities: string[]): string {
+  if (locale.startsWith('zh')) {
+    const zh = (zhCities as Record<string, string>)[iana]
+    if (zh) return zh
+  }
+  return mainCities[0] ?? ''
+}
+
+/**
  * 按国家分组的时区候选（去重、UTC 组优先、组内保持 tzdb 偏移序）。
  * current 不在候选内时被追加（非法/旧持久值仍可显示并重选），自成一组。
  */
@@ -97,19 +112,22 @@ export function getTimeZoneGroups(
   for (const tz of getTimeZones({ includeUtc: true })) {
     if (zones.has(tz.name)) continue
     const { localizedName, offsetLabel } = formatTimeZoneLabel(locale, tz.name, now)
+    const city = zoneCity(locale, tz.name, tz.mainCities)
     zones.set(tz.name, {
       iana: tz.name,
+      city,
       localizedName,
       offsetLabel,
       countryCode: tz.countryCode ?? '',
       countryName: tz.countryName ?? '',
-      searchTerms: [localizedName, tz.alternativeName, tz.abbreviation, tz.countryName, tz.continentName, ...tz.mainCities, ...tz.group].filter(Boolean),
+      searchTerms: [city, localizedName, tz.alternativeName, tz.abbreviation, tz.countryName, tz.continentName, ...tz.mainCities, ...tz.group].filter(Boolean),
     })
   }
   if (current && !zones.has(current)) {
     const { localizedName, offsetLabel } = formatTimeZoneLabel(locale, current, now)
     zones.set(current, {
       iana: current,
+      city: '',
       localizedName,
       offsetLabel,
       countryCode: '',
