@@ -120,9 +120,13 @@ export function importPipeline(
     const cr = cand.partial
     const sourceId = (cr.sourceId ?? source.id) as string
     const metaIdKey = (cr.metaIdKey ?? null) as string | null
-    const crDerivedInput = metaIdKey
-      ? `${sourceId}|${metaIdKey}`
-      : `${sourceId}|${barcode}`
+    // 选书帮占位（§10.6 第 4 条）：按 barcode 各建独立实体，id 派生必须含
+    // barcode——共享 metaId 的占位行若走 metaIdKey 会派生同 id 互相覆盖
+    // （bulkPut 时后者覆盖前者，独立 Book 契约被破坏）。
+    const crDerivedInput =
+      cand.isPlaceholder || !metaIdKey
+        ? `${sourceId}|${barcode}`
+        : `${sourceId}|${metaIdKey}`
     const cId = crIdByBarcode.get(barcode) ?? makeCrId(crDerivedInput)
     crIdByBarcode.set(barcode, cId)
 
