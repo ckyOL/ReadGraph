@@ -1,9 +1,10 @@
 import { z } from 'zod'
 
-import type { ExportData } from '@/types/entities'
+import type { ExportData, ImportLog, RawRecord } from '@/types/entities'
 import type { ReadGraphDB } from './db'
 import { READGRAPH_TABLES } from './db'
-import { resetDatabase } from './reset'
+import { getParser } from '@/parsers/registry'
+import { importPipeline, type ExistingState, type ImportMeta } from '@/parsers/pipeline'
 import {
   bookSchema,
   borrowCycleSchema,
@@ -80,18 +81,96 @@ export interface ImportOptions {
 }
 
 /**
- * snapshot 模式：先 resetDatabase 清空，再单事务 bulkPut 全部实体
- * （逐实体过 Zod safeParse 校验）。
- * replay 模式仅落 sources + rawRecords，其余由管线重放——本里程碑不实现。
+ * replay 模式（settings 规格 §4）：从 rawRecords 重放重建，派生数据随当前
+ * Parser 逻辑变化而非旧快照。
+ * - 按 rawRecord.importLogId 分组；批次顺序取 ImportLog.importedAt（并列按 id，
+ *   保证确定性）；组内按 rowIndex 排序（管线按行序消费）。
+ * - 各组取所属 source.parserId 从注册表取 parser；ImportMeta 由 ImportLog 的
+ *   importedAt/fileName/fileSize/detectedEncoding 派生。
+ * - 累积 ExistingState 串接多批，避免跨批去重状态丢失。
+ * - 不得读 Date.now()：实体时间锚取各批 ImportLog.importedAt。
+ * 所有校验与纯函数计算先于任何写操作；失败时拒绝且不触碰既有数据。
+ */
+async function replayImport(db: ReadGraphDB, parsed: ExportData): Promise<void> {
+  // 完整性：每条 rawRecord 必须能回溯到 ImportLog（缺一则拒绝）。
+  const logIds = new Set(parsed.importLogs.map((l) => l.id))
+  for (const r of parsed.rawRecords) {
+    if (!logIds.has(r.importLogId)) {
+      throw new Error(
+        `importDatabase: rawRecord ${r.id} references unknown importLog ${r.importLogId}`,
+      )
+    }
+  }
+
+  const sourcesById = new Map(parsed.sources.map((s) => [s.id, s]))
+  const rowsByLog = new Map<string, RawRecord[]>()
+  for (const r of parsed.rawRecords) {
+    const arr = rowsByLog.get(r.importLogId)
+    if (arr) arr.push(r)
+    else rowsByLog.set(r.importLogId, [r])
+  }
+  for (const arr of rowsByLog.values()) {
+    arr.sort((a, b) => a.rowIndex - b.rowIndex)
+  }
+  const logs = [...parsed.importLogs].sort((a, b) => {
+    const byTime = a.importedAt.getTime() - b.importedAt.getTime()
+    if (byTime !== 0) return byTime
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
+
+  let existing: ExistingState = { books: [], catalogRecords: [], borrowCycles: [] }
+  const finalRows: RawRecord[] = []
+  const finalLogs: ImportLog[] = []
+
+  for (const log of logs) {
+    const rows = rowsByLog.get(log.id)
+    if (!rows || rows.length === 0) continue
+    const source = sourcesById.get(log.sourceId)
+    if (!source) {
+      throw new Error(`importDatabase: replay source not found: ${log.sourceId}`)
+    }
+    const parser = getParser(source.parserId) // parser 未注册时抛错，整体拒绝
+    const meta: ImportMeta = {
+      id: log.id,
+      fileName: log.fileName,
+      fileSize: log.fileSize,
+      detectedEncoding: log.detectedEncoding,
+      importedAt: log.importedAt,
+    }
+    const result = importPipeline(rows, source, parser, existing, meta)
+    existing = {
+      books: result.books,
+      catalogRecords: result.catalogRecords,
+      borrowCycles: result.borrowCycles,
+    }
+    finalRows.push(...result.rawRecords)
+    finalLogs.push(result.importLog)
+  }
+
+  // 单事务：清空 + 写库原子（任一 bulkPut 失败整体回滚，不留半清空）。
+  await db.transaction('rw', READGRAPH_TABLES, async () => {
+    await Promise.all(READGRAPH_TABLES.map((name) => db.table(name).clear()))
+    await Promise.all([
+      db.sources.bulkPut(parsed.sources),
+      db.books.bulkPut(existing.books),
+      db.catalogRecords.bulkPut(existing.catalogRecords),
+      db.borrowCycles.bulkPut(existing.borrowCycles),
+      db.rawRecords.bulkPut(finalRows),
+      db.importLogs.bulkPut(finalLogs),
+    ])
+  })
+}
+
+/**
+ * snapshot 模式：先校验，再单事务清空 + bulkPut 全部实体
+ * （逐实体过 Zod safeParse 校验；清空与写入同事务，失败整体回滚）。
+ * replay 模式：sources + rawRecords 重放重建（见 replayImport）。
  */
 export async function importDatabase(
   db: ReadGraphDB,
   data: unknown,
   options: ImportOptions,
 ): Promise<void> {
-  if (options.mode === 'replay') {
-    throw new Error("importDatabase: 'replay' mode not implemented in this milestone")
-  }
   const result = exportDataSchema.safeParse(data)
   if (!result.success) throw result.error
   const parsed = result.data
@@ -103,8 +182,13 @@ export async function importDatabase(
     throw new Error('importDatabase: rawRecords is required')
   }
 
-  await resetDatabase(db)
+  if (options.mode === 'replay') {
+    await replayImport(db, parsed)
+    return
+  }
+
   await db.transaction('rw', READGRAPH_TABLES, async () => {
+    await Promise.all(READGRAPH_TABLES.map((name) => db.table(name).clear()))
     await Promise.all([
       db.sources.bulkPut(parsed.sources),
       db.rawRecords.bulkPut(parsed.rawRecords),

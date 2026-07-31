@@ -1,12 +1,17 @@
 import { beforeEach, afterEach, describe, it, expect } from 'vitest'
 
 import { ReadGraphDB } from '@/db/db'
-import { exportDatabase, importDatabase } from '@/db/export-import'
+import { exportDatabase, importDatabase, EXPORT_VERSION } from '@/db/export-import'
 import {
   createTestDB, closeTestDB, now,
   makeBook, makeCatalog, makeCycle, makeImportLog, makeRawRecord, makeSource,
 } from '@/db/test-helpers'
 import { uuid } from '@/db/uuid'
+import { getParser } from '@/parsers/registry'
+import { importPipeline, type ImportMeta } from '@/parsers/pipeline'
+import { buildRawRecords } from '@/import/run-import'
+import sample from '@/tests/fixtures/szlib-sample.json'
+import type { ExportData, Source } from '@/types/entities'
 
 let db: ReadGraphDB
 beforeEach(() => { db = createTestDB() })
@@ -22,6 +27,83 @@ async function seedAll(d: ReadGraphDB): Promise<void> {
   await d.borrowCycles.put(makeCycle('cyc1', 'b1', srcId, now()))
   await d.rawRecords.put(makeRawRecord(uuid(), 'log1', srcId))
   await d.importLogs.put(makeImportLog('log1', srcId))
+}
+
+/** Date 按 getTime 比较的深等价（ExportData 实体含 Date 实例）。 */
+function deepEqualDates(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime()
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    return a.every((x, i) => deepEqualDates(x, b[i]))
+  }
+  if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a as Record<string, unknown>)
+    const kb = Object.keys(b as Record<string, unknown>)
+    if (ka.length !== kb.length) return false
+    return ka.every((k) =>
+      deepEqualDates(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      ),
+    )
+  }
+  return false
+}
+
+/** 剥离每次导出都不同的 exportedAt（导出时间戳不属重放契约）。
+ * 实体数组按 id 排序：Dexie toArray 按主键序，导出快照按插入序，
+ * 深比较前归一顺序（内容等价不依赖顺序）。 */
+function sortById<T extends { id: string }>(arr: T[]): T[] {
+  return [...arr].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+function bodyOf(e: ExportData): Omit<ExportData, 'exportedAt'> {
+  const { exportedAt: _exportedAt, ...rest } = e
+  return {
+    ...rest,
+    sources: sortById(rest.sources),
+    rawRecords: sortById(rest.rawRecords),
+    books: sortById(rest.books),
+    catalogRecords: sortById(rest.catalogRecords),
+    borrowCycles: sortById(rest.borrowCycles),
+    importLogs: sortById(rest.importLogs),
+  }
+}
+
+/** szlib 可用来源（parserId 必须命中默认注册表）。 */
+function makeSzSource(): Source {
+  return { ...makeSource('src-szlib'), parserId: 'szlib', name: '深圳图书馆' }
+}
+
+/** 经真实管线跑一遍脱敏 szlib 样本，产出一份可回放的 ExportData。 */
+function buildReplayableExport(): ExportData {
+  const source = makeSzSource()
+  const meta: ImportMeta = {
+    id: 'log-1',
+    fileName: 'szlib-sample.json',
+    fileSize: JSON.stringify(sample).length,
+    detectedEncoding: 'utf-8',
+    importedAt: new Date('2026-07-07T00:00:00.000Z'),
+  }
+  const rows = buildRawRecords(sample as Record<string, unknown>[], meta, source.id)
+  const result = importPipeline(
+    rows,
+    source,
+    getParser('szlib'),
+    { books: [], catalogRecords: [], borrowCycles: [] },
+    meta,
+  )
+  return {
+    version: EXPORT_VERSION,
+    exportedAt: new Date('2026-07-08T00:00:00.000Z'),
+    sources: [source],
+    rawRecords: rows,
+    books: result.books,
+    catalogRecords: result.catalogRecords,
+    borrowCycles: result.borrowCycles,
+    importLogs: [result.importLog],
+  }
 }
 
 describe('exportDatabase', () => {
@@ -73,7 +155,77 @@ describe('importDatabase snapshot', () => {
     const data = { version: '1', exportedAt: now().toISOString(), sources: [], books: [], catalogRecords: [], borrowCycles: [], importLogs: [] }
     await expect(importDatabase(db, data, { mode: 'snapshot' })).rejects.toThrow(/rawRecords/)
   })
-  it('replay mode throws "not implemented" this milestone', async () => {
-    await expect(importDatabase(db, { version: '1' }, { mode: 'replay' })).rejects.toThrow(/replay/)
+})
+
+describe('importDatabase replay（settings 规格 §4/§9-5：rawRecords 重放重建）', () => {
+  it('从 sources + rawRecords 重放重建派生数据，与旧快照等价', async () => {
+    const exportData = buildReplayableExport()
+    // JSON 往返：模拟外部备份文件（Date → ISO 串）。
+    const fileText = JSON.stringify(exportData)
+    await importDatabase(db, JSON.parse(fileText), { mode: 'replay' })
+
+    const rebuilt = await exportDatabase(db)
+    expect(rebuilt.books).toHaveLength(exportData.books.length)
+    expect(rebuilt.catalogRecords).toHaveLength(exportData.catalogRecords.length)
+    expect(rebuilt.borrowCycles).toHaveLength(exportData.borrowCycles.length)
+    expect(rebuilt.rawRecords).toHaveLength(exportData.rawRecords.length)
+    expect(rebuilt.importLogs).toHaveLength(exportData.importLogs.length)
+    expect(deepEqualDates(bodyOf(rebuilt), bodyOf(exportData))).toBe(true)
+    // 实体时间锚取 ImportLog.importedAt（不得读 Date.now()）：书目 createdAt 即导入锚点。
+    expect(rebuilt.books[0]?.createdAt).toEqual(new Date('2026-07-07T00:00:00.000Z'))
+  })
+
+  it('同一 (sources, rawRecords) 两次重放产出深等价派生数据（确定性）', async () => {
+    const exportData = buildReplayableExport()
+    const fileText = JSON.stringify(exportData)
+
+    const dbA = createTestDB()
+    const dbB = createTestDB()
+    try {
+      await importDatabase(dbA, JSON.parse(fileText), { mode: 'replay' })
+      await importDatabase(dbB, JSON.parse(fileText), { mode: 'replay' })
+      const a = await exportDatabase(dbA)
+      const b = await exportDatabase(dbB)
+      expect(deepEqualDates(bodyOf(a), bodyOf(b))).toBe(true)
+      expect(await dbA.books.count()).toBe(await dbB.books.count())
+    } finally {
+      await closeTestDB(dbA)
+      await closeTestDB(dbB)
+    }
+  })
+
+  it('重放失败（来源缺失）时拒绝且不触碰既有数据', async () => {
+    await seedAll(db)
+    const before = await exportDatabase(db)
+    const exportData = buildReplayableExport()
+    exportData.sources = [] // rawRecords 引用的来源缺失
+    await expect(
+      importDatabase(db, JSON.parse(JSON.stringify(exportData)), { mode: 'replay' }),
+    ).rejects.toThrow(/source/)
+    // 库保持原状（校验先于任何写操作）。
+    const after = await exportDatabase(db)
+    expect(deepEqualDates(bodyOf(after), bodyOf(before))).toBe(true)
+  })
+
+  it('重放失败（parser 未注册）时拒绝且不触碰既有数据', async () => {
+    await seedAll(db)
+    const before = await exportDatabase(db)
+    const exportData = buildReplayableExport()
+    exportData.sources = [{ ...exportData.sources[0]!, parserId: 'no-such-parser' }]
+    await expect(
+      importDatabase(db, JSON.parse(JSON.stringify(exportData)), { mode: 'replay' }),
+    ).rejects.toThrow(/parser/)
+    expect(deepEqualDates(bodyOf(await exportDatabase(db)), bodyOf(before))).toBe(true)
+  })
+})
+
+describe('导出后重置库为空（S-3 对齐 reset.test.ts）', () => {
+  it('seed → export → resetDatabase → 六表全空', async () => {
+    await seedAll(db)
+    const exported = await exportDatabase(db)
+    expect(exported.sources).toHaveLength(1)
+    const { resetDatabase } = await import('@/db/reset')
+    await resetDatabase(db)
+    for (const t of db.tables) expect(await t.count()).toBe(0)
   })
 })
