@@ -8,46 +8,7 @@ import type {
   ClassificationSystem,
   Source,
 } from '@/types/entities'
-
-// CLC 一级类目对照表（取分类号首字母 A–Z）。
-const CLC_FIRST_LEVEL: Record<string, string> = {
-  A: '马克思主义、列宁主义、毛泽东思想、邓小平理论',
-  B: '哲学、宗教',
-  C: '社会科学总论',
-  D: '政治、法律',
-  E: '军事',
-  F: '经济',
-  G: '文化、科学、教育、体育',
-  H: '语言、文字',
-  I: '文学',
-  J: '艺术',
-  K: '历史、地理',
-  N: '自然科学总论',
-  O: '数理科学和化学',
-  P: '天文学、地球科学',
-  Q: '生物科学',
-  R: '医药、卫生',
-  S: '农业科学',
-  T: '工业技术',
-  U: '交通运输',
-  V: '航空、航天',
-  X: '环境科学、安全科学',
-  Z: '综合性图书',
-}
-
-// DDC 一级类目对照表（取分类号首位 0–9）。
-const DDC_FIRST_LEVEL: Record<string, string> = {
-  '0': 'Computer science, information & general works',
-  '1': 'Philosophy & psychology',
-  '2': 'Religion',
-  '3': 'Social sciences',
-  '4': 'Language',
-  '5': 'Science',
-  '6': 'Technology',
-  '7': 'Arts & recreation',
-  '8': 'Literature',
-  '9': 'History & geography',
-}
+import { classificationFirstLevel } from './classification'
 
 export interface ProfileStatsInput {
   books: Book[]
@@ -138,28 +99,6 @@ function resolveSystem(
   return best ?? 'clc'
 }
 
-// 体系匹配 → 一级归并（CLC 取首字母、DDC 取首位）。返回 null 表示该条目不可用。
-function mergeFirstLevel(
-  system: ClassificationSystem,
-  entry: { system: ClassificationSystem; code: string; category?: string },
-): { code: string; category: string | null; name: string } | null {
-  if (system === 'clc') {
-    const letter = entry.code.charAt(0).toUpperCase()
-    const cat = CLC_FIRST_LEVEL[letter]
-    if (cat) return { code: letter, category: cat, name: cat }
-    return null
-  }
-  if (system === 'ddc') {
-    const digit = entry.code.charAt(0)
-    const cat = DDC_FIRST_LEVEL[digit]
-    if (cat) return { code: digit, category: cat, name: cat }
-    return null
-  }
-  // lcc/udc/other：不做表归并，沿用条目原 code/category。
-  const category = entry.category ?? null
-  return { code: entry.code, category, name: category ?? entry.code }
-}
-
 function inRange(date: Date, range: ProfileStatsOptions['range']): boolean {
   if (!range) return true
   if (range.from && date.getTime() < range.from.getTime()) return false
@@ -199,7 +138,7 @@ export function computeProfileStats(
     for (const cr of records) {
       const entry = cr.classifications.find((c) => c.system === system)
       if (entry) {
-        merged = mergeFirstLevel(system, entry)
+        merged = classificationFirstLevel(system, entry)
         if (merged) break
       }
     }

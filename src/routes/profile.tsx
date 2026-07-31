@@ -15,6 +15,7 @@ import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { useProfileStats } from '@/profile/use-profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
+import { CLASSIFICATION_SYSTEMS } from '@/lib/classification'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Select,
@@ -64,7 +65,7 @@ const MS_PER_DAY = 86_400_000
 type RangeKey = 'all' | 'last1y' | 'last3y' | 'custom'
 type SystemKey = 'auto' | ClassificationSystem
 
-const SYSTEM_ORDER: ClassificationSystem[] = ['clc', 'ddc', 'lcc', 'udc']
+const SYSTEM_ORDER: ClassificationSystem[] = CLASSIFICATION_SYSTEMS
 
 function ProfilePage() {
   const { t } = useTranslation('pages')
