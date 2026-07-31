@@ -278,7 +278,8 @@ function ImportPage() {
           ) : result ? (
             <>
               <h3 className="text-lg font-semibold">{t('import.report.title')}</h3>
-              <div className="grid grid-cols-3 gap-3">
+              {/* 侧栏窄：统计卡纵排 */}
+              <div className="space-y-3">
                 <div className="rounded-none border border-border p-3">
                   <p className="text-2xl font-bold tabular-nums">
                     {result.importLog.stats.newBooks}
