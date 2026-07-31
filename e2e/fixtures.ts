@@ -168,8 +168,11 @@ function source(): {
   parserVersion: string | null
   timezone: string
   library: {
-    type: 'public'
-    name: string
+    libraryType: 'public'
+    city: null
+    province: null
+    website: null
+    opacUrl: null
     classificationSystem: 'clc'
   } | null
   notes: string | null
@@ -183,8 +186,11 @@ function source(): {
     parserVersion: '1.0.0',
     timezone: 'Asia/Shanghai',
     library: {
-      type: 'public',
-      name: '测试图书馆',
+      libraryType: 'public',
+      city: null,
+      province: null,
+      website: null,
+      opacUrl: null,
       classificationSystem: 'clc',
     },
     notes: null,

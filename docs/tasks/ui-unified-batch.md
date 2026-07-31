@@ -66,8 +66,8 @@
 > 本阶段是 [app-spec §6](../app-spec.md#6-功能规格索引) 清单第 5 项「设置与系统重置规格」。先补规格再进 Red/Green（SDD 前置；§6 要求每节包含用户故事/UI 说明/数据契约/测试清单/React 性能规则引用）。
 
 - [x] **S-1（Spec 先行）** [settings](../specs/settings.md)「设置与系统重置规格」：偏好（主题/locale/displayTimezone）、数据导出/重建、系统重置原子性与二次确认（`AlertDialog` 不可单次撤销）、来源管理（列/编辑/新建 `Source`）。含用户故事、UI 设计、数据契约、Vitest/Playwright 清单、React 性能规则引用。
-- [ ] **S-2** 设置页（/settings）落地：复用 `usePreferences`（[data-layer §8](../specs/data-layer.md#8-用户偏好) 读写已就位）+ `useTheme`（P0-1）+ `useLocale`（已落地）+ `displayTimezone` 选择；导出/导入走 `exportDatabase`/`importDatabase`（[data-layer §7](../specs/data-layer.md#7-数据导出与重建) 已落地）；重置走 `resetDatabase`（[data-layer §6](../specs/data-layer.md#6-系统重置) 已落地）+ `AlertDialog` 二次确认 + 强制备份；来源管理 CRUD（Repository 已就位）。
-- [ ] **S-3 测试（Vitest + Playwright）**：偏好读写/降级（对齐已落地 `preferences.test.ts`）；重置原子性 + 二次确认不可单步撤销；导出后重置库为空；切暗色/locale 持久（与 [ui-navigation §8](../specs/ui-navigation.md#8-测试清单) 对齐）。
+- [x] **S-2** 设置页（/settings）落地：复用 `usePreferences`（[data-layer §8](../specs/data-layer.md#8-用户偏好) 读写已就位）+ `useTheme`（P0-1）+ `useLocale`（已落地）+ `displayTimezone` 选择；导出/导入走 `exportDatabase`/`importDatabase`（[data-layer §7](../specs/data-layer.md#7-数据导出与重建) 已落地）；重置走 `resetDatabase`（[data-layer §6](../specs/data-layer.md#6-系统重置) 已落地）+ `AlertDialog` 二次确认 + 强制备份；来源管理 CRUD（Repository 已就位）。
+- [x] **S-3 测试（Vitest + Playwright）**：偏好读写/降级（对齐已落地 `preferences.test.ts`）；重置原子性 + 二次确认不可单步撤销；导出后重置库为空；切暗色/locale 持久（与 [ui-navigation §8](../specs/ui-navigation.md#8-测试清单) 对齐）。
 
 ## 落地原则（所有阶段共同）
 
@@ -88,9 +88,11 @@
 
 - 2026-07-31 阶段 2 完成：`src/routes/profile.tsx` 图表主导布局（工具条 SegmentedControl 分类体系 / Select 时间范围 / displayTimezone 只显示；`useTransition` + Skeleton；整页/部件空态与 ErrorBoundary 降级）+ 四图组件（`charts/use-echarts.ts` 薄适配：`echarts/core` + Treemap/Bar/Custom + CanvasRenderer 按需注册、`.dark` 重建 theme 并 dispose 防泄漏；`ClassificationTreemap` 一级高亮 + tooltip、下钻 TODO；`BorrowGantt` lane=bookId:barcode、`useDeferredValue` now 锚定在借端点、`GANTT_THRESHOLD=5000` dataZoom + 12000 矩形封顶；`BorrowVolumeBar` displayTimezone 轴标签；`DurationDistribution` 5 档桶 + `—` 空样本）+ `e2e/profile.spec.ts` 5 例（空态跳 /import、canvas 非空、范围切换重绘、暗色持久、150-lane 大库不崩；修复大库夹具缺 `id` 主键导致 bulkPut 事务回滚、页面误判空态的用例缺陷）。`tsc --noEmit` + Vitest 23 suites/228 tests + `pnpm build` + E2E 7 例全绿。下一推进：阶段 3（G-1~G-6 书库/时间线/导入向导/Dashboard）。
 
+- 2026-07-31 阶段 4 完成：设置页（`/settings`）三区落地——偏好区（语言 DropdownMenu / 主题 SegmentedControl / displayTimezone `TimezoneSelect` 搜索 + IANA 候选，`src/lib/timezones.ts` 纯函数 + `Intl.supportedValuesOf` 运行时 + 内置兜底）、数据区（导出 `exportDatabase`→`serializeExportText`→`buildBackupFilename` 下载；导入 `parseExportText`→`importDatabase`，snapshot/replay 模式选择；系统重置 `AlertDialog` 二次确认 + 「已导出备份」Checkbox 门槛 + 可选清偏好 + `Progress`）、来源管理（`useLiveQuery` 列表 + 编辑/新建 Dialog：模板一键建源 + 自定义 manual 源；删除不提供，由重置统一处理）。**`importDatabase` replay 模式落地**（settings 规格 §4/§9-5）：按 `importLogId` 分组 → 批次按 `importedAt` 排序 → `source.parserId` 取 parser → `ImportMeta` 从 `ImportLog` 派生 → 累积 `ExistingState` 串接多批；校验与纯函数计算先于写操作，清空+写库单事务原子（失败整体回滚不触碰既有数据）；时间锚取 `importedAt` 不读 `Date.now()`；同 `(sources, rawRecords)` 两次重放深等价。新增 `src/components/ui/checkbox.tsx`（radix-ui Checkbox）、`src/settings/{timezone-select,backup-actions,sources-section}.tsx`；`e2e/settings.spec.ts` 4 例（暗色/时区持久、导出→勾选门槛→重置→各页 Empty、导入恢复书库/时间线、来源列表/编辑/新建）；修 e2e-seed 每次导航重灌库缺陷（sessionStorage 一次性守卫）、fixture source.library 形状对齐真实 `LibraryInfo`。`tsc --noEmit` + Vitest 29 suites/269 tests + `pnpm build` + E2E 26 例全绿。统一 UI 里程碑全部阶段（0–4）完成。
+
 - 2026-07-31 阶段 3 完成：Dashboard（`/` 统计卡片 + 最近借阅 + 快速入口 + 空态）、书库列表（`/library` 搜索/来源筛选/列排序、分类号芯片 `ClassificationBadge`、待复核徽标、空态）、书目详情（`/library/$bookId` `parseParams` z.string() 校验入参；卷卡元数据 + 馆藏记录 + 借阅历史；书不存在空态）、时间线（横向脊柱按 `borrowedAt` 排列、在借强调、来源/状态筛选、空态）、导入向导（模板建来源→文件选择+`detectAndDecode` 编码检测→前 10 条预览→执行→报告；`src/import/run-import.ts` 编排复用 `importPipeline`，≥50MB 走 `import-worker.ts` Comlink 下放；每步可回退）。共享纯函数：`src/lib/classification.ts`（CLC/DDC 一级表从 profile-stats 抽离，芯片与聚合同源）、`encoding.ts`（UTF-8 fatal → GBK 回退）、`display-time.ts`（UTC→displayTimezone）、`source-templates.ts`（SOURCE_TEMPLATES）。**修复潜在 pipeline bug**：选书帮占位行共享 `metaId` 时 `crDerivedInput` 走 metaIdKey 派生同 id（bulkPut 后者覆盖前者，独立 Book 契约被破坏）→ 占位候选改按 `sourceId+barcode` 派生（§10.6 第 4 条）。`__root.tsx` 加 `SidebarTrigger` + 移动端导航点击收起 Sheet。Vitest 28 suites/260 tests + `tsc -b`/`pnpm build` + E2E 22 例（`e2e/app.spec.ts` 12 例：六页导航/高亮、移动端折叠、空态×3、暗色/locale 持久、书库搜索排序+详情、向导关键路径→落库→书库可见→Dashboard 统计）全绿。下一推进：阶段 4（S-2/S-3 设置页）。
 
-- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ ~~阶段 2~~ → ~~阶段 3~~ → S-1 → S-2/S-3。
+- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ ~~阶段 2~~ → ~~阶段 3~~ → ~~S-1~~ → ~~S-2/S-3~~（阶段 0–4 全部完成）。
 
 - 2026-07-23 UI 设计令牌落地：新增根目录 `DESIGN.md`（蔦屋書店气质：瑠璃紺/白群主色、生成纸白/暖黑底、完全直角、无阴影、CJK 排版规则），色表与字体栈从 `ui-navigation.md`/`design-decisions.md` 抽离集中；`src/index.css` 按 DESIGN.md 落 CSS 变量、zh-ja 双字体栈、`::selection`、`:lang()` 行高切换，移除 `@fontsource-variable/geist` 网络字体依赖。**P0-1 前置 CSS 已就位，仅需 React 侧 hook/Provider。**
 
@@ -204,5 +206,5 @@ settings.reset.backupRequired   "请先导出备份" / "Export backup first"
 - [x] **G-3**: 书目元数据 + CatalogRecord 列表 + 借阅时间线
 - [x] **G-4**: 时间线按 borrowedAt 排序；在借状态区分
 - [x] **G-5**: 向导每步可回退；预览 10 条；执行后书库可见
-- [ ] **S-2**: theme/locale/时区切换持久；导出下载文件；重置 `AlertDialog` 二次确认 + 备份门槛
+- [x] **S-2**: theme/locale/时区切换持久；导出下载文件；重置 `AlertDialog` 二次确认 + 备份门槛
 - [x] **全局**: `pnpm build` 无类型错误；`pnpm test` 全绿；无硬编码中英文（全走 `t()`）
