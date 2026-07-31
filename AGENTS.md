@@ -62,12 +62,12 @@ pnpm install --frozen-lockfile   # CI-required; never plain install
 pnpm dev                          # Vite dev server
 pnpm build                        # type-check + production build
 pnpm test                         # Vitest unit/integration tests
-pnpm verify                        # 安装(frozen) + 供应链策略复校验
+pnpm verify                       # frozen install + supply-chain re-check
 pnpm audit --audit-level=high     # security audit
-
-> 任务期间启动的进程（`pnpm dev`、Playwright、Puppeteer/headless Chrome 等）必须在任务完成时立即关闭并释放端口，禁止遗留残留进程；完整规矩见 [docs/ai-agent-workflow-rules.md §3](docs/ai-agent-workflow-rules.md)。
-> 并行 worktree 开发时每个 worktree 必须显式分配互不冲突的端口（`pnpm dev --port <N>`），禁止依赖默认端口或自动递增；规矩见 [docs/ai-agent-workflow-rules.md §4](docs/ai-agent-workflow-rules.md)。
 ```
+
+> Processes started during a task (`pnpm dev`, Playwright, Puppeteer/headless Chrome, etc.) MUST be shut down and their ports released as soon as the task is done; never leave stray processes behind. Full rules: [docs/ai-agent-workflow-rules.md §3](docs/ai-agent-workflow-rules.md).
+> When developing in parallel worktrees, each worktree MUST use an explicitly assigned, non-conflicting port (`pnpm dev --port <N>`); never rely on default ports or auto-increment. Rules: [docs/ai-agent-workflow-rules.md §4](docs/ai-agent-workflow-rules.md).
 
 For the scraper (Python >= 3.10, `uv` preferred):
 
@@ -82,10 +82,10 @@ uv run szlib_scraper.py
 ## Coding Style & Naming Conventions
 
 - TypeScript strict mode, React 19, Tailwind + shadcn/ui components, Dexie + Zod for data.
-- 版本范围可用 `^`：pnpm 11 下 `pnpm-lock.yaml` frozen 提交 + `minimumReleaseAge: 10080`（7 天冷却）即真正的版本护栏；CI 必须 `--frozen-lockfile`。禁 `--force`/`--shamefully-hoist`。新增依赖仍走 [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md) 审查清单。
+- Caret ranges are allowed: under pnpm 11, a frozen `pnpm-lock.yaml` commit plus `minimumReleaseAge: 10080` (7-day cooldown) is the real version guard; CI MUST use `--frozen-lockfile`. `--force` and `--shamefully-hoist` are forbidden. New dependencies still go through the review checklist in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md).
 - Times are stored as **UTC** ISO 8601; Parsers convert local time using `source.timezone` (e.g. `Asia/Shanghai`).
 - Dedup physical copies by `sourceId + barcode`, merge books by `isbn13`, fall back to title+author (flag for review).
-- UI 文案禁止硬编码：可见文本必须经 `react-i18next` 的 `t()` 取值，不得在 JSX 中直接写中英文字面量。
+- UI copy MUST NOT be hardcoded: visible text must come from `t()` via `react-i18next`; never write literal Chinese/English strings in JSX.
 
 > These are one-line summaries. Canonical rules for UTC storage and dedup live in [docs/design-decisions.md](docs/design-decisions.md); supply-chain and version-range rules live in [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md); i18n rules live in [docs/i18n-conventions.md](docs/i18n-conventions.md).
 
