@@ -79,6 +79,8 @@
 
 ## 状态
 
+- 2026-07-31 设置页移除来源管理：`Source` 的创建归属导入向导（模板绑定 `parserId`，随 parser 适配预置），设置页不再提供来源管理区——删除 `src/settings/sources-section.tsx`，设置页收敛为偏好区 + 数据区两区；`settings.sources.*` i18n 键与对应 E2E 用例移除，重置对话框取消键改用 `settings.reset.cancel`；[settings 规格 §6](../specs/settings.md#6-来源归属) 同步改写为「来源归属」。
+
 - 2026-07-08 建档：[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约) 纯函数聚合、[§3](../specs/reading-profile.md#3-echarts-主题与薄适配层) `buildTheme` 已 TDD 落地（`src/lib/profile-stats.ts`、`src/lib/echarts-theme.ts`，20 suites/196 tests 绿）；阶段 0–4 待启动，依赖面（D-1~D-5）需先经供应链审查。
 - 2026-07-08 补 S-1：[settings](../specs/settings.md)「设置与系统重置规格」已补；备份序列化纯函数 `src/db/backup.ts`（`buildBackupFilename`/`serializeExportText`/`parseExportText`）已 TDD 落地。S-2/S-3（设置页 UI + 二次确认/来源管理）仍属本批次阶段 4，待 D-1（`dexie-react-hooks`）供应链审查后执行。
 - 2026-07-09 D-4 决策：`date-fns@4.1.0` 不引入；`computeProfileStats` 使用 `Date` UTC + `Intl` 已满足需求。D-1~D-3、D-5 待供应链审查通过后安装。

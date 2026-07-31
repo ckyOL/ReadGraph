@@ -6,7 +6,7 @@ import { buildDesensitizedFixture } from './fixtures'
 /**
  * 阶段 4 E2E（settings 规格 §10 / S-3）：
  * 偏好持久（暗色/时区）、导出备份下载、系统重置 AlertDialog 二次确认 + 勾选门槛、
- * 导出后清空系统（各页 Empty）、导入备份恢复书库、来源管理（列表/编辑/新建）。
+ * 导出后清空系统（各页 Empty）、导入备份恢复书库。
  * 默认上下文 locale 为 en-US（无存储偏好 → browserLocale 'en'），断言用英文文案。
  */
 
@@ -115,34 +115,5 @@ test.describe('import backup restores library (S-3, settings 规格 §9-4)', () 
     // 时间线同样恢复。
     await page.goto('/timeline')
     await expect(page.getByText(/No borrow records yet|还没有借阅记录/)).toBeHidden()
-  })
-})
-
-test.describe('source management (settings 规格 §6/§9)', () => {
-  test('lists sources, edits name, creates a custom source', async ({ page }) => {
-    await seed(page)
-    await page.goto('/settings')
-
-    // 列表：fixture 来源 + parserId + 分类体系。
-    const row = page.locator('tbody tr').filter({ hasText: '测试图书馆' })
-    await expect(row).toHaveCount(1)
-    await expect(row).toContainText('szlib')
-    await expect(row).toContainText('CLC')
-
-    // 编辑名称 → 列表更新。
-    await row.getByRole('button', { name: 'Edit' }).click()
-    const nameInput = page.getByPlaceholder('Name')
-    await nameInput.fill('测试图书馆改名')
-    await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.locator('tbody tr').filter({ hasText: '测试图书馆改名' })).toHaveCount(1)
-
-    // 新建自定义来源（manual）→ 列表出现。
-    await page.getByRole('button', { name: 'New source', exact: true }).click()
-    await page.getByPlaceholder('Name').fill('我的手动来源')
-    await page.getByRole('button', { name: 'Save', exact: true }).click()
-    const customRow = page.locator('tbody tr').filter({ hasText: '我的手动来源' })
-    await expect(customRow).toHaveCount(1)
-    await expect(customRow).toContainText('Manual')
-    await expect(customRow).toContainText('Asia/Shanghai')
   })
 })
