@@ -10,6 +10,8 @@ import pagesEn from './locales/en/pages.json'
 
 import { getStoredLocale, type Locale } from '@/lib/locale'
 
+const initialLocale = getStoredLocale()
+
 void i18n.use(initReactI18next).init({
   resources: {
     'zh-CN': {
@@ -23,13 +25,16 @@ void i18n.use(initReactI18next).init({
       pages: pagesEn,
     },
   },
-  lng: getStoredLocale(),
+  lng: initialLocale,
   fallbackLng: 'zh-CN',
   defaultNS: 'common',
   ns: ['common', 'nav', 'pages'],
   interpolation: { escapeValue: false }, // React already escapes
   returnNull: false,
 })
+
+// Bootstrap sync: index.html `lang` 默认 zh-CN，必须随持久化 locale 对齐（i18n-conventions §5）。
+if (typeof document !== 'undefined') document.documentElement.lang = initialLocale
 
 /** Change locale at runtime; persists and syncs <html lang>. */
 export async function changeLanguage(lng: Locale): Promise<void> {

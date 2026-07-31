@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { CheckIcon, DownloadIcon, FileUpIcon, LanguagesIcon, TrashIcon } from 'lucide-react'
+import { DownloadIcon, FileUpIcon, TrashIcon } from 'lucide-react'
 
 import { db } from '@/db/db-instance'
 import { useLocale } from '@/hooks/use-locale'
@@ -14,12 +14,6 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Select,
   SelectContent,
@@ -75,26 +69,15 @@ function SettingsPage() {
           <span className="w-32 shrink-0 text-sm text-muted-foreground">
             {t('settings.language.label')}
           </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <LanguagesIcon />
-                {t(`settings.language.${locale.replace('-', '')}`)}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {locales.map((lng) => (
-                <DropdownMenuItem
-                  key={lng}
-                  onClick={() => void setLocale(lng)}
-                  className="gap-2"
-                >
-                  {t(`settings.language.${lng.replace('-', '')}`)}
-                  {lng === locale && <CheckIcon className="ml-auto size-4" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <SegmentedControl
+            value={locale}
+            onValueChange={(lng) => void setLocale(lng)}
+            options={locales.map((lng) => ({
+              value: lng,
+              label: t(`settings.language.${lng.replace('-', '')}`),
+            }))}
+            aria-label={t('settings.language.label')}
+          />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
