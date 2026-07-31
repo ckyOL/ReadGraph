@@ -1,67 +1,88 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
-import { FALLBACK_TIMEZONES, getTimeZoneCandidates } from './timezones'
+import { formatTimeZoneLabel, getTimeZoneGroups } from './timezones'
 
-// settings 规格 §2：displayTimezone 候选取 Intl.supportedValuesOf('timeZone')
-// （运行时），纯函数兜底为内置 IANA 列表。本测试覆盖回退路径与排序/去重契约。
+// settings 规格 §2：displayTimezone 候选取 @vvo/tzdb（随 IANA tzdata 发版维护），
+// 运行时经 Intl 计算当前偏移（DST 正确）；本地化名称/偏移/国家名按 locale 生成。
+// 本测试覆盖分组/去重/排序契约与 DST 偏移正确性。
 
-const savedSupportedValuesOf = Intl.supportedValuesOf
+/** 固定 UTC 时刻，避免本地时区与「当前时刻」污染断言（DST 边界确定）。 */
+const SUMMER = new Date('2026-07-01T12:00:00Z')
+const WINTER = new Date('2026-01-01T12:00:00Z')
 
-beforeEach(() => {
-  // 默认不 stub：node 运行时 Intl.supportedValuesOf 存在，测真实运行时路径。
-})
+describe('getTimeZoneGroups', () => {
+  it('含 Asia/Shanghai（默认 displayTimezone）与 UTC，且全局无重复', () => {
+    const groups = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    const all = groups.flatMap((g) => g.zones)
+    expect(all.some((z) => z.iana === 'Asia/Shanghai')).toBe(true)
+    expect(all.some((z) => z.iana === 'Etc/UTC')).toBe(true)
+    expect(new Set(all.map((z) => z.iana)).size).toBe(all.length)
+    expect(all.length).toBeGreaterThan(100)
+  })
 
-afterEach(() => {
-  Object.defineProperty(Intl, 'supportedValuesOf', {
-    value: savedSupportedValuesOf,
-    configurable: true,
-    writable: true,
+  it('按国家分组：CN 组含 Asia/Shanghai，国家名按 locale 本地化', () => {
+    const zh = getTimeZoneGroups('zh-CN', undefined, SUMMER).find((g) => g.countryCode === 'CN')
+    expect(zh?.countryLabel).toContain('中国')
+    expect(zh?.zones.map((z) => z.iana)).toContain('Asia/Shanghai')
+    expect(zh?.zones.find((z) => z.iana === 'Asia/Shanghai')?.localizedName).toContain('中国')
+
+    const en = getTimeZoneGroups('en', undefined, SUMMER).find((g) => g.countryCode === 'CN')
+    expect(en?.countryLabel).toBe('China')
+  })
+
+  it('UTC（无国家归属）组排在首位，组标签取时区本地化名', () => {
+    const groups = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    const utcGroup = groups[0]
+    expect(utcGroup.countryCode).toBe('')
+    expect(utcGroup.zones.some((z) => z.iana === 'Etc/UTC')).toBe(true)
+    expect(utcGroup.countryLabel).toBe(utcGroup.zones[0].localizedName)
+  })
+
+  it('组按本地化国家名排序（UTC 组除外），组内保持 tzdb 偏移序（确定性）', () => {
+    const groups = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    // UTC（无国家归属）组固定首位，其余组按本地化国家名排序。
+    expect(groups[0].countryCode).toBe('')
+    const restLabels = groups.slice(1).map((g) => g.countryLabel)
+    const sorted = [...restLabels].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    expect(restLabels).toEqual(sorted)
+  })
+
+  it('current 不在候选内时被追加为独立组（非法持久值仍可显示并重选）', () => {
+    const groups = getTimeZoneGroups('zh-CN', 'Mars/Olympus', SUMMER)
+    const group = groups.find((g) => g.zones.some((z) => z.iana === 'Mars/Olympus'))
+    expect(group?.zones[0].iana).toBe('Mars/Olympus')
+    expect(group?.zones[0].localizedName).toBe('Mars/Olympus') // 非法时区原样展示
+    expect(group?.zones[0].offsetLabel).toBe('')
+  })
+
+  it('搜索词含 IANA 别名/主要城市/本地化国家名', () => {
+    const groups = getTimeZoneGroups('zh-CN', undefined, SUMMER)
+    const shanghai = groups.flatMap((g) => g.zones).find((z) => z.iana === 'Asia/Shanghai')
+    expect(shanghai?.searchTerms).toContain('Shenzhen') // mainCities
+    expect(shanghai?.searchTerms).toContain('China') // tzdb 英文国家名
+    expect(shanghai?.searchTerms).toContain('中国') // 本地化国家名
   })
 })
 
-function stubSupportedValuesOf(value: ((key: 'timeZone') => string[]) | undefined): void {
-  Object.defineProperty(Intl, 'supportedValuesOf', {
-    value,
-    configurable: true,
-    writable: true,
-  })
-}
-
-describe('FALLBACK_TIMEZONES', () => {
-  it('是内置 IANA 列表，含 UTC 与 Asia/Shanghai（默认 displayTimezone）', () => {
-    expect(FALLBACK_TIMEZONES).toContain('UTC')
-    expect(FALLBACK_TIMEZONES).toContain('Asia/Shanghai')
-  })
-})
-
-describe('getTimeZoneCandidates', () => {
-  it('运行时路径：返回 Intl.supportedValuesOf 列表（去重、排序）', () => {
-    const zones = getTimeZoneCandidates()
-    expect(zones.length).toBeGreaterThanOrEqual(FALLBACK_TIMEZONES.length)
-    expect(zones).toContain('Asia/Shanghai')
-    // 排序 + 无重复。
-    const sorted = [...zones].sort((a, b) => a.localeCompare(b))
-    expect(zones).toEqual(sorted)
-    expect(new Set(zones).size).toBe(zones.length)
+describe('formatTimeZoneLabel', () => {
+  it('en：Asia/Shanghai 固定偏移 GMT+8，本地化名为 China 系', () => {
+    const { localizedName, offsetLabel } = formatTimeZoneLabel('en', 'Asia/Shanghai', SUMMER)
+    expect(localizedName).toContain('China')
+    expect(offsetLabel).toBe('GMT+8')
   })
 
-  it('supportedValuesOf 缺失时回退内置 IANA 列表', () => {
-    stubSupportedValuesOf(undefined)
-    expect(getTimeZoneCandidates()).toEqual([...FALLBACK_TIMEZONES].sort((a, b) => a.localeCompare(b)))
+  it('zh：Asia/Shanghai 本地化名含「中国」', () => {
+    expect(formatTimeZoneLabel('zh-CN', 'Asia/Shanghai', SUMMER).localizedName).toContain('中国')
   })
 
-  it('supportedValuesOf 抛错时回退内置 IANA 列表且不抛', () => {
-    stubSupportedValuesOf(() => {
-      throw new Error('unsupported')
-    })
-    expect(getTimeZoneCandidates()).toContain('Asia/Shanghai')
+  it('DST：Berlin 夏季 GMT+2、冬季 GMT+1（偏移随 IANA 规则变化）', () => {
+    expect(formatTimeZoneLabel('en', 'Europe/Berlin', SUMMER).offsetLabel).toBe('GMT+2')
+    expect(formatTimeZoneLabel('en', 'Europe/Berlin', WINTER).offsetLabel).toBe('GMT+1')
   })
 
-  it('current 不在候选内时被追加（非法持久值仍可显示并重选）', () => {
-    stubSupportedValuesOf(() => ['UTC'])
-    const zones = getTimeZoneCandidates('Mars/Olympus')
-    expect(zones).toContain('Mars/Olympus')
-    expect(zones[0]).toBe('Mars/Olympus') // 排序后 lexicographic 在前
-    expect(zones).toContain('UTC')
+  it('非法时区原样展示 IANA 标识、偏移为空，不抛错', () => {
+    const { localizedName, offsetLabel } = formatTimeZoneLabel('zh-CN', 'Not/AZone', SUMMER)
+    expect(localizedName).toBe('Not/AZone')
+    expect(offsetLabel).toBe('')
   })
 })

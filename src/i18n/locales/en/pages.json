@@ -146,6 +146,8 @@
   "settings.preferences.themeAuto": "Auto",
   "settings.preferences.timezone": "Timezone",
   "settings.preferences.timezoneSearch": "Search timezones…",
+  "settings.preferences.timezonePlaceholder": "Select timezone…",
+  "settings.preferences.timezoneEmpty": "No matching timezone",
   "settings.data.title": "Data",
   "settings.data.export": "Export backup",
   "settings.data.export.desc": "Download a JSON backup with all books, borrows and sources.",

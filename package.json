@@ -22,8 +22,10 @@
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.18",
+    "@vvo/tzdb": "^6.198.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "comlink": "^4.4.2",
     "date-fns-tz": "^3.2.0",
     "dexie": "^4.4.4",
