@@ -204,4 +204,36 @@ describe('dedupeBorrowCycles', () => {
     expect(r.skippedFlags).toEqual([false])
     expect(r.warnings.some((w) => w.type === 'unpaired_record')).toBe(true)
   })
+
+  it('跨文件闭合：纯还回候选（borrowedAt==returnedAt）闭合同 barcode 既有开放周期，不新建周期', () => {
+    const tB = new Date('2026-03-31T05:04:36.000Z')
+    const tR = new Date('2026-04-25T09:12:48.000Z')
+    const existing = [{ id: 'cy-1', bookId: 'bk', catalogRecordId: 'cr', sourceId: 'szlib', barcode: 'B1', borrowedAt: tB, returnedAt: null, status: 'borrowed' as const, borrowLocation: '南山馆', returnLocation: null, rawRecordIds: ['r1'], createdAt: tB, updatedAt: tB }]
+    const r = dedupeBorrowCycles(
+      [{ sourceId: 'szlib', barcode: 'B1', borrowedAt: tR, returnedAt: tR, status: 'unknown', borrowLocation: null, returnLocation: '中心馆', rawRecordIds: ['r2'] }],
+      existing,
+    )
+    expect(r.skippedFlags).toEqual([true])
+    expect(r.cycles).toHaveLength(1)
+    const c = r.cycles[0]!
+    expect(c.id).toBe('cy-1')
+    expect(c.borrowedAt.getTime()).toBe(tB.getTime())
+    expect(c.returnedAt!.getTime()).toBe(tR.getTime())
+    expect(c.status).toBe('returned')
+    expect(c.returnLocation).toBe('中心馆')
+    expect(c.borrowLocation).toBe('南山馆')
+    expect(c.rawRecordIds).toEqual(['r1', 'r2'])
+    expect(r.warnings.some((w) => w.type === 'unpaired_record')).toBe(true)
+  })
+
+  it('跨文件闭合不误伤：无既有开放周期时，纯还回候选仍新建周期', () => {
+    const tR = new Date('2026-04-25T09:12:48.000Z')
+    const r = dedupeBorrowCycles(
+      [{ sourceId: 'szlib', barcode: 'B9', borrowedAt: tR, returnedAt: tR, status: 'unknown', borrowLocation: null, returnLocation: null, rawRecordIds: ['r5'] }],
+      [],
+    )
+    expect(r.skippedFlags).toEqual([false])
+    expect(r.cycles).toHaveLength(1)
+    expect(r.cycles[0]!.status).toBe('unknown')
+  })
 })

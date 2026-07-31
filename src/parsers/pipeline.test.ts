@@ -291,6 +291,45 @@ describe('importPipeline — 第二次导入不破坏既有周期（回归）', 
     expect(cyc.borrowedAt.getTime()).toBe(new Date('2026-03-01T02:00:00.000Z').getTime())
     expect(cyc.returnedAt!.getTime()).toBe(new Date('2026-03-10T02:00:00.000Z').getTime())
   })
+
+  it('跨文件闭合：后一批的纯还回行闭合并前一批的开放周期（同 barcode），不新建周期', () => {
+    const borrow = mkRow({ date: '20260331', time: '13:04:36', optype: '读者借出', metaid: 4001, title: '日本设计六十年/ 内田繁著', barcode: 'B4001', ISBN: '9780000004001' })
+    const ret = mkRow({ date: '20260425', time: '17:12:48', optype: '读者还回文献', metaid: 4001, title: '日本设计六十年/ 内田繁著', barcode: 'B4001', ISBN: '9780000004001' })
+    const first = runBatch([borrow], 'imp-x1')
+    expect(first.borrowCycles).toHaveLength(1)
+    const openId = first.borrowCycles[0]!.id
+    expect(first.borrowCycles[0]!.returnedAt).toBeNull()
+
+    const second = importPipeline(
+      [ret].map((d, i) => ({
+        id: `imp-x2-raw-${i + 1}`,
+        importLogId: 'imp-x2',
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      { books: first.books, catalogRecords: first.catalogRecords, borrowCycles: first.borrowCycles },
+      { ...meta, id: 'imp-x2' },
+    )
+    // 不新建零长度周期；既有开放周期被闭合为完整周期。
+    expect(second.borrowCycles).toHaveLength(1)
+    const c = second.borrowCycles[0]!
+    expect(c.id).toBe(openId)
+    expect(c.status).toBe('returned')
+    expect(c.borrowedAt.getTime()).toBe(new Date('2026-03-31T05:04:36.000Z').getTime())
+    expect(c.returnedAt!.getTime()).toBe(new Date('2026-04-25T09:12:48.000Z').getTime())
+    expect(c.rawRecordIds).toHaveLength(2)
+    // 还回行：不回填到新周期而是既有闭合周期。
+    const retRow = second.rawRecords.find((r) => (r.data as { optype?: string }).optype === '读者还回文献')!
+    expect(retRow.borrowCycleId).toBe(openId)
+    expect(retRow.bookId).toBe(c.bookId)
+  })
 })
 
 function borrowRowId(rows: RawRecord[], date: string): string {
