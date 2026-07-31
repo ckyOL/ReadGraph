@@ -39,7 +39,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { TimezoneSelect } from '@/settings/timezone-select'
 import { exportBackupAndDownload } from '@/settings/backup-actions'
-import { SourcesSection } from '@/settings/sources-section'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -119,7 +118,6 @@ function SettingsPage() {
       </section>
 
       <DataSection />
-      <SourcesSection />
     </div>
   )
 }
@@ -369,7 +367,7 @@ function ResetSection() {
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('settings.sources.form.cancel')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('settings.reset.cancel')}</AlertDialogCancel>
             <Button
               variant="destructive"
               disabled={!backedUp || running}

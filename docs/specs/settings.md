@@ -1,11 +1,11 @@
 # 设置与系统重置规格
 
-> 本文件从 `docs/app-spec.md` §12 拆出，遵循 SDD + TDD。实体与存储契约以 [internal-schema](../metadata/internal-schema.md) 及 [数据层规格](data-layer.md) 为唯一来源；本节不重复抄录字段表与既有实现，只定义「设置页落点、确认流程契约、备份文件格式、重建模式对照、来源管理 CRUD、测试清单」。
+> 本文件从 `docs/app-spec.md` §12 拆出，遵循 SDD + TDD。实体与存储契约以 [internal-schema](../metadata/internal-schema.md) 及 [数据层规格](data-layer.md) 为唯一来源；本节不重复抄录字段表与既有实现，只定义「设置页落点、确认流程契约、备份文件格式、重建模式对照、测试清单」。
 > 返回 [app-spec.md](../app-spec.md)。
 
 ## 1. 范围与依赖
 
-**范围**：定义设置页（`/settings`）的偏好持久化、导出备份与导入重建、系统重置的原子性与二次确认、来源管理（列/编辑/新建 `Source`）。底层逻辑已由 [数据层规格](data-layer.md) 落地：`resetDatabase`（[§6](data-layer.md#6-系统重置) 原子事务）、`exportDatabase`/`importDatabase`（[§7](data-layer.md#7-数据导出与重建) snapshot 模式）、`readPreferences`/`writePreferences`（[§8](data-layer.md#8-用户偏好) Zod 校验）。本里程碑补齐**备份文件序列化与文件名**纯函数（落 `src/db/backup.ts`）与测试；**UI 装配（S-2/S-3）** 归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4），不在本里程碑单独引入运行时依赖。
+**范围**：定义设置页（`/settings`）的偏好持久化、导出备份与导入重建、系统重置的原子性与二次确认。底层逻辑已由 [数据层规格](data-layer.md) 落地：`resetDatabase`（[§6](data-layer.md#6-系统重置) 原子事务）、`exportDatabase`/`importDatabase`（[§7](data-layer.md#7-数据导出与重建) snapshot 模式）、`readPreferences`/`writePreferences`（[§8](data-layer.md#8-用户偏好) Zod 校验）。本里程碑补齐**备份文件序列化与文件名**纯函数（落 `src/db/backup.ts`）与测试；**UI 装配（S-2/S-3）** 归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4），不在本里程碑单独引入运行时依赖。
 
 **依赖**：本里程碑**不新增运行时依赖**。备份序列化复用已落地的 `zod`（`exportDataSchema`，[data-layer §7](data-layer.md#7-数据导出与重建)）与 `exportDatabase`。UI 阶段（S-2）的响应式查询与下载/上传交互所需 `dexie-react-hooks` 等由统一 UI 里程碑 D-1 供应链审查门统一引入。
 
@@ -26,7 +26,7 @@ src/
 - 主题应用由 `use-theme`（P0-1，统一 UI 里程碑）把 `theme` 套用到根 `<html class="dark">`；`auto` 监听 `prefers-color-scheme`。本规格不重定义 theme Provider 协议（见 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架)）。
 - `locale` 沿用 `src/lib/locale.ts` + `use-locale`（已落地，[ui-navigation §5](ui-navigation.md#5-国际化与本地化骨架)），设置页语言切换已就位。
 - `displayTimezone` 选择项：候选取浏览器 `Intl.supportedValuesOf('timeZone')`（运行时），纯函数兜底为内置 IANA 列表（`Asia/Shanghai` 等），选择写入 `writePreferences({ displayTimezone })`；校验非空字符串，非法值降级默认（[data-layer §8](data-layer.md#8-用户偏好)）。
-- UI 面禁止硬编码文案（[i18n-conventions](../i18n-conventions.md)），namespace `pages`（`settings.*`）：`settings.preferences.*` / `settings.language.*` / `settings.data.*` / `settings.sources.*` / `settings.reset.*` 子键在 S-2 接入时补双语 bundle。
+- UI 面禁止硬编码文案（[i18n-conventions](../i18n-conventions.md)），namespace `pages`（`settings.*`）：`settings.preferences.*` / `settings.language.*` / `settings.data.*` / `settings.reset.*` 子键在 S-2 接入时补双语 bundle。
 
 ## 3. 导出备份与文件格式
 
@@ -56,21 +56,20 @@ src/
 - **强制备份**：确认对话框内提供「导出备份」按钮（调 `exportDatabase` + `serializeExportText` + `buildBackupFilename` 触发下载）；不强制完成下载文件，但须过确认勾选门槛，避免误触清空。
 - 错误态：重置事务失败时整体回滚，UI 提示「未变更」，库保持完整；事务成功后各页回到 `Empty` 空态。
 
-## 6. 来源管理
+## 6. 来源归属
 
-- 复用 [data-layer §4](data-layer.md#4-repository-接口) `SourceRepository`（`getAll`/`put`/`delete`/`findByParserId`/`findByType`）与 `sourceSchema` 校验。
-- 设置页列出全部 `Source`（`name`/`parserId`/`type`/`timezone`/`library.classificationSystem`），支持编辑（`put` 前 `sourceSchema.safeParse`）与新建（从 [source](../metadata/source.md) `SOURCE_TEMPLATES` 模板填充或空白构造）。
-- **约束**：删除 `Source` 不级联清表（与「不单次撤销」一致）；本里程碑**不提供**删除来源入口，避免 dangling `catalogRecord.sourceId`/`borrowCycle.sourceId` 引用；编辑/新建仅写 `sources` store。
-- UI 响应式列表读由统一 UI 里程碑 `useLiveQuery`（D-1）提供；本规格只约定 CRUD 契约属 [data-layer §4](data-layer.md#4-repository-接口)，不新增接口。
+- `Source` 由**导入向导**创建：用户从 [source](../metadata/source.md) `SOURCE_TEMPLATES` 模板挑选（模板绑定 `parserId`，即 parser 适配的目标馆），或随 parser 适配预置；**设置页不提供来源管理**（不列、不编辑、不新建），来源管理与 parser 适配职责分离。
+- 删除 `Source` 不级联清表（与「不单次撤销」一致）；全量删除由系统重置统一处理，避免 dangling `catalogRecord.sourceId`/`borrowCycle.sourceId` 引用。
+- CRUD 契约仍属 [data-layer §4](data-layer.md#4-repository-接口)（`SourceRepository` + `sourceSchema`），本规格不新增接口。
 
 ## 7. UI 设计说明
 
 > UI 装配（S-2）归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4）；本节约定设计方向，不实现代码。
 
-- **布局**：设置页分三区——偏好区（主题/locale/displayTimezone）、数据区（导出备份 / 导入备份 / 系统重置）、来源管理区（列表 + 编辑/新建入口）。各区以 `border-t` 分隔，不用嵌套卡片。
+- **布局**：设置页分两区——偏好区（主题/locale/displayTimezone）、数据区（导出备份 / 导入备份 / 系统重置）。各区以 `border-t` 分隔，不用嵌套卡片。
 - **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Select`（IANA 列表 + 搜索）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
 - **状态**：重置执行中用 `Progress`（事务很快，主要为网络下载的导出等待）；导入备份解析中用 `Spinner`；错误态 toast 提示（version 不匹配 / 字段非法），不写库。
-- **响应式**：移动端三区纵向堆叠，来源管理区列表保持密实可滚动。
+- **响应式**：移动端两区纵向堆叠。
 
 ## 8. 数据契约与边界
 
@@ -109,6 +108,4 @@ src/
 
 - `client-localstorage-schema`：`readgraph:preferences` 读写走 `userPreferencesSchema` 校验（[data-layer §8](data-layer.md#8-用户偏好)），避免脏值。
 - `bundle-barrel-imports`：设置页组件按需 import（`AlertDialog`/`DropdownMenu`/`Select`/`Checkbox`），避免 barrel 拉 UI 体积。
-- `rerender-derived-state-no-effect`：响应式来源列表由 `useLiveQuery` 直读，不在 effect 同步 state（统一 UI 里程碑）。
-- `rendering-conditional-render`：空来源列表用 shadcn `Empty`（三元），非 `&&` 渲染。
 - 导出/重置为一次性 `onClick` 微任务，避免阻塞渲染与导航。
