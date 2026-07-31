@@ -44,13 +44,13 @@
 
 > 布局与交互权威见 [reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)（顶部概览卡片 → 分类 treemap → 借阅甘特带 → 借阅量柱图 + 时长分布）；空态/大文件退化见 [reading-profile §5](../specs/reading-profile.md#5-数据契约与边界)；UI 文案禁止硬编码，namespace `pages`（`profile.*`），见 [i18n-conventions](../i18n-conventions.md)。
 
-- [ ] **C-1** `src/routes/profile.tsx` 改造：由占位页改为图表主导布局；装 `use-profile-stats` 与主题；顶部工具条 SegmentedControl（分类体系）/Select（时间范围）/displayTimezone 显示（不改，只显示）。
-- [ ] **C-2** `src/profile/charts/ClassificationTreemap.tsx`：一级呈现可交互高亮 + tooltip；子类下钻标 TODO（[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)）。echarts 按 `echarts/core` + `TreemapChart` 引入。
-- [ ] **C-3** `src/profile/charts/BorrowGantt.tsx`：lane=`bookId:barcode`；`borrowed` 端点组件层用 `useDeferredValue` 的 now 补齐视觉，不回写聚合产物（[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约)/[§5](../specs/reading-profile.md#5-数据契约与边界)）；大数据 ≥ `GANTT_THRESHOLD`（候选 2000 lane/5000 区间）启用视口下采样。
-- [ ] **C-4** `src/profile/charts/BorrowVolumeBar.tsx`：月/年桶轴标签用 `displayTimezone` 呈现（桶归属不变）；range 左闭右开裁剪在聚合层已处理。
-- [ ] **C-5** `src/profile/charts/DurationDistribution.tsx`：5 档分桶；空样本表达 `—`；avg/median 来源 `summary`。
-- [ ] **C-6** 空态/部分态/错误态（[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)）：无 Book/BorrowCycle 整页 `Empty` + 导入入口；部件各自 `Empty` 变体；聚合抛错被边界捕获降级（不崩整页）。
-- [ ] **C-7 测试（Playwright E2E，Red 先行）**：[reading-profile §7](../specs/reading-profile.md#7-测试清单) E2E 子项 — 空态 `Empty` + 导入入口跳 `/import`；脱敏数据下各 ECharts canvas 非空像素；分类体系切换重绘；暗色切换配色变化且 reload 保留；大库视口下采样不一次性渲染超量矩形（性能基线，可选）。
+- [x] **C-1** `src/routes/profile.tsx` 改造：由占位页改为图表主导布局；装 `use-profile-stats` 与主题；顶部工具条 SegmentedControl（分类体系）/Select（时间范围）/displayTimezone 显示（不改，只显示）。
+- [x] **C-2** `src/profile/charts/ClassificationTreemap.tsx`：一级呈现可交互高亮 + tooltip；子类下钻标 TODO（[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)）。echarts 按 `echarts/core` + `TreemapChart` 引入。
+- [x] **C-3** `src/profile/charts/BorrowGantt.tsx`：lane=`bookId:barcode`；`borrowed` 端点组件层用 `useDeferredValue` 的 now 补齐视觉，不回写聚合产物（[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约)/[§5](../specs/reading-profile.md#5-数据契约与边界)）；大数据 ≥ `GANTT_THRESHOLD`（候选 2000 lane/5000 区间）启用视口下采样。
+- [x] **C-4** `src/profile/charts/BorrowVolumeBar.tsx`：月/年桶轴标签用 `displayTimezone` 呈现（桶归属不变）；range 左闭右开裁剪在聚合层已处理。
+- [x] **C-5** `src/profile/charts/DurationDistribution.tsx`：5 档分桶；空样本表达 `—`；avg/median 来源 `summary`。
+- [x] **C-6** 空态/部分态/错误态（[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)）：无 Book/BorrowCycle 整页 `Empty` + 导入入口；部件各自 `Empty` 变体；聚合抛错被边界捕获降级（不崩整页）。
+- [x] **C-7 测试（Playwright E2E，Red 先行）**：[reading-profile §7](../specs/reading-profile.md#7-测试清单) E2E 子项 — 空态 `Empty` + 导入入口跳 `/import`；脱敏数据下各 ECharts canvas 非空像素；分类体系切换重绘；暗色切换配色变化且 reload 保留；大库视口下采样不一次性渲染超量矩形（性能基线，可选）。
 
 ## 阶段 3：书库 / 时间线 / 导入向导 / Dashboard（[ui-navigation §3](../specs/ui-navigation.md#3-各功能页布局与空状态)，依赖 D-1，复用 [import-pipeline](../specs/import-pipeline.md) 已落地引擎）
 
@@ -86,7 +86,9 @@
 - 2026-07-30 依赖升级同步：`echarts` 5.6.0 → 6.1.0（修 `GHSA-fgmj-fm8m-jvvx` XSS，`zrender` 5.6.1 → 6.1.0；接触面仅 `buildTheme()` 纯函数适配器，零源码冲突）、`typescript` 6.0.3 → 7.0.2、`@tanstack/router-plugin` routeTree 重新生成。`tsc --noEmit` + Vitest 22 suites/224 tests 全绿。阶段 2 图表实例化落地时须遵守 [reading-profile §3](../specs/reading-profile.md#3-echarts-主题与薄适配层) v6 实例化约束。
 - 2026-07-30 阶段 1 完成：`src/profile/use-profile-stats.ts`（`useProfileStats`/`ProfileStatsState`/`WORKER_THRESHOLD=5000`）+ `src/profile/stats-worker.ts`（Comlink `expose` 纯函数 `compute`）+ `src/db/db-instance.ts`（Dexie 浏览器单例）+ `ProfileStatsInput`/`Options`/`Result` 类型导出上移为 public；小数据同步 `useMemo` 派生与直调等价、大数据 `borrowCycles ≥ 5000` 走 Worker（`new Worker(url, {type:'module'})` + `wrap`），opts 经 `useDeferredValue` 延迟重算；H-3 Vitest 4 例覆盖未就绪/同步等价/空库/CLC↔DDC 重算。`tsc --noEmit` + Vitest 23 suites/228 tests + `pnpm build` 全绿。下一推进：阶段 2（C-1~C-7 图表组件）。
 
-- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ 阶段 2 → 阶段 3 → S-1 → S-2/S-3。
+- 2026-07-31 阶段 2 完成：`src/routes/profile.tsx` 图表主导布局（工具条 SegmentedControl 分类体系 / Select 时间范围 / displayTimezone 只显示；`useTransition` + Skeleton；整页/部件空态与 ErrorBoundary 降级）+ 四图组件（`charts/use-echarts.ts` 薄适配：`echarts/core` + Treemap/Bar/Custom + CanvasRenderer 按需注册、`.dark` 重建 theme 并 dispose 防泄漏；`ClassificationTreemap` 一级高亮 + tooltip、下钻 TODO；`BorrowGantt` lane=bookId:barcode、`useDeferredValue` now 锚定在借端点、`GANTT_THRESHOLD=5000` dataZoom + 12000 矩形封顶；`BorrowVolumeBar` displayTimezone 轴标签；`DurationDistribution` 5 档桶 + `—` 空样本）+ `e2e/profile.spec.ts` 5 例（空态跳 /import、canvas 非空、范围切换重绘、暗色持久、150-lane 大库不崩；修复大库夹具缺 `id` 主键导致 bulkPut 事务回滚、页面误判空态的用例缺陷）。`tsc --noEmit` + Vitest 23 suites/228 tests + `pnpm build` + E2E 7 例全绿。下一推进：阶段 3（G-1~G-6 书库/时间线/导入向导/Dashboard）。
+
+- 推进建议顺序：~~D-1~~ → 阶段 0 → 阶段 1 → ~~D-2/D-3~~（已预装）→ ~~阶段 2~~ → 阶段 3 → S-1 → S-2/S-3。
 
 - 2026-07-23 UI 设计令牌落地：新增根目录 `DESIGN.md`（蔦屋書店气质：瑠璃紺/白群主色、生成纸白/暖黑底、完全直角、无阴影、CJK 排版规则），色表与字体栈从 `ui-navigation.md`/`design-decisions.md` 抽离集中；`src/index.css` 按 DESIGN.md 落 CSS 变量、zh-ja 双字体栈、`::selection`、`:lang()` 行高切换，移除 `@fontsource-variable/geist` 网络字体依赖。**P0-1 前置 CSS 已就位，仅需 React 侧 hook/Provider。**
 
@@ -194,7 +196,7 @@ settings.reset.backupRequired   "请先导出备份" / "Export backup first"
 
 - [x] **P0-1**: `useTheme()` 切 light/dark → `<html class>` 变化；切 auto → 跟随系统；reload 后保留；Vitest 绿
 - [x] **H-1**: `useProfileStats()` 返回非 null（有数据时）；空库返回空结果不崩；Vitest 绿
-- [ ] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
+- [x] **C-1~C-5**: treemap/bar/custom canvas 非空像素（脱敏数据）；暗色切换配色变化；空数据 `Empty`
 - [ ] **G-1**: 空库 `Empty` + 导入按钮跳 `/import`；有数据统计卡片正确
 - [ ] **G-2**: 表格可排序/搜索；分类号 `Badge` 渲染；空态 `Empty`
 - [ ] **G-3**: 书目元数据 + CatalogRecord 列表 + 借阅时间线
