@@ -9,10 +9,11 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
+  SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar'
 
 import { ThemeProvider } from '@/hooks/use-theme'
-
 const navItems = [
   { to: '/', key: 'dashboard' as const },
   { to: '/library', key: 'library' as const },
@@ -26,6 +27,27 @@ export const Route = createRootRoute({
   component: RootLayout,
 })
 
+function SidebarNav() {
+  const { t } = useTranslation('nav')
+  const { isMobile, setOpenMobile } = useSidebar()
+  return (
+    <SidebarContent>
+      <SidebarMenu>
+        {navItems.map((item) => (
+          <SidebarMenuItem key={item.to}>
+            <SidebarMenuButton
+              asChild
+              onClick={isMobile ? () => setOpenMobile(false) : undefined}
+            >
+              <Link to={item.to}>{t(item.key)}</Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </SidebarContent>
+  )
+}
+
 function RootLayout() {
   const { t } = useTranslation('nav')
   return (
@@ -35,19 +57,12 @@ function RootLayout() {
           <SidebarHeader>
             <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
           </SidebarHeader>
-          <SidebarContent>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.to}>
-                  <SidebarMenuButton asChild>
-                    <Link to={item.to}>{t(item.key)}</Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarContent>
+          <SidebarNav />
         </Sidebar>
         <SidebarInset>
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+            <SidebarTrigger className="-ml-1" />
+          </div>
           <Outlet />
         </SidebarInset>
       </SidebarProvider>

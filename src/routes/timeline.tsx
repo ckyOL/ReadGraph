@@ -1,16 +1,205 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { useMemo, useState } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useLiveQuery } from 'dexie-react-hooks'
+
+import { db } from '@/db/db-instance'
+import { readPreferences } from '@/lib/preferences'
+import { formatDateInTz } from '@/lib/display-time'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import type { BorrowStatus } from '@/types/entities'
 
 export const Route = createFileRoute('/timeline')({
   component: TimelinePage,
 })
 
+type StatusFilter = 'all' | BorrowStatus
+
+function StatusBadge({ status }: { status: BorrowStatus }) {
+  const { t } = useTranslation('pages')
+  if (status === 'borrowed') {
+    return (
+      <Badge variant="secondary" className="border-primary/40">
+        {t('timeline.status.borrowed')}
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="rounded-none">
+      {t(`timeline.status.${status}`)}
+    </Badge>
+  )
+}
+
 function TimelinePage() {
   const { t } = useTranslation('pages')
+  const data = useLiveQuery(
+    () =>
+      Promise.all([
+        db.borrowCycles.toArray(),
+        db.books.toArray(),
+        db.sources.toArray(),
+      ]),
+    [],
+  )
+
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  const loading = data === undefined
+  const [borrowCycles, books, sources] = data ?? [[], [], []]
+
+  const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
+
+  const bookById = useMemo(() => new Map(books.map((b) => [b.id, b])), [books])
+
+  const cycles = useMemo(() => {
+    let out = borrowCycles
+    if (sourceFilter !== 'all') {
+      out = out.filter((c) => c.sourceId === sourceFilter)
+    }
+    if (statusFilter !== 'all') {
+      out = out.filter((c) => c.status === statusFilter)
+    }
+    return [...out].sort((a, b) => a.borrowedAt.getTime() - b.borrowedAt.getTime())
+  }, [borrowCycles, sourceFilter, statusFilter])
+
+  if (loading) return <div className="p-6" />
+
   return (
-    <div className="p-6">
+    <div className="flex flex-col p-6">
       <h1 className="text-2xl font-bold">{t('timeline.title')}</h1>
       <p className="text-muted-foreground">{t('timeline.subtitle')}</p>
+
+      {borrowCycles.length === 0 ? (
+        <Empty className="mt-8 min-h-[360px]">
+          <EmptyHeader>
+            <EmptyTitle>{t('timeline.empty.title')}</EmptyTitle>
+            <EmptyDescription>{t('timeline.empty.description')}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link to="/import">{t('timeline.empty.action')}</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">
+                {t('timeline.filter.source')}
+              </span>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="h-8 w-44 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('timeline.filter.allSources')}</SelectItem>
+                  {sources.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">
+                {t('timeline.filter.status')}
+              </span>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+              >
+                <SelectTrigger className="h-8 w-36 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('timeline.filter.allStatus')}</SelectItem>
+                  <SelectItem value="borrowed">{t('timeline.status.borrowed')}</SelectItem>
+                  <SelectItem value="returned">{t('timeline.status.returned')}</SelectItem>
+                  <SelectItem value="unknown">{t('timeline.status.unknown')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 横向时间轴脊柱：左 → 右按 borrowedAt 递增。 */}
+          <div className="mt-6 overflow-x-auto pb-4">
+            <div className="relative min-w-max">
+              <div className="absolute top-5 right-0 left-0 h-px bg-border" />
+              <ol className="relative flex items-start gap-6">
+                {cycles.map((c) => {
+                  const book = bookById.get(c.bookId)
+                  const borrowed = formatDateInTz(c.borrowedAt, displayTimezone)
+                  const returned = c.returnedAt
+                    ? formatDateInTz(c.returnedAt, displayTimezone)
+                    : null
+                  return (
+                    <li
+                      key={c.id}
+                      className="flex w-44 flex-col items-center gap-2"
+                      data-status={c.status}
+                    >
+                      <span
+                        className={
+                          c.status === 'borrowed'
+                            ? 'relative z-10 size-2.5 rounded-full bg-primary ring-4 ring-background'
+                            : 'relative z-10 size-2.5 rounded-full bg-muted-foreground ring-4 ring-background'
+                        }
+                      />
+                      <div
+                        className={
+                          c.status === 'borrowed'
+                            ? 'w-full rounded-none border border-primary/50 bg-primary/5 p-3'
+                            : 'w-full rounded-none border border-border bg-card p-3'
+                        }
+                      >
+                        {book ? (
+                          <Link
+                            to="/library/$bookId"
+                            params={{ bookId: book.id }}
+                            className="line-clamp-2 text-sm font-medium hover:underline"
+                          >
+                            {book.title}
+                          </Link>
+                        ) : (
+                          <span className="line-clamp-2 text-sm text-muted-foreground">
+                            {c.bookId}
+                          </span>
+                        )}
+                        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                          {borrowed}
+                          {returned ? ` → ${returned}` : ''}
+                        </p>
+                        <div className="mt-1.5">
+                          <StatusBadge status={c.status} />
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
