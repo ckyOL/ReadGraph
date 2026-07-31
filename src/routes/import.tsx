@@ -5,9 +5,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { FileUpIcon } from 'lucide-react'
 
 import { db } from '@/db/db-instance'
-import { createRepositories } from '@/db/repositories'
 import { detectAndDecode, IMPORT_MAX_FILE_SIZE } from '@/lib/encoding'
-import { SOURCE_TEMPLATES, sourceFromTemplate } from '@/lib/source-templates'
+import { SOURCE_TEMPLATES, ensureSourceFromTemplate } from '@/lib/source-templates'
 import { getParser } from '@/parsers/registry'
 import { executeImport } from '@/import/run-import'
 import type { PipelineResult } from '@/parsers/pipeline'
@@ -83,8 +82,8 @@ function ImportPage() {
   const createFromTemplate = async (tplIndex: number) => {
     const tpl = SOURCE_TEMPLATES[tplIndex]
     if (!tpl) return
-    const source = sourceFromTemplate(tpl, new Date())
-    await createRepositories(db).sources.put(source)
+    // parserId 唯一：已存在则复用（幂等），否则创建；见 ensureSourceFromTemplate
+    const source = await ensureSourceFromTemplate(db, tpl, new Date())
     setSelectedSource(source)
     setStep(1)
   }

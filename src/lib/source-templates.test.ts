@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
-import { SOURCE_TEMPLATES, sourceFromTemplate } from './source-templates'
+import { ReadGraphDB } from '@/db/db'
+import { createTestDB, closeTestDB } from '@/db/test-helpers'
+import { SOURCE_TEMPLATES, sourceFromTemplate, ensureSourceFromTemplate } from './source-templates'
+
+let db: ReadGraphDB
+beforeEach(() => {
+  db = createTestDB()
+})
+afterEach(async () => {
+  await closeTestDB(db)
+})
 
 describe('SOURCE_TEMPLATES', () => {
   it('含深圳图书馆模板，parserId=szlib、Asia/Shanghai、CLC', () => {
@@ -20,6 +30,33 @@ describe('SOURCE_TEMPLATES', () => {
       expect(t.parserId).toBeTypeOf('string')
       expect(t.timezone).toBeTypeOf('string')
     }
+  })
+})
+
+describe('ensureSourceFromTemplate', () => {
+  it('无同 parserId 来源时创建并落库', async () => {
+    const tpl = SOURCE_TEMPLATES[0]!
+    const now = new Date('2026-07-31T00:00:00.000Z')
+    const s = await ensureSourceFromTemplate(db, tpl, now)
+    expect(await db.sources.get(s.id)).toEqual(s)
+    expect(await db.sources.count()).toBe(1)
+  })
+
+  it('已有同 parserId 来源时复用而非重复写入（二次创建不触发 ConstraintError）', async () => {
+    const tpl = SOURCE_TEMPLATES[0]!
+    const first = await ensureSourceFromTemplate(
+      db,
+      tpl,
+      new Date('2026-07-31T00:00:00.000Z'),
+    )
+    const second = await ensureSourceFromTemplate(
+      db,
+      tpl,
+      new Date('2026-08-01T00:00:00.000Z'),
+    )
+    expect(second.id).toBe(first.id)
+    expect(second.createdAt).toEqual(first.createdAt)
+    expect(await db.sources.count()).toBe(1)
   })
 })
 
