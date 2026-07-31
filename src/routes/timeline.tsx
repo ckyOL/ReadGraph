@@ -140,11 +140,11 @@ function TimelinePage() {
             </div>
           </div>
 
-          {/* 横向时间轴脊柱：左 → 右按 borrowedAt 递增。 */}
-          <div className="mt-6 overflow-x-auto pb-4">
-            <div className="relative min-w-max">
-              <div className="absolute top-5 right-0 left-0 h-px bg-border" />
-              <ol className="relative flex items-start gap-6">
+          {/* 竖向时间轴脊柱：上 → 下按 borrowedAt 递增。 */}
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute top-0 bottom-0 left-[19px] w-px bg-border" />
+              <ol className="relative space-y-4">
                 {cycles.map((c) => {
                   const book = bookById.get(c.bookId)
                   const borrowed = formatDateInTz(c.borrowedAt, displayTimezone)
@@ -154,14 +154,14 @@ function TimelinePage() {
                   return (
                     <li
                       key={c.id}
-                      className="flex w-44 flex-col items-center gap-2"
+                      className="relative pl-12"
                       data-status={c.status}
                     >
                       <span
                         className={
                           c.status === 'borrowed'
-                            ? 'relative z-10 size-2.5 rounded-full bg-primary ring-4 ring-background'
-                            : 'relative z-10 size-2.5 rounded-full bg-muted-foreground ring-4 ring-background'
+                            ? 'absolute top-4 left-[19px] z-10 size-2.5 -translate-x-1/2 rounded-full bg-primary ring-4 ring-background'
+                            : 'absolute top-4 left-[19px] z-10 size-2.5 -translate-x-1/2 rounded-full bg-muted-foreground ring-4 ring-background'
                         }
                       />
                       <div

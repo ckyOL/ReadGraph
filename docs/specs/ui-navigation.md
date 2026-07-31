@@ -60,7 +60,7 @@ src/routes/
 2. **书库（/library）**：`Table` 密实列表，列含书名、作者、ISBN13、来源徽标（`Badge`）、分类号芯片、借阅次数；可搜索/筛选/排序。
    - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。
    - 空态：无 Book 时 `Empty` + 导入引导。
-3. **时间线（/timeline）**：横向时间轴脊柱，按 `borrowedAt` 排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
+3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
    - 空态：无周期 `Empty`。
 4. **导入（/import）**：多步向导（来源选择/创建 → 文件选择与编码检测 → 前 10 条预览与字段映射 → 执行 → 导入报告）。报告显示统计与 `ParseWarning` 列表。
    - 每步可回退；来源选择支持从预置模板（[source](../metadata/source.md) `SOURCE_TEMPLATES`）挑选。
