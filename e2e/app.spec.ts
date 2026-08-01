@@ -96,8 +96,8 @@ test.describe('preference persistence (ui-navigation §8)', () => {
 
   test('locale switch updates html[lang] and persists', async ({ page }) => {
     await page.goto('/settings')
-    await page.getByRole('button', { name: /English|简体中文/ }).click()
-    await page.getByRole('menuitem', { name: '简体中文' }).click()
+    // 语言控件为 SegmentedControl 单选（非下拉菜单），点击中文选项直接生效。
+    await page.getByRole('radio', { name: '简体中文' }).click()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
     // 导航文案切换为中文。
     await expect(

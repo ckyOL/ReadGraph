@@ -38,19 +38,20 @@ test.describe('preference persistence (S-3, settings 规格 §9-1/§9-2)', () =>
     await page.getByRole('radio', { name: 'Dark' }).click()
     await expect(page.locator('html')).toHaveClass(/dark/)
 
-    // 时区：搜索过滤后选择 Asia/Tokyo（先输查询再开 Select，过滤实时生效）。
+    // 时区：开 Select → 输查询过滤（实时生效）→ 选 Asia/Tokyo。
+    // 条目主文本为城市（macOS 式标签：城市 · 国家 (偏移)），断言用城市名。
     const tzSection = page.locator('section').filter({
       has: page.getByRole('heading', { name: 'Preferences' }),
     })
-    await page.getByPlaceholder('Search timezones…').fill('Tokyo')
     await tzSection.getByRole('combobox').click()
-    await page.getByRole('option', { name: 'Asia/Tokyo' }).click()
-    await expect(tzSection.getByRole('combobox')).toContainText('Asia/Tokyo')
+    await page.getByPlaceholder(/Search city or timezone…|搜索城市或时区…/).fill('Tokyo')
+    await page.getByRole('option', { name: /Tokyo/ }).click()
+    await expect(tzSection.getByRole('combobox')).toContainText('Tokyo')
 
     // reload 后保留。
     await page.reload()
     await expect(page.locator('html')).toHaveClass(/dark/)
-    await expect(tzSection.getByRole('combobox')).toContainText('Asia/Tokyo')
+    await expect(tzSection.getByRole('combobox')).toContainText('Tokyo')
   })
 })
 
