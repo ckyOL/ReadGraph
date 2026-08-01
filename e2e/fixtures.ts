@@ -78,8 +78,6 @@ function catalog(
   metaIdKey: string | null
   barcodes: string[]
   classifications: { system: 'clc'; code: string }[]
-  /** classCodes multiEntry 索引派生字段（与 repository deriveClassCodes 同构；seed 绕过仓库直接入库）。 */
-  classCodes: string[]
 } & EntityDate {
   return {
     id: `cat-${i}`,
@@ -89,7 +87,6 @@ function catalog(
     metaIdKey: 'metaid',
     barcodes: [barcode],
     classifications: [{ system: 'clc', code: clc }],
-    classCodes: [clc],
     createdAt: iso(Date.UTC(2024, 0, 1)),
     updatedAt: iso(Date.UTC(2024, 0, 1)),
   }
@@ -206,7 +203,7 @@ function source(): {
 /**
  * 分类法层级 E2E 夹具（classification-hierarchy §8）：4 本书全部 J 类
  * （含细分缺口 `J238.2`，跨 J 子类 J2/J29/J6），treemap 一级仅一个 J 单元格，
- * 便于画布中心点击下钻。catalog 记录携带 classCodes 派生字段（索引查询用）。
+ * 便于画布中心点击下钻。classCodes 派生字段由 e2e-seed 注入时补写。
  */
 export function buildClassificationFixture(): {
   sources: ReturnType<typeof source>[]

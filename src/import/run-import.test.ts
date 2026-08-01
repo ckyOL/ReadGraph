@@ -98,6 +98,10 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     expect(cycles.length).toBe(result.borrowCycles.length)
     expect(logs).toHaveLength(1)
     expect(raws).toHaveLength(sample.length)
+    // classCodes 派生字段必须在导入写路径补写（treemap 下钻等 classCodes 索引查询依赖）。
+    for (const cr of catalogs) {
+      expect(cr.classCodes).toEqual(cr.classifications.map((c) => c.code))
+    }
     expect(logs[0]!.stats.totalRawRecords).toBe(sample.length)
     expect(logs[0]!.parserId).toBe('szlib')
 

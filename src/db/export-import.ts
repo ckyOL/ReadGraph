@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ExportData, ImportLog, RawRecord } from '@/types/entities'
 import type { ReadGraphDB } from './db'
 import { READGRAPH_TABLES } from './db'
+import { deriveClassCodes } from './repositories'
 import { getParser } from '@/parsers/registry'
 import { importPipeline, type ExistingState, type ImportMeta } from '@/parsers/pipeline'
 import {
@@ -153,7 +154,7 @@ async function replayImport(db: ReadGraphDB, parsed: ExportData): Promise<void> 
     await Promise.all([
       db.sources.bulkPut(parsed.sources),
       db.books.bulkPut(existing.books),
-      db.catalogRecords.bulkPut(existing.catalogRecords),
+      db.catalogRecords.bulkPut(existing.catalogRecords.map(deriveClassCodes)),
       db.borrowCycles.bulkPut(existing.borrowCycles),
       db.rawRecords.bulkPut(finalRows),
       db.importLogs.bulkPut(finalLogs),
@@ -193,7 +194,7 @@ export async function importDatabase(
       db.sources.bulkPut(parsed.sources),
       db.rawRecords.bulkPut(parsed.rawRecords),
       db.books.bulkPut(parsed.books),
-      db.catalogRecords.bulkPut(parsed.catalogRecords),
+      db.catalogRecords.bulkPut(parsed.catalogRecords.map(deriveClassCodes)),
       db.borrowCycles.bulkPut(parsed.borrowCycles),
       db.importLogs.bulkPut(parsed.importLogs),
     ])

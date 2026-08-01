@@ -52,6 +52,8 @@ function deepEqualDates(a: unknown, b: unknown): boolean {
 }
 
 /** 剥离每次导出都不同的 exportedAt（导出时间戳不属重放契约）。
+ * classCodes 为索引派生字段，恢复路径统一补写——旧快照/构造数据不含该字段，
+ * 深比较前归一（内容等价不依赖派生字段）。
  * 实体数组按 id 排序：Dexie toArray 按主键序，导出快照按插入序，
  * 深比较前归一顺序（内容等价不依赖顺序）。 */
 function sortById<T extends { id: string }>(arr: T[]): T[] {
@@ -65,7 +67,7 @@ function bodyOf(e: ExportData): Omit<ExportData, 'exportedAt'> {
     sources: sortById(rest.sources),
     rawRecords: sortById(rest.rawRecords),
     books: sortById(rest.books),
-    catalogRecords: sortById(rest.catalogRecords),
+    catalogRecords: sortById(rest.catalogRecords).map(({ classCodes: _classCodes, ...cr }) => cr),
     borrowCycles: sortById(rest.borrowCycles),
     importLogs: sortById(rest.importLogs),
   }
@@ -135,6 +137,8 @@ describe('importDatabase snapshot', () => {
     expect(re.books).toHaveLength(1)
     expect(re.borrowCycles).toHaveLength(1)
     expect(await db.books.count()).toBe(1)
+    // classCodes 派生字段由恢复路径补写（旧备份/校验后对象不含该字段，索引查询依赖它）。
+    expect(re.catalogRecords[0]!.classCodes).toEqual(['TP312'])
   })
   it('overwrites existing data (reset + bulkPut)', async () => {
     await seedAll(db)
@@ -171,6 +175,10 @@ describe('importDatabase replay（settings 规格 §4/§9-5：rawRecords 重放�
     expect(rebuilt.rawRecords).toHaveLength(exportData.rawRecords.length)
     expect(rebuilt.importLogs).toHaveLength(exportData.importLogs.length)
     expect(deepEqualDates(bodyOf(rebuilt), bodyOf(exportData))).toBe(true)
+    // 重放重建同样补写 classCodes 派生字段（treemap 下钻等 classCodes 索引查询依赖）。
+    for (const cr of rebuilt.catalogRecords) {
+      expect(cr.classCodes).toEqual(cr.classifications.map((c) => c.code))
+    }
     // 实体时间锚取 ImportLog.importedAt（不得读 Date.now()）：书目 createdAt 即导入锚点。
     expect(rebuilt.books[0]?.createdAt).toEqual(new Date('2026-07-07T00:00:00.000Z'))
   })

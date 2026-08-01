@@ -52,6 +52,8 @@ export interface CatalogRecord {
   metaIdKey: string | null
   barcodes: string[]
   classifications: ClassificationEntry[]
+  /** classCodes multiEntry 索引派生字段：存储前由 deriveClassCodes 补写（schema 不校验；存量缺失由启动回填）。 */
+  classCodes?: string[]
   createdAt: Date
   updatedAt: Date
 }

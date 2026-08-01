@@ -33,7 +33,9 @@ function validate<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
 
 // catalogRecords 的 classCodes multiEntry 索引指向 classifications[].code 派生数组，
 // 存储前补写该非规范化字段，使 *classCodes 索引可用；schema 不校验该字段。
-function deriveClassCodes<T extends CatalogRecord>(rec: T): T & { classCodes: string[] } {
+// 所有写路径（repository / 导入 / 备份恢复 / E2E seed / 存量回填）统一经此派生，
+// 避免索引字段缺失导致 treemap 下钻等 classCodes 查询失效。
+export function deriveClassCodes<T extends CatalogRecord>(rec: T): T & { classCodes: string[] } {
   return { ...rec, classCodes: rec.classifications.map((c) => c.code) }
 }
 

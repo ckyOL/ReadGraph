@@ -13,6 +13,7 @@ import type {
   Source,
 } from '@/types/entities'
 import { db } from './db-instance'
+import { deriveClassCodes } from './repositories'
 
 const SEED_KEY = 'readgraph:e2e-seed'
 
@@ -108,7 +109,9 @@ export async function maybeSeedFromE2E(): Promise<void> {
         if (payload.sources.length) await db.sources.bulkPut(payload.sources)
         if (payload.books.length) await db.books.bulkPut(payload.books)
         if (payload.catalogRecords.length)
-          await db.catalogRecords.bulkPut(payload.catalogRecords)
+          await db.catalogRecords.bulkPut(
+            payload.catalogRecords.map(deriveClassCodes),
+          )
         if (payload.borrowCycles.length)
           await db.borrowCycles.bulkPut(payload.borrowCycles)
         if (payload.importLogs?.length)

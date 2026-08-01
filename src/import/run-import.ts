@@ -6,6 +6,7 @@
 import { wrap } from 'comlink'
 
 import type { ReadGraphDB } from '@/db/db'
+import { deriveClassCodes } from '@/db/repositories'
 import { getParser } from '@/parsers/registry'
 import { importPipeline, type ExistingState, type ImportMeta } from '@/parsers/pipeline'
 import type { ImportLogStats, RawRecord, Source } from '@/types/entities'
@@ -124,7 +125,7 @@ export async function executeImport(
       if (result.rawRecords.length) await db.rawRecords.bulkPut(result.rawRecords)
       if (result.books.length) await db.books.bulkPut(result.books)
       if (result.catalogRecords.length)
-        await db.catalogRecords.bulkPut(result.catalogRecords)
+        await db.catalogRecords.bulkPut(result.catalogRecords.map(deriveClassCodes))
       if (result.borrowCycles.length) await db.borrowCycles.bulkPut(result.borrowCycles)
       await db.importLogs.put(result.importLog)
       await db.sources.update(source.id, {
