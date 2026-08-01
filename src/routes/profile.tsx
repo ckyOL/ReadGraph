@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { useProfileStats } from '@/profile/use-profile-stats'
+import { resolveSystem } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
 import { CLASSIFICATION_SYSTEMS } from '@/lib/classification'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -121,6 +122,9 @@ function ProfilePage() {
 
   const state = useProfileStats(deferredOpts)
   const { loading, computing, result } = state
+
+  // 生效分类体系（与 computeProfileStats 内 resolveSystem 同源），treemap 下钻门控。
+  const effectiveSystem = resolveSystem(classificationSystem, sources ?? [])
 
   const isEmpty =
     !!result && result.summary.totalBooks === 0 && result.summary.totalCycles === 0
@@ -241,6 +245,7 @@ function ProfilePage() {
                     <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
                       <ClassificationTreemap
                         data={result?.classification ?? []}
+                        system={effectiveSystem}
                         emptyTitle={partialTitle}
                         emptyDescription={partialDesc}
                       />

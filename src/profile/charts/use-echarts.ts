@@ -114,10 +114,16 @@ function themeName(isDark: boolean): string {
   return isDark ? 'readgraph-dark' : 'readgraph-light'
 }
 
+export interface EChartsEvents {
+  /** 图表 click 事件（treemap 下钻等；handler 经 ref 持有最新引用，主题重建后自动重挂）。 */
+  click?: (params: unknown) => void
+}
+
 /**
  * ECharts 实例响应式包装。
  *
  * @param option 图表 option（由消费方 memo 化；引用变化触发 setOption）。
+ * @param events 图表事件（可选）；handler 每次渲染刷新，无需 memo。
  * @returns container ref，绑到图表容器 `<div>`。
  *
  * 生命周期：theme(resolved) 变化 → dispose 旧实例 → 按新主题 re-init →
@@ -126,12 +132,15 @@ function themeName(isDark: boolean): string {
  */
 export function useECharts(
   option: EChartsCoreOption | null,
+  events?: EChartsEvents,
 ): React.RefObject<HTMLDivElement | null> {
   const ref = React.useRef<HTMLDivElement | null>(null)
   const instRef = React.useRef<EChartsType | null>(null)
   // 始终持有最新 option，供 theme 重 init 后重应用（避免把 option 列入 init effect 依赖）。
   const optionRef = React.useRef(option)
   optionRef.current = option
+  const eventsRef = React.useRef(events)
+  eventsRef.current = events
   const { resolved } = useTheme()
 
   // init / theme 重建
@@ -149,6 +158,10 @@ export function useECharts(
       const inst = core.init(ref.current, name)
       instRef.current = inst
       if (optionRef.current) inst.setOption(optionRef.current, true)
+      // 事件：固定包装器读取最新 eventsRef，主题重建后自动重挂。
+      inst.on('click', (params) => {
+        eventsRef.current?.click?.(params)
+      })
       ro = new ResizeObserver(() => inst.resize())
       ro.observe(ref.current)
     })

@@ -78,6 +78,8 @@ function catalog(
   metaIdKey: string | null
   barcodes: string[]
   classifications: { system: 'clc'; code: string }[]
+  /** classCodes multiEntry 索引派生字段（与 repository deriveClassCodes 同构；seed 绕过仓库直接入库）。 */
+  classCodes: string[]
 } & EntityDate {
   return {
     id: `cat-${i}`,
@@ -87,6 +89,7 @@ function catalog(
     metaIdKey: 'metaid',
     barcodes: [barcode],
     classifications: [{ system: 'clc', code: clc }],
+    classCodes: [clc],
     createdAt: iso(Date.UTC(2024, 0, 1)),
     updatedAt: iso(Date.UTC(2024, 0, 1)),
   }
@@ -198,4 +201,38 @@ function source(): {
     createdAt: iso(Date.UTC(2024, 0, 1)),
     lastImportAt: null,
   }
+}
+
+/**
+ * 分类法层级 E2E 夹具（classification-hierarchy §8）：4 本书全部 J 类
+ * （含细分缺口 `J238.2`，跨 J 子类 J2/J29/J6），treemap 一级仅一个 J 单元格，
+ * 便于画布中心点击下钻。catalog 记录携带 classCodes 派生字段（索引查询用）。
+ */
+export function buildClassificationFixture(): {
+  sources: ReturnType<typeof source>[]
+  books: ReturnType<typeof book>[]
+  catalogRecords: ReturnType<typeof catalog>[]
+  borrowCycles: ReturnType<typeof cycle>[]
+} {
+  const src = source()
+  const books = [
+    book(1, '漫画A', '9781000000001', 'J218.2', src.id),
+    book(2, '外国漫画B', '9781000000002', 'J238.2', src.id),
+    book(3, '书法C', '9781000000003', 'J292', src.id),
+    book(4, '音乐D', '9781000000004', 'J624', src.id),
+  ]
+  const cats = [
+    catalog(1, 'book-1', src.id, 'JC1', 'J218.2'),
+    catalog(2, 'book-2', src.id, 'JC2', 'J238.2'),
+    catalog(3, 'book-3', src.id, 'JC3', 'J292'),
+    catalog(4, 'book-4', src.id, 'JC4', 'J624'),
+  ]
+  const base = Date.UTC(2024, 0, 10)
+  const cycles = [
+    cycle(1, 'book-1', src.id, 'JC1', base, base + 5 * DAY, 'returned'),
+    cycle(2, 'book-2', src.id, 'JC2', base + 10 * DAY, base + 20 * DAY, 'returned'),
+    cycle(3, 'book-3', src.id, 'JC3', base + 30 * DAY, base + 40 * DAY, 'returned'),
+    cycle(4, 'book-4', src.id, 'JC4', base + 60 * DAY, null, 'borrowed'),
+  ]
+  return { sources: [src], books, catalogRecords: cats, borrowCycles: cycles }
 }

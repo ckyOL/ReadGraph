@@ -78,7 +78,7 @@ const DURATION_BUCKETS: { range: string; max: number }[] = [
   { range: '>60', max: Number.POSITIVE_INFINITY },
 ]
 
-function resolveSystem(
+export function resolveSystem(
   opts: ClassificationSystem | null,
   sources: Source[],
 ): ClassificationSystem {
