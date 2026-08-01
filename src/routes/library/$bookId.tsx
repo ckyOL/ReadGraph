@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
-import { ClassificationBadge } from '@/components/classification-badge'
+import { CatalogRecordCard } from '@/components/catalog-record'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -148,44 +148,19 @@ function BookDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t('bookDetail.records.title')}</CardTitle>
-            <CardDescription>
-              {t('bookDetail.records.empty')}
-            </CardDescription>
+            {catalogRecords.length === 0 && (
+              <CardDescription>{t('bookDetail.records.empty')}</CardDescription>
+            )}
           </CardHeader>
           <CardContent>
-            {catalogRecords.length === 0 ? (
-              <p className="text-sm text-muted-foreground">—</p>
-            ) : (
-              <ul className="space-y-4">
+            {catalogRecords.length > 0 && (
+              <ul className="space-y-3">
                 {catalogRecords.map((cr) => (
-                  <li key={cr.id} className="space-y-1.5 border-b pb-3 last:border-b-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {sourceById.get(cr.sourceId) && (
-                        <Badge variant="outline" className="rounded-none">
-                          {sourceById.get(cr.sourceId)!.name}
-                        </Badge>
-                      )}
-                      {cr.metaId != null && (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {t('bookDetail.field.metaId')}: {String(cr.metaId)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {cr.barcodes.map((b) => (
-                        <span key={b} className="font-mono text-xs">
-                          {t('bookDetail.field.barcode')}: {b}
-                        </span>
-                      ))}
-                      {cr.classifications.map((c) => (
-                        <ClassificationBadge
-                          key={`${c.system}:${c.code}`}
-                          system={c.system}
-                          code={c.code}
-                          category={c.category}
-                        />
-                      ))}
-                    </div>
+                  <li key={cr.id}>
+                    <CatalogRecordCard
+                      record={cr}
+                      source={sourceById.get(cr.sourceId)}
+                    />
                   </li>
                 ))}
               </ul>
