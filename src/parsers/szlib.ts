@@ -3,6 +3,7 @@
 import type { Book, BorrowCycle, CatalogRecord, ClassificationEntry, ParseWarning } from '@/types/entities'
 import { localToUtc } from '@/lib/time'
 import { normalizeIsbn } from '@/lib/isbn'
+import { decodeHtmlEntities } from '@/lib/encoding'
 import { parseTitle } from '@/lib/title'
 import type { SourceParser } from './types'
 const PLACEHOLDER_TITLE = '福田图书馆读者自选图书'
@@ -178,8 +179,11 @@ export const szlibParser: SourceParser = {
     const catalogByKey = new Map<string, number>()
     for (const rr of validRows) {
       const row = rr.data
-      const isPlaceholder = row.title === PLACEHOLDER_TITLE && (row.ISBN ?? '') === ''
-      const parsed = parseTitle(row.title)
+      // OPAC 导出标题可能含 HTML 实体（如 `&apos;`）；先解码再解析，
+      // 保证正题名/并列题名/责任者干净且去重键一致（§10.13）。
+      const rawTitle = decodeHtmlEntities(row.title ?? '')
+      const isPlaceholder = rawTitle === PLACEHOLDER_TITLE && (row.ISBN ?? '') === ''
+      const parsed = parseTitle(rawTitle)
       const { isbn13, isbn10 } = normalizeIsbn(row.ISBN)
       let key: string
       if (isPlaceholder) {
@@ -192,7 +196,7 @@ export const szlibParser: SourceParser = {
       if (!bookByKey.has(key)) {
         bookByKey.set(key, books.length)
         if (isPlaceholder) {
-          const b = { isbn13: null, isbn10: null, title: row.title, subtitle: null, authors: [], translators: [], publisher: null, publishDate: null, edition: null, pages: null, price: null, subjects: [], tags: [], coverUrl: null, description: null, needsReview: true, sourceIds: [source.id], parallelTitles: [] } as Partial<Book>
+          const b = { isbn13: null, isbn10: null, title: rawTitle, subtitle: null, authors: [], translators: [], publisher: null, publishDate: null, edition: null, pages: null, price: null, subjects: [], tags: [], coverUrl: null, description: null, needsReview: true, sourceIds: [source.id], parallelTitles: [] } as Partial<Book>
           ;(b as Record<string, unknown>)._bookKey = key
           books.push(b)
         } else {

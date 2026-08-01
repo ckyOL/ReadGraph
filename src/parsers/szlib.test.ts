@@ -103,6 +103,31 @@ describe('szlibParser.parse', () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
 
+  it('标题中的 HTML 实体解码（并列题名 `&apos;` → 撇号）', () => {
+    const row = {
+      date: '20260429',
+      time: '18:38:32',
+      optype: '读者借出',
+      cirtype: '中文图书外借',
+      metatable: 'bibliosm',
+      metaid: 5750000,
+      title: '书虫杂记 = The Book Lovers&apos; Miscellany/ (英)克莱尔·科克-斯塔基著;许梦鸽译',
+      ISBN: '978-7-100-00000-0',
+      addr: '宝安中心区图书馆自助馆自助借还机',
+      barcode: '04400610000000',
+      callno: 'G256.1/83',
+      cardno: '0440050000000',
+      notes: '',
+      ip: '0.0.0.0',
+    }
+    const res = szlibParser.parse(JSON.stringify([row]), source)
+    const book = res.books[0]
+    expect(book).toBeDefined()
+    expect(book?.title).toBe('书虫杂记')
+    expect(book?.parallelTitles).toEqual(["The Book Lovers' Miscellany"])
+    expect(book?.authors).toEqual(['克莱尔·科克-斯塔基'])
+  })
+
   it('周期标注消费行行号 _rowIndexes：借出在前（时间升序，文件行序为倒序）', () => {
     const cyc = res.borrowCycles.find((c) => c.barcode === 'F4401001911110')
     expect(cyc).toBeDefined()

@@ -24,3 +24,32 @@ export function detectAndDecode(buffer: ArrayBuffer): DecodeResult {
     return { text, detectedEncoding: 'gbk' }
   }
 }
+
+/** 常见 HTML 命名实体（OPAC 导出常见 `&apos;`/`&amp;`/`&quot;` 等）。 */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  apos: "'",
+  quot: '"',
+  lt: '<',
+  gt: '>',
+  nbsp: '\u00a0',
+}
+
+/**
+ * 解码常见 HTML 实体：命名实体子集 + 数字实体（十进制/十六进制）。
+ * 未知实体与裸 `&` 原样保留（单遍，不重复解码）。
+ */
+export function decodeHtmlEntities(input: string): string {
+  return input.replace(/&(#x?[0-9a-fA-F]+|[a-z][a-z0-9]+);/g, (m, body: string) => {
+    if (body.startsWith('#')) {
+      const hex = body[1] === 'x' || body[1] === 'X'
+      const code = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10)
+      if (!Number.isNaN(code) && code >= 0 && code <= 0x10ffff) {
+        return String.fromCodePoint(code)
+      }
+      return m
+    }
+    const decoded = NAMED_ENTITIES[body.toLowerCase()]
+    return decoded ?? m
+  })
+}

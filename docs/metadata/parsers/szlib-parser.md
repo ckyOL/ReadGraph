@@ -25,6 +25,7 @@
 - `id`: 生成新 UUID（或者通过匹配已有 ISBN 沿用旧 ID）。
 - `isbn13`: 取自 `ISBN` 字段（需注意处理为空的情况，仅当存在且合法时提取）。
 - `title`、`subtitle`、`parallelTitles`、`authors`、`translators`：由 `src/lib/title.ts` 的 `parseTitle(rawTitle)` 结构化解析派生，具体规则见 [import-pipeline §13 书目标题结构化解析](../../docs/specs/import-pipeline.md#13-书目标题结构化解析)。
+  - 解析前先经 `src/lib/encoding.ts` 的 `decodeHtmlEntities` 解码 HTML 实体（OPAC 导出常见 `&apos;`/`&amp;` 等），保证题名/责任者干净且无 ISBN 去重键一致。
   - `Book.title` 存正题名（去副标题/并列/责任者标记），**不再原样保留原始编目串**；原始串由 `RawRecord.data.title` 留存以便溯源与重解析。
   - `subtitle` 取 ` : ` 右侧拼回的副标题，无则 `null`；`parallelTitles` 取 ` = ` 右侧各段，无则 `[]`。
   - `authors` 取责任者区角色词为 `著`/`编`/`主编`/`编著`/`绘` 的个人（含无角色词的第一组默认），`translators` 取 `译`/`校`/`校译` 的个人；`等` 暂并入姓名字符串保留，由归一化阶段统一剥离。

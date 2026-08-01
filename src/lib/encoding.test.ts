@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { IMPORT_MAX_FILE_SIZE, detectAndDecode } from './encoding'
+import { IMPORT_MAX_FILE_SIZE, decodeHtmlEntities, detectAndDecode } from './encoding'
 
 describe('detectAndDecode', () => {
   it('UTF-8 文本原样解码并标注 utf-8', () => {
@@ -40,6 +40,33 @@ describe('detectAndDecode', () => {
     const result = detectAndDecode(new ArrayBuffer(0))
     expect(result.text).toBe('')
     expect(result.detectedEncoding).toBe('utf-8')
+  })
+})
+
+describe('decodeHtmlEntities', () => {
+  it('解码常见命名实体（含 XML 的 &apos;）', () => {
+    expect(decodeHtmlEntities("The Book Lovers&apos; Miscellany")).toBe("The Book Lovers' Miscellany")
+    expect(decodeHtmlEntities('Tom &amp; Jerry')).toBe('Tom & Jerry')
+    expect(decodeHtmlEntities('&quot;quoted&quot;')).toBe('"quoted"')
+    expect(decodeHtmlEntities('a &lt;b&gt; c')).toBe('a <b> c')
+    expect(decodeHtmlEntities('a&nbsp;b')).toBe('a\u00a0b')
+  })
+
+  it('解码数字实体（十进制与十六进制）', () => {
+    expect(decodeHtmlEntities('&#39;')).toBe("'")
+    expect(decodeHtmlEntities('&#x27;')).toBe("'")
+    expect(decodeHtmlEntities('&#x4e2d;文')).toBe('中文')
+  })
+
+  it('未知实体与裸 & 原样保留，单遍不重复解码', () => {
+    expect(decodeHtmlEntities('&unknown;')).toBe('&unknown;')
+    expect(decodeHtmlEntities('AT&T')).toBe('AT&T')
+    expect(decodeHtmlEntities('&amp;amp;')).toBe('&amp;')
+  })
+
+  it('无实体文本原样返回', () => {
+    expect(decodeHtmlEntities('书虫杂记')).toBe('书虫杂记')
+    expect(decodeHtmlEntities('')).toBe('')
   })
 })
 
