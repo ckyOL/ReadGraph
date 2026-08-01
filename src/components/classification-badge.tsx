@@ -1,35 +1,103 @@
-// 分类号芯片（ui-navigation §3「分类法芯片是一等视觉元素」）。
-// CLC/DDC 归并到一级类目名（classificationCategory 映射）；未知体系原样显示。
-// code 走等宽字体（DESIGN.md §3 编目卡标签条）。
+// 分类号芯片（classification-hierarchy §5.1）。
+// 主文本 = 最深已解析段类名（tree-partial 时如实显示已解析段，不推测剩余类名）；
+// 次文本 = 等宽 code 原样；tooltip = 完整面包屑（tree-partial 追加「细分未收录」提示）。
+// 静态树经懒加载器动态 import（独立 chunk，bundle-dynamic-imports），加载前
+// 回退一级类目显示（现状），首屏不阻塞。
+import { memo, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Badge } from '@/components/ui/badge'
-import { classificationCategory } from '@/lib/classification'
+import {
+  loadClcTree,
+  loadClcOverlay,
+  resolveClassificationPath,
+  type ClassificationPath,
+  type ClcNode,
+  type OverlayData,
+} from '@/lib/classification-path'
 import type { ClassificationSystem } from '@/types/entities'
 
 interface ClassificationBadgeProps {
   system: ClassificationSystem
   code: string
-  /** 显式 category（已有编目数据时优先），缺省按 code 归并。 */
+  /** 显式 category（已有编目数据时优先）；无深层路径（none）时回退显示。 */
   category?: string
 }
 
-/**
- * 分类号芯片：等宽 code + 一级类目（tooltip 全称）。
- * 不可归并（lcc/udc/other 或未知 code）时仅显示 code。
- */
-export function ClassificationBadge({ system, code, category }: ClassificationBadgeProps) {
-  const resolved = category ?? classificationCategory(system, code)
+/** 树/overlay 懒加载状态（clc 体系一次性拉取，缓存于模块内）。 */
+function useClassificationPath(
+  system: ClassificationSystem,
+  code: string,
+): ClassificationPath {
+  const [data, setData] = useState<{ tree: ClcNode[]; overlay: OverlayData } | null>(null)
+  useEffect(() => {
+    if (system !== 'clc') return
+    let cancelled = false
+    void Promise.all([loadClcTree(), loadClcOverlay()]).then(([tree, overlay]) => {
+      if (!cancelled) setData({ tree, overlay })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [system])
+  return useMemo(() => {
+    if (system !== 'clc' || !data) return resolveClassificationPath(system, code, [], undefined)
+    return resolveClassificationPath(system, code, data.tree, data.overlay)
+  }, [system, code, data])
+}
+
+interface ClassificationBadgeViewProps {
+  code: string
+  category?: string
+  path: ClassificationPath
+}
+
+/** 纯展示：给定已解析路径渲染芯片（树/overlay 已由调用方解析）。 */
+export function ClassificationBadgeView({ code, category, path }: ClassificationBadgeViewProps) {
+  const { t } = useTranslation('pages')
+  const segments = path.path
+  const deepest = segments.length > 0 ? segments[segments.length - 1] : null
+  // none（无路径）时仅显示 code；显式 category 仍保留（lcc/udc 等无表体系）。
+  const primary = deepest ? deepest.name : category ?? null
+
+  const title = useMemo(() => {
+    if (deepest) {
+      const crumbs = segments
+        .map((s) => `${s.code} ${s.name}`)
+        .join(t('classification.breadcrumbSeparator'))
+      if (path.source === 'tree-partial') {
+        return `${crumbs}\n${t('classification.treePartialHint', { code })}`
+      }
+      return crumbs
+    }
+    return primary ?? t('classification.none')
+  }, [deepest, segments, path.source, primary, t, code])
+
   return (
     <Badge
       variant="outline"
       className="gap-1 rounded-none font-mono"
-      title={resolved ?? undefined}
+      title={title}
     >
       <span>{code}</span>
-      {resolved && (
+      {primary && (
         <span className="max-w-28 truncate text-[10px] font-normal text-muted-foreground">
-          {resolved}
+          {primary}
         </span>
       )}
     </Badge>
   )
 }
+
+/**
+ * 分类号芯片：懒加载 CLC 树并解析到最深层级；非 clc 体系维持一级/原样降级。
+ * 调用点传 `system` + `code` 即可（书库列表/详情），内部走懒加载 + 解析。
+ */
+export const ClassificationBadge = memo(function ClassificationBadge({
+  system,
+  code,
+  category,
+}: ClassificationBadgeProps) {
+  const path = useClassificationPath(system, code)
+  return <ClassificationBadgeView code={code} category={category} path={path} />
+})
