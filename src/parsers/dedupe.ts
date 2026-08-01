@@ -200,6 +200,7 @@ export function dedupeBorrowCycles(
     // 跨文件闭合：只有还回、无配对借出的候选（borrowedAt==returnedAt、
     // status unknown），配对同 barcode/sourceId 的既有开放周期——借出在上一
     // 文件、还回在本文件时，把还回合并进既有周期而非新建零长度周期。
+    // 这是正常配对（跨文件边界），不是数据问题，不产生警告。
     const returnedAt = cand.returnedAt
     if (
       returnedAt != null &&
@@ -224,11 +225,6 @@ export function dedupeBorrowCycles(
           updatedAt: returnedAt,
         }
         skippedFlags[i] = true
-        warnings.push({
-          type: 'unpaired_record',
-          message: `跨文件闭合：barcode=${cand.barcode ?? ''} 借出 ${open.borrowedAt.toISOString()} → 还回 ${returnedAt.toISOString()}`,
-          recordRef: cand.rawRecordIds.map((r) => `raw:${r}`).join(','),
-        })
         return
       }
     }

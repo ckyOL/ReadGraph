@@ -223,7 +223,8 @@ describe('dedupeBorrowCycles', () => {
     expect(c.returnLocation).toBe('中心馆')
     expect(c.borrowLocation).toBe('南山馆')
     expect(c.rawRecordIds).toEqual(['r1', 'r2'])
-    expect(r.warnings.some((w) => w.type === 'unpaired_record')).toBe(true)
+    // 跨文件闭合是正常配对，不产生警告。
+    expect(r.warnings).toEqual([])
   })
 
   it('跨文件闭合不误伤：无既有开放周期时，纯还回候选仍新建周期', () => {
