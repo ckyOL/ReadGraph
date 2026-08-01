@@ -27,6 +27,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | UI 导航规格 | ✅ 已补规格 | [specs/ui-navigation.md](./specs/ui-navigation.md) |
 | 阅读画像与图表 | ✅ 已补规格 | [specs/reading-profile.md](./specs/reading-profile.md) |
 | 设置与系统重置 | ✅ 已补规格 | [specs/settings.md](./specs/settings.md) |
+| OPAC 编目补全 | ✅ 已补规格 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) |
 
 ### 1.2 非目标
 
@@ -211,6 +212,7 @@ pnpm install --ignore-scripts
 | 3 | UI 导航规格 | ✅ 已补 | [specs/ui-navigation.md](./specs/ui-navigation.md) | 路由树、各页布局与空状态、主题/i18n 骨架、用户故事、数据契约、测试清单、React 性能规则引用 — i18n 骨架已落地，UI 装配归入统一 UI 里程碑 |
 | 4 | 阅读画像与图表规格 | ✅ 已补 | [specs/reading-profile.md](./specs/reading-profile.md) | 统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单 — §2 聚合与 §3 buildTheme 已 TDD 落地（20 suites/196 tests 绿）；UI 组件归入统一 UI 里程碑 |
 | 5 | 设置与系统重置规格 | ✅ 已补 | [specs/settings.md](./specs/settings.md) | 偏好持久化、重置的原子性与确认流程、备份导出与重建模式对照；备份序列化纯函数 `src/db/backup.ts` 已 TDD 落地 — UI 装配归入统一 UI 里程碑 |
+| 6 | OPAC 编目补全规格 | ✅ 已补 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) | 深图 getBookDetail 接口契约、字段映射与只填空合并、`CatalogRecord.opacEnrichment` schema 增量、CORS 部署与降级、执行模型 — 纯函数 `parseOpacDetail`/`mapOpacDetail` 待 TDD 落地 |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 
