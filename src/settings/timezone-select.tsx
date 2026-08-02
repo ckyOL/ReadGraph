@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 
-import { getTimeZoneGroups } from '@/lib/timezones'
+import { formatTimeZoneDisplay, getTimeZoneGroups } from '@/lib/timezones'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -30,22 +30,11 @@ export function TimezoneSelect({
   const { t, i18n } = useTranslation('pages')
   const [open, setOpen] = useState(false)
   const groups = useMemo(() => getTimeZoneGroups(i18n.language, value), [i18n.language, value])
-  const selectedEntry = groups
-    .flatMap((group) => group.zones.map((zone) => ({ zone, group })))
-    .find(({ zone }) => zone.iana === value)
 
-  // macOS 式标签：城市 · 国家 (偏移)；无城市（UTC/非法持久值）回退本地化名。
-  const triggerLabel = (() => {
-    const zone = selectedEntry?.zone
-    if (!zone) return value || t('settings.preferences.timezonePlaceholder')
-    const base = zone.city || zone.localizedName
-    const offset = zone.offsetLabel ? ` (${zone.offsetLabel})` : ''
-    const country =
-      selectedEntry.group.countryCode && selectedEntry.group.countryLabel
-        ? ` · ${selectedEntry.group.countryLabel}`
-        : ''
-    return `${base}${country}${offset}`
-  })()
+  // macOS 式标签（timezones.ts formatTimeZoneDisplay 同源）：城市 · 国家 (偏移)。
+  const triggerLabel = value
+    ? formatTimeZoneDisplay(i18n.language, value)
+    : t('settings.preferences.timezonePlaceholder')
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

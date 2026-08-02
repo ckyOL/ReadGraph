@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { formatTimeZoneLabel, getTimeZoneGroups } from './timezones'
+import { formatTimeZoneDisplay, formatTimeZoneLabel, getTimeZoneGroups } from './timezones'
 
 // settings 规格 §2：displayTimezone 候选取 @vvo/tzdb（随 IANA tzdata 发版维护），
 // 运行时经 Intl 计算当前偏移（DST 正确）；本地化名称/偏移/国家名按 locale 生成。
@@ -111,5 +111,26 @@ describe('formatTimeZoneLabel', () => {
     const { localizedName, offsetLabel } = formatTimeZoneLabel('zh-CN', 'Not/AZone', SUMMER)
     expect(localizedName).toBe('Not/AZone')
     expect(offsetLabel).toBe('')
+  })
+})
+
+describe('formatTimeZoneDisplay', () => {
+  it('zh：Asia/Shanghai → 上海 · 中国 (GMT+8)（与 settings 选择器 trigger 同款）', () => {
+    expect(formatTimeZoneDisplay('zh-CN', 'Asia/Shanghai', SUMMER)).toBe('上海 · 中国 (GMT+8)')
+  })
+
+  it('en：Asia/Shanghai → Shanghai · China (GMT+8)', () => {
+    expect(formatTimeZoneDisplay('en', 'Asia/Shanghai', SUMMER)).toBe('Shanghai · China (GMT+8)')
+  })
+
+  it('UTC 无城市无国家：回退本地化名 + 偏移，不带国家后缀', () => {
+    const label = formatTimeZoneDisplay('zh-CN', 'Etc/UTC', SUMMER)
+    expect(label).toContain('协调世界时')
+    expect(label).toContain('GMT')
+    expect(label).not.toContain('·')
+  })
+
+  it('非法时区原样展示 IANA 标识，不抛错', () => {
+    expect(formatTimeZoneDisplay('zh-CN', 'Mars/Olympus', SUMMER)).toBe('Mars/Olympus')
   })
 })

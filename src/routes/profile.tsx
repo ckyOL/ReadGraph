@@ -13,6 +13,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
+import { formatTimeZoneDisplay } from '@/lib/timezones'
 import { useProfileStats } from '@/profile/use-profile-stats'
 import { resolveSystem } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
@@ -69,7 +70,7 @@ type SystemKey = 'auto' | ClassificationSystem
 const SYSTEM_ORDER: ClassificationSystem[] = CLASSIFICATION_SYSTEMS
 
 function ProfilePage() {
-  const { t } = useTranslation('pages')
+  const { t, i18n } = useTranslation('pages')
 
   const [systemKey, setSystemKey] = useState<SystemKey>('auto')
   const [rangeKey, setRangeKey] = useState<RangeKey>('all')
@@ -213,7 +214,8 @@ function ProfilePage() {
           </div>
         )}
         <span className="ml-auto text-xs text-muted-foreground">
-          {t('profile.toolbar.timezone')}: {displayTimezone}
+          {t('profile.toolbar.timezone')}:{' '}
+          {formatTimeZoneDisplay(i18n.language, displayTimezone)}
         </span>
       </div>
 

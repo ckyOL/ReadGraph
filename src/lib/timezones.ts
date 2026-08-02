@@ -160,3 +160,23 @@ export function getTimeZoneGroups(
     return a.countryLabel.localeCompare(b.countryLabel, locale)
   })
 }
+
+/**
+ * macOS 式时区标签：`城市 · 国家 (偏移)`（如「上海 · 中国 (GMT+8)」）。
+ * 无城市（UTC 等）回退本地化名；非法时区原样展示 IANA 标识，不抛错。
+ * 与 settings 时区选择器 trigger 同源（timezone-select.tsx 共用）。
+ */
+export function formatTimeZoneDisplay(
+  locale: string,
+  iana: string,
+  now: Date = new Date(),
+): string {
+  const tz = getTimeZones({ includeUtc: true }).find((t) => t.name === iana)
+  const { localizedName, offsetLabel } = formatTimeZoneLabel(locale, iana, now)
+  const city = tz ? zoneCity(locale, iana, tz.mainCities) : ''
+  const countryLabel = localizedCountryLabel(locale, tz?.countryCode ?? '', localizedName)
+  const base = city || localizedName
+  const offset = offsetLabel ? ` (${offsetLabel})` : ''
+  const country = tz?.countryCode && countryLabel ? ` · ${countryLabel}` : ''
+  return `${base}${country}${offset}`
+}
