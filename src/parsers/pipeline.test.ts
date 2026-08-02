@@ -135,6 +135,49 @@ describe('importPipeline — 端到端 szlib', () => {
   })
 })
 
+describe('importPipeline — 同 ISBN 多条码（一书多册）批内合并（回归）', () => {
+  it('同批同 ISBN 两副本 → 一个 Book、两个 CatalogRecord，周期均挂同一 Book', () => {
+    const rows = [
+      mkRow({ date: '20260501', time: '10:00:00', optype: '读者借出', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'B9001', ISBN: '978-7-5740-1274-5' }),
+      mkRow({ date: '20260510', time: '10:00:00', optype: '读者还回文献', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'B9001', ISBN: '978-7-5740-1274-5' }),
+      mkRow({ date: '20260520', time: '10:00:00', optype: '读者借出', metaid: 9002, title: '合成书目053 . 4/ 合成著者著', barcode: 'B9002', ISBN: '978-7-5740-1274-5' }),
+      mkRow({ date: '20260525', time: '10:00:00', optype: '读者还回文献', metaid: 9002, title: '合成书目053 . 4/ 合成著者著', barcode: 'B9002', ISBN: '978-7-5740-1274-5' }),
+    ]
+    const r = importPipeline(
+      rows.map((d, i) => ({
+        id: `raw-${i + 1}`,
+        importLogId: meta.id,
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      empty,
+      meta,
+    )
+    // 一书一册：两条目共享同一 Book（&isbn13 唯一索引约束）。
+    expect(r.books).toHaveLength(1)
+    expect(r.catalogRecords).toHaveLength(2)
+    for (const cr of r.catalogRecords) {
+      expect(cr.bookId).toBe(r.books[0]!.id)
+    }
+    // 两借阅周期各挂到自己的编目（按条码，不串挂）。
+    expect(r.borrowCycles).toHaveLength(2)
+    const crByBc = new Map(r.catalogRecords.map((cr) => [cr.barcodes[0], cr]))
+    for (const c of r.borrowCycles) {
+      expect(c.bookId).toBe(r.books[0]!.id)
+      expect(c.catalogRecordId).toBe(crByBc.get(c.barcode!)!.id)
+    }
+    // stats.newBooks 计唯一书目。
+    expect(r.importLog.stats.newBooks).toBe(1)
+  })
+})
+
 describe('importPipeline — 第二次导入不破坏既有周期（回归）', () => {
   function runBatch(rows: Record<string, unknown>[], impId: string) {
     const m: ImportMeta = {

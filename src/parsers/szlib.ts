@@ -159,7 +159,13 @@ export const szlibParser: SourceParser = {
       borrowCycles.push(c)
     }
     for (const g of byBarcode.values()) {
-      let openCycle: { borrowedAt: Date; borrowLocation: string | null; rows: RawRow[] } | null = null
+      // 借还配对按书目身份（metaid）而非「最近一次借出」：同组（尤其空条码
+      // 期刊）交错借还（借A 借B 还A 还B）时栈式配对会把还回错配成纯还回，
+      // 或把开放周期挂到错误的书。同一 metaid 的借出未还又借（异常）时先关闭旧周期。
+      const openByMetaId = new Map<
+        string,
+        { borrowedAt: Date; borrowLocation: string | null; rows: RawRow[] }
+      >()
       for (const rr of g.sorted) {
         const { optype } = rr.data
         let utc: Date
@@ -170,21 +176,25 @@ export const szlibParser: SourceParser = {
           continue
         }
         if (optype === '读者借出') {
-          if (openCycle) {
-            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, openCycle.rows)
+          const metaKey = metaIdKeyOf(rr.data.metatable, rr.data.metaid) ?? ''
+          const prev = openByMetaId.get(metaKey)
+          if (prev) {
+            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: prev.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: prev.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, prev.rows)
           }
-          openCycle = { borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null, rows: [rr] }
+          openByMetaId.set(metaKey, { borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null, rows: [rr] })
         } else if (optype === '读者还回文献') {
-          if (openCycle) {
-            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: utc, status: 'returned', borrowLocation: openCycle.borrowLocation, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [...openCycle.rows, rr])
-            openCycle = null
+          const metaKey = metaIdKeyOf(rr.data.metatable, rr.data.metaid) ?? ''
+          const open = openByMetaId.get(metaKey)
+          if (open) {
+            pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: utc, status: 'returned', borrowLocation: open.borrowLocation, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [...open.rows, rr])
+            openByMetaId.delete(metaKey)
           } else {
             pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: utc, returnedAt: utc, status: 'unknown', borrowLocation: null, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [rr])
           }
         }
       }
-      if (openCycle) {
-        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: openCycle.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: openCycle.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, openCycle.rows)
+      for (const open of openByMetaId.values()) {
+        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: open.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, open.rows)
       }
     }
     const books: Partial<Book>[] = []

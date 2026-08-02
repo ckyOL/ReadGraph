@@ -99,7 +99,7 @@ export function importPipeline(
     catalogRecords: existing.catalogRecords,
     borrowCycles: existing.borrowCycles,
   }
-  const { bookIdByBarcode, warnings: ddWarnings } = dedupeCatalogsAndBooks(
+  const { bookIdByBarcode, bookIds, warnings: ddWarnings } = dedupeCatalogsAndBooks(
     candidates,
     candidateBarcodes,
     dedupeState,
@@ -117,6 +117,9 @@ export function importPipeline(
   const crIdsByBarcode = new Map<string, string[]>()
   // metaIdKey → 本批次编目：同 barcode 多编目时按原始行 metaid 消歧。
   const crByMetaKey = new Map<string, CatalogRecord>()
+  // dedupe 的 `new:` 派生 token → 本批已建 Book id：同 ISBN/同题同著者的
+  // 多副本候选（一书多册）复用同一书目，避免重复 Book 违反 &isbn13 唯一索引。
+  const newBookIdByToken = new Map<string, string>()
 
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i]!
@@ -137,35 +140,43 @@ export function importPipeline(
     bcCrs.push(cId)
     crIdsByBarcode.set(barcode, bcCrs)
 
-    let bookId = bookIdByBarcode.get(barcode)
+    // 逐候选取结果：同 barcode 多候选（空条码多书）不互相覆盖。
+    let bookId = bookIds[i] ?? bookIdByBarcode.get(barcode)
     if (!bookId || bookId.startsWith('new:')) {
-      // 新建 Book：ID 取首个命中它的 CatalogRecord.id（一书一编目首记）。
-      const newBookId = bkId(crDerivedInput)
-      bookId = newBookId
-      const bookPartial = cand.bookPartial
-      newBooks.push({
-        id: newBookId,
-        isbn13: (bookPartial.isbn13 ?? null) as string | null,
-        isbn10: (bookPartial.isbn10 ?? null) as string | null,
-        title: (bookPartial.title ?? '') as string,
-        subtitle: (bookPartial.subtitle ?? null) as string | null,
-        authors: (bookPartial.authors ?? []) as string[],
-        translators: (bookPartial.translators ?? []) as string[],
-        publisher: (bookPartial.publisher ?? null) as string | null,
-        publishDate: (bookPartial.publishDate ?? null) as string | null,
-        edition: (bookPartial.edition ?? null) as string | null,
-        pages: (bookPartial.pages ?? null) as number | null,
-        price: (bookPartial.price ?? null) as Book['price'],
-        subjects: (bookPartial.subjects ?? []) as string[],
-        tags: (bookPartial.tags ?? []) as string[],
-        coverUrl: (bookPartial.coverUrl ?? null) as string | null,
-        description: (bookPartial.description ?? null) as string | null,
-        createdAt: now,
-        updatedAt: now,
-        needsReview: (bookPartial.needsReview ?? false) as boolean,
-        sourceIds: (bookPartial.sourceIds ?? [source.id]) as string[],
-        parallelTitles: (bookPartial.parallelTitles ?? []) as string[],
-      })
+      // 新建 Book：token 已建过（同书多副本候选）→ 复用其 id；否则派生新 id。
+      const token = bookId && bookId.startsWith('new:') ? bookId : `new:u:${i}`
+      const reusedId = newBookIdByToken.get(token)
+      if (reusedId) {
+        bookId = reusedId
+      } else {
+        const newBookId = bkId(crDerivedInput)
+        newBookIdByToken.set(token, newBookId)
+        bookId = newBookId
+        const bookPartial = cand.bookPartial
+        newBooks.push({
+          id: newBookId,
+          isbn13: (bookPartial.isbn13 ?? null) as string | null,
+          isbn10: (bookPartial.isbn10 ?? null) as string | null,
+          title: (bookPartial.title ?? '') as string,
+          subtitle: (bookPartial.subtitle ?? null) as string | null,
+          authors: (bookPartial.authors ?? []) as string[],
+          translators: (bookPartial.translators ?? []) as string[],
+          publisher: (bookPartial.publisher ?? null) as string | null,
+          publishDate: (bookPartial.publishDate ?? null) as string | null,
+          edition: (bookPartial.edition ?? null) as string | null,
+          pages: (bookPartial.pages ?? null) as number | null,
+          price: (bookPartial.price ?? null) as Book['price'],
+          subjects: (bookPartial.subjects ?? []) as string[],
+          tags: (bookPartial.tags ?? []) as string[],
+          coverUrl: (bookPartial.coverUrl ?? null) as string | null,
+          description: (bookPartial.description ?? null) as string | null,
+          createdAt: now,
+          updatedAt: now,
+          needsReview: (bookPartial.needsReview ?? false) as boolean,
+          sourceIds: (bookPartial.sourceIds ?? [source.id]) as string[],
+          parallelTitles: (bookPartial.parallelTitles ?? []) as string[],
+        })
+      }
     }
     const newCr: CatalogRecord = {
       id: cId,
@@ -216,6 +227,19 @@ export function importPipeline(
   }
 
   // 6. 周期去重 + ID 派生（§10.4 + §10.6 后段）。
+  // 先建全量编目 metaIdKey 索引（既有 + 本批次），供候选周期预解析归属书目：
+  // 纯还回候选（借出在上一文件）跨文件闭合时按书目身份配对，而不是按条码
+  // 找「第一个」开放周期（空条码多书会连环错配）。
+  const crByMetaKeyFull = new Map<string, CatalogRecord>()
+  for (const cr of [...existing.catalogRecords, ...newCatalogRecords]) {
+    if (cr.metaIdKey) crByMetaKeyFull.set(`${cr.sourceId}|${cr.metaIdKey}`, cr)
+  }
+  for (const cand of candidateCycles) {
+    if (cand.metaIdKey) {
+      cand.bookId =
+        crByMetaKeyFull.get(`${cand.sourceId}|${cand.metaIdKey}`)?.bookId ?? ''
+    }
+  }
   const { cycles, warnings: cyWarnings, skippedFlags } = dedupeBorrowCycles(
     candidateCycles,
     existing.borrowCycles,
@@ -236,10 +260,6 @@ export function importPipeline(
     barcodeCrIds.set(bcKey, ids)
   }
   const crById = new Map(newCatalogRecords.map((cr) => [cr.id, cr] as const))
-  const crByMetaKeyFull = new Map<string, CatalogRecord>()
-  for (const cr of [...existing.catalogRecords, ...newCatalogRecords]) {
-    if (cr.metaIdKey) crByMetaKeyFull.set(`${cr.sourceId}|${cr.metaIdKey}`, cr)
-  }
 
   // 新周期 → 候选对齐（dedupe 输出 = existing + 未跳过候选，按序）。
   const newCandidateByKey = new Map<string, CandidateCycle>()
@@ -308,7 +328,8 @@ export function importPipeline(
   }
   for (const r of rows) {
     const bc = String((r.data as { barcode?: unknown }).barcode ?? '')
-    const byBc = bookIdByBarcode.get(bc)
+    // 空条码行不用 barcode-keyed 映射（多书共享空键、值被最后候选覆盖）→ 走 metaid 消歧。
+    const byBc = bc === '' ? undefined : bookIdByBarcode.get(bc)
     let bookId = byBc && !byBc.startsWith('new:') ? byBc : undefined
     if (!bookId) {
       const metaId = (r.data as { metaid?: unknown }).metaid

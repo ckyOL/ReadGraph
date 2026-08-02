@@ -89,7 +89,8 @@ describe('szlibParser.parse', () => {
     const borrowedAt = cyc.borrowedAt
     if (!borrowedAt) throw new Error('borrowedAt missing')
     expect(borrowedAt.toISOString()).toBe('2026-06-28T06:30:00.000Z')
-    expect(cyc.borrowLocation).toBe('中心图书馆')
+    // 借出地点（addr）随周期携带（fixture 馆名为合成值）。
+    expect(cyc.borrowLocation).toMatch(/^合成馆/)
   })
 
   it('callno 提取分类号（`/` 前部分），system=clc', () => {
@@ -128,7 +129,7 @@ describe('szlibParser.parse', () => {
       metaid: 5750000,
       title: '书虫杂记 = The Book Lovers&apos; Miscellany/ (英)克莱尔·科克-斯塔基著;许梦鸽译',
       ISBN: '978-7-100-00000-0',
-      addr: '宝安中心区图书馆自助馆自助借还机',
+      addr: '合成馆5自助借还机',
       barcode: '04400610000000',
       callno: 'G256.1/83',
       cardno: '0440050000000',
@@ -150,5 +151,37 @@ describe('szlibParser.parse', () => {
     // 文件行序归还在前（rowIndex 1）、借出在后（rowIndex 4）；
     // 周期按时间升序消费，故标注 [借出, 归还] = [4, 1]。
     expect(idxs).toEqual([4, 1])
+  })
+
+  it('交错借还（借A 借B 还A 还B）按 metaid 配对，不产生纯还回/错挂（回归）', () => {
+    // 同组（空条码期刊）时间序：借 A → 借 B → 还 A → 还 B。
+    // 旧栈式配对会产出 B 开放 + A/B 纯还回；应按 metaid 各自闭合。
+    const rows = [
+      { metatable: 'bibliosm', date: '20260510', time: '18:18:29', optype: '读者借出', metaid: 4473139, title: '甲书/ 甲著', barcode: '', ISBN: '9789863446200' },
+      { metatable: 'bibliosm', date: '20260517', time: '18:35:18', optype: '读者借出', metaid: 4746505, title: '乙书/ 乙著', barcode: '', ISBN: '9789865080037' },
+      { metatable: 'bibliosm', date: '20260519', time: '18:16:38', optype: '读者还回文献', metaid: 4473139, title: '甲书/ 甲著', barcode: '', ISBN: '9789863446200' },
+      { metatable: 'bibliosm', date: '20260524', time: '18:47:53', optype: '读者还回文献', metaid: 4746505, title: '乙书/ 乙著', barcode: '', ISBN: '9789865080037' },
+    ]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    expect(r.borrowCycles).toHaveLength(2)
+    const cyc = r.borrowCycles as Array<
+      Record<string, unknown> & { borrowedAt: Date; returnedAt: Date | null; status: string }
+    >
+    const sorted = [...cyc].sort(
+      (a, b) => a.borrowedAt.getTime() - b.borrowedAt.getTime(),
+    )
+    // 两周期均闭合，borrowedAt 分别为 05-10 / 05-17。
+    expect(sorted.map((c) => c.status)).toEqual(['returned', 'returned'])
+    expect(sorted[0]!.returnedAt!.getTime()).toBe(
+      new Date('2026-05-19T10:16:38.000Z').getTime(),
+    )
+    expect(sorted[1]!.returnedAt!.getTime()).toBe(
+      new Date('2026-05-24T10:47:53.000Z').getTime(),
+    )
+    // 消费行标注（_rowIndexes）各自只含对应书的借出+还回。
+    const a = sorted[0]!._rowIndexes as number[]
+    const b = sorted[1]!._rowIndexes as number[]
+    expect(a).toEqual([1, 3])
+    expect(b).toEqual([2, 4])
   })
 })

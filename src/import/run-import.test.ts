@@ -11,6 +11,12 @@ import { executeImport, buildRawRecords } from './run-import'
 import type { ImportMeta } from '@/parsers/pipeline'
 import { szlibParser } from '@/parsers/szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
+// 真实捕获数据：同一 ISBN 978-7-5740-1274-5 出现在两个不同条码（系列卷 3/卷 4），
+// 旧版会产出两条同 ISBN 的 Book，books.bulkPut 触发 &isbn13 唯一索引 ConstraintError。
+import dupIsbn from '@/tests/fixtures/szlib-202605.json'
+// 空条码期刊跨文件导入：4 月（metaid 4942259/4080461…）→ 5 月（4080461/4473139/4746505…）。
+import april from '@/tests/fixtures/szlib-202604.json'
+import may from '@/tests/fixtures/szlib-202605.json'
 
 installFakeIndexedDB()
 
@@ -127,6 +133,127 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     expect(second.importLog.stats.skippedRecords).toBeGreaterThan(0)
     expect(second.borrowCycles.length).toBe(cyclesBefore)
     expect(second.books.length).toBe(booksBefore)
+  })
+
+  it('同 ISBN 多条码（一书多册）不再产出重复 Book（&isbn13 唯一索引回归）', async () => {
+    const text = JSON.stringify(dupIsbn)
+    const result = await executeImport(
+      db,
+      request({ fileName: 'szlib-202605.json', fileSize: text.length, text }),
+    )
+    // 全部 Book 的 isbn13 互不重复（否则 bulkPut 抛 ConstraintError）。
+    const nonNull = result.books.filter((b) => b.isbn13 != null).map((b) => b.isbn13)
+    expect(new Set(nonNull).size).toBe(nonNull.length)
+    // 978-7-5740-1274-5 两副本（条码 04400514707329 / 04400514707325）→ 同一 Book。
+    const merged = result.books.filter((b) => b.isbn13 === '9787574012745')
+    expect(merged).toHaveLength(1)
+    const crs = result.catalogRecords.filter((c) => c.bookId === merged[0]!.id)
+    expect(crs).toHaveLength(2)
+    expect(crs.map((c) => c.barcodes[0]).sort()).toEqual([
+      '04400514707325',
+      '04400514707329',
+    ])
+    // 落库同样成立（唯一索引真实约束）。
+    expect(await db.books.count()).toBe(result.books.length)
+    // 再次导入：书目不变，无新 Book。
+    const second = await executeImport(
+      db,
+      request({ fileName: 'szlib-202605.json', fileSize: text.length, text }),
+    )
+    expect(second.books.length).toBe(result.books.length)
+  })
+
+  it('跨文件空条码期刊：4 月先导 5 月后导，周期按 metaid 配对/闭合、行回填不串挂（回归）', async () => {
+    const aprText = JSON.stringify(april)
+    await executeImport(
+      db,
+      request({ fileName: 'szlib-202604.json', fileSize: aprText.length, text: aprText }),
+    )
+    const mayText = JSON.stringify(may)
+    await executeImport(
+      db,
+      request({ fileName: 'szlib-202605.json', fileSize: mayText.length, text: mayText }),
+    )
+    const books = await db.books.toArray()
+    const crs = await db.catalogRecords.toArray()
+    const cycles = await db.borrowCycles.toArray()
+    const raws = await db.rawRecords.toArray()
+
+    const byIsbn = new Map(books.map((b) => [b.isbn13, b]))
+    const sea = byIsbn.get('9789869408844')! // metaid 4080461（4 月借、5 月还）
+    const fonts = byIsbn.get('9789862358436')! // metaid 4942259（4 月完整周期）
+    const big = byIsbn.get('9789863446200')! // metaid 4473139（5 月完整周期）
+    const tokyo = byIsbn.get('9789865080037')! // metaid 4746505（5 月完整周期）
+    expect(sea).toBeDefined()
+    expect(fonts).toBeDefined()
+    expect(big).toBeDefined()
+    expect(tokyo).toBeDefined()
+
+    const crByMeta = new Map(
+      crs.filter((c) => c.metaIdKey != null).map((c) => [c.metaIdKey, c]),
+    )
+    const cycOf = (bookId: string) =>
+      cycles.filter((c) => c.barcode === null && c.bookId === bookId)
+
+    // 周期：各书恰好一个，借/还时间与行数据一致（跨文件闭合 4080461：0427→0526）。
+    const cases: Array<{ book: typeof sea; from: string; to: string; meta: string }> = [
+      { book: fonts, from: '2026-04-06T10:36:53.000Z', to: '2026-04-08T10:30:35.000Z', meta: '4942259' },
+      { book: sea, from: '2026-04-27T10:19:16.000Z', to: '2026-05-26T10:48:42.000Z', meta: '4080461' },
+      { book: big, from: '2026-05-10T10:18:29.000Z', to: '2026-05-19T10:16:38.000Z', meta: '4473139' },
+      { book: tokyo, from: '2026-05-17T10:35:18.000Z', to: '2026-05-24T10:47:53.000Z', meta: '4746505' },
+    ]
+    for (const { book, from, to, meta } of cases) {
+      const cs = cycOf(book.id)
+      expect(cs).toHaveLength(1)
+      expect(cs[0]!.borrowedAt.toISOString()).toBe(from)
+      expect(cs[0]!.returnedAt!.toISOString()).toBe(to)
+      expect(cs[0]!.status).toBe('returned')
+      expect(cs[0]!.catalogRecordId).toBe(crByMeta.get(meta)!.id)
+    }
+    // 无错误归集：编目各自挂到自己的书（4080461/4473139/4746505 不再指向 4942259 的书）。
+    expect(crByMeta.get('4080461')!.bookId).toBe(sea.id)
+    expect(crByMeta.get('4473139')!.bookId).toBe(big.id)
+    expect(crByMeta.get('4746505')!.bookId).toBe(tokyo.id)
+    expect(crByMeta.get('4942259')!.bookId).toBe(fonts.id)
+
+    // 行回填：借还行 bookId/borrowCycleId 各自归位。
+    const rowMeta = (rr: (typeof raws)[number]): string =>
+      String((rr.data as { metaid?: unknown }).metaid ?? '')
+    const rowOf = (meta: string, optype: string) =>
+      raws.filter(
+        (r) =>
+          rowMeta(r) === meta &&
+          (r.data as { optype?: string }).optype === optype &&
+          (r.data as { barcode?: unknown }).barcode === '',
+      )
+    const rowBook: Array<{ meta: string; optype: string; book: typeof sea }> = [
+      { meta: '4080461', optype: '读者还回文献', book: sea },
+      { meta: '4473139', optype: '读者借出', book: big },
+      { meta: '4473139', optype: '读者还回文献', book: big },
+      { meta: '4746505', optype: '读者借出', book: tokyo },
+      { meta: '4746505', optype: '读者还回文献', book: tokyo },
+    ]
+    for (const { meta, optype, book } of rowBook) {
+      const rows = rowOf(meta, optype)
+      expect(rows.length).toBeGreaterThan(0)
+      for (const rr of rows) {
+        expect(rr.bookId).toBe(book.id)
+        expect(rr.borrowCycleId).toBe(cycOf(book.id)[0]!.id)
+      }
+    }
+    // 自助查询/续借行不回填 bookId（metaid 0/续借无周期）。
+    for (const rr of raws.filter((r) => rowMeta(r) === '0')) {
+      expect(rr.bookId).toBeNull()
+    }
+
+    // 重导 5 月幂等：书目与周期数量不变。
+    const before = { books: books.length, cycles: cycles.length }
+    await executeImport(
+      db,
+      request({ fileName: 'szlib-202605.json', fileSize: mayText.length, text: mayText }),
+    )
+    expect(await db.books.count()).toBe(before.books)
+    expect(await db.borrowCycles.count()).toBe(before.cycles)
   })
 
   it('来源不存在抛错', async () => {
