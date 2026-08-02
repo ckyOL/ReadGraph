@@ -8,6 +8,7 @@ import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
 import { CatalogRecordCard } from '@/components/catalog-record'
+import { BorrowCyclesList } from '@/components/borrow-cycles-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +25,6 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from '@/components/ui/empty'
-import type { BorrowCycle } from '@/types/entities'
 
 const bookIdSchema = z.string().min(1)
 
@@ -175,37 +175,14 @@ function BookDetailPage() {
         </CardHeader>
         <CardContent>
           {sortedCycles.length === 0 ? (
-            <p className="text-sm text-muted-foreground">—</p>
+            <p className="text-sm text-muted-foreground">
+              {t('bookDetail.cycles.empty')}
+            </p>
           ) : (
-            <ul className="divide-y">
-              {sortedCycles.map((c: BorrowCycle) => (
-                <li key={c.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                  <span className="tabular-nums">
-                    {formatDateInTz(c.borrowedAt, displayTimezone)}
-                  </span>
-                  <span className="text-muted-foreground">→</span>
-                  <span className="tabular-nums">
-                    {c.returnedAt
-                      ? formatDateInTz(c.returnedAt, displayTimezone)
-                      : '—'}
-                  </span>
-                  {c.barcode && <span className="font-mono text-xs">{c.barcode}</span>}
-                  {c.status === 'borrowed' && (
-                    <Badge variant="secondary">{t('timeline.status.borrowed')}</Badge>
-                  )}
-                  {c.status === 'returned' && (
-                    <Badge variant="outline" className="rounded-none">
-                      {t('timeline.status.returned')}
-                    </Badge>
-                  )}
-                  {c.status === 'unknown' && (
-                    <Badge variant="outline" className="rounded-none">
-                      {t('timeline.status.unknown')}
-                    </Badge>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <BorrowCyclesList
+              cycles={sortedCycles}
+              displayTimezone={displayTimezone}
+            />
           )}
         </CardContent>
       </Card>

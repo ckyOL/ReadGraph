@@ -62,6 +62,10 @@
   --accent-foreground: #2A2A2A;
   --destructive: #AD3140;
   --destructive-foreground: #FFFFFF;
+  --success: #61764B;
+  --success-foreground: #FFFFFF;
+  --info: #576D79;
+  --info-foreground: #FFFFFF;
   --border: #E8E4DC;
   --input: #E8E4DC;
   --ring: #27477A;
@@ -119,6 +123,10 @@ body {
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -161,6 +169,10 @@ body {
   --accent-foreground: #F0EDE5;
   --destructive: #D96A75;
   --destructive-foreground: #1F1F1D;
+  --success: #A9C087;
+  --success-foreground: #1F1F1D;
+  --info: #8A9DA8;
+  --info-foreground: #1F1F1D;
   --border: #3A3A38;
   --input: #3A3A38;
   --ring: #73B3C1;
