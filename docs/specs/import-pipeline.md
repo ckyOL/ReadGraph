@@ -194,19 +194,19 @@ function importPipeline(
 
 ## 13. 书目标题结构化解析
 
-> szlib 等 ISBD 编目来源的原始 `title` 字段是一条编目串，含正题名、副标题、并列题名、责任者声明；`Book` 实体有独立的 `title`/`subtitle`/`authors`/`translators`/`parallelTitles` 字段，本小节定义从原始串到这些字段的确定性解析规则。脱敏夹具 `src/tests/fixtures/szlib-sample.json` 与本小节同步约定；后续 `szlib` Parser（§2）按此调用 `parseTitle`。
+> szlib 等 ISBD 编目来源的原始 `title` 字段是一条编目串，含正题名、并列题名、责任者声明；`Book` 实体有独立的 `title`/`subtitle`/`authors`/`translators`/`parallelTitles` 字段，本小节定义从原始串到这些字段的确定性解析规则。脱敏夹具 `src/tests/fixtures/szlib-sample.json` 与本小节同步约定；后续 `szlib` Parser（§2）按此调用 `parseTitle`。
 
 **输入形状（ISBD 著录语法，中文语境）**
 
 ```
-正题名[ : 副标题][ = 并列题名][/ 责任者声明[; 其他责任者声明]]
+正题名[ = 并列题名][/ 责任者声明[; 其他责任者声明]]
 ```
 
-- `title` 与 `subtitle` 间以 ` : `（全角/半角空格 + 半角冒号 + 空格）分隔。
 - 正题名段与并列题名段以 ` = ` 分隔；并列题名可有多个，以 ` = ` 重复。
 - `title` 区与责任者区以 `/`（半角）分隔；**无前导空格**、`/` 后接一个空格。
 - 责任者声明间以 `;`（无两侧空格）分隔；同一类型责任者内多人以 `，/,/，` 分隔。
 - 个人成分可含：国别前缀 `(日)`/`(美)`、姓名、可选 `等`（et al.）、可选角色词 `著`/`译`/`编`/`主编`/`校`/`绘`。
+- **不再按 ` : ` 切分副题名**：深图流通数据中 ` : ` 两侧的语义与丛书分册同构（`合成城市笔记 : 地名故事` vs `合成欲望社会 : "丧失大志时代"的新·国富论`），语法上无法可靠区分；切分会导致系列各册在书库列表显示为同名。故 ` : ` 段整体并入正题名，`Book.subtitle` 由 szlib 恒置 `null`（字段保留给未来来源/手动编辑）。
 
 样本（取自 `szlib-sample.json`）：
 
@@ -226,8 +226,7 @@ function importPipeline(
 
 ```ts
 interface ParsedTitle {
-  title: string            // 正题名（去副/并列/责任）；占位书名时原样
-  subtitle: string | null  // ` : ` 右侧拼回原分隔符，无则 null
+  title: string            // 正题名（去并列/责任；占位书名时原样）；` : ` 段并入，不切副题名
   parallelTitles: string[] // ` = ` 右侧各段；空数组
   authors: string[]        // 著/编/主编/绘 命中或无角色词默认
   translators: string[]    // 译/校/校译 命中
@@ -237,12 +236,11 @@ interface ParsedTitle {
 
 **解析步骤**
 
-1. **占位短路**：若 `rawTitle` 精确等于 [szlib-parser §5](../metadata/parsers/szlib-parser.md) 占位书名清单（当前为 `"福田图书馆读者自选图书"`）或为空串 → `isPlaceholder=true`，其余字段 `title=rawTitle`、`authors=[]`、`translators=[]`、`subtitle=null`、`parallelTitles=[]`，直接返回。
+1. **占位短路**：若 `rawTitle` 精确等于 [szlib-parser §5](../metadata/parsers/szlib-parser.md) 占位书名清单（当前为 `"福田图书馆读者自选图书"`）或为空串 → `isPlaceholder=true`，其余字段 `title=rawTitle`、`authors=[]`、`translators=[]`、`parallelTitles=[]`，直接返回。
 2. **切责任区**：以首个 `/` 分割为「题名区」与「责任区」（缺失 `/` 则责任区空）。题名区暂留原始空格。
 3. **题名区拆分**：
-   - 以 ` = ` 分段：第一段为「正题名+副标题」，其余为 `parallelTitles`。
-   - 正题名段再以 ` : ` 切：第一段 → `title`；剩余段以 ` : ` 拼回 → `subtitle`，仅一段或无 ` : ` → `subtitle=null`。
-   - 注意：` : ` 与 ` = ` 必须带两侧空格才作为分隔符；紧贴的半角冒号（如 `J238.2`）不误切。
+   - 以 ` = ` 分段：第一段 → `title`（**整体保留，含 ` : ` 段**，不再切副题名——丛书分册与正题名副题名同构不可辨，切分会使书库列表系列各册同名）；其余段 → `parallelTitles`。
+   - 注意：` = ` 必须带两侧空格才作为分隔符；紧贴的半角冒号（如 `J238.2`）天然在 title 内，无切割。
 4. **责任区拆分**：以 `;` 切责任声明组。
    - 每组以 `，/,/，` 拆个人；每人末尾匹配角色词 `著`/`译`/`编`/`主编`/`校`/`绘`/`校译`/`编著`。
    - 去国别前缀 `(...)`（仅 `(一两个字)` 紧贴姓名开头时去）。
@@ -256,8 +254,8 @@ interface ParsedTitle {
 
 | `Book` 字段 | 来自 | 说明 |
 |---|---|---|
-| `title` | `parseTitle.title` | 正题名；不等于原始编目串 |
-| `subtitle` | `parseTitle.subtitle` | 无则 `null`，非 `null` 时以 ` : ` 拼 `title` 可还原原题名段 |
+| `title` | `parseTitle.title` | 正题名，含 ` : ` 段（丛书分册不切分）；不等于原始编目串 |
+| `subtitle` | —（szlib 恒 `null`） | 不再由 `parseTitle` 产出；字段保留给未来来源/手动编辑 |
 | `parallelTitles` | `parseTitle.parallelTitles` | 默认 `[]`，见下 |
 | `authors` | `parseTitle.authors` | |
 | `translators` | `parseTitle.translators` | |
@@ -275,12 +273,14 @@ interface ParsedTitle {
 - 占位书名被纳入「`isPlaceholder`」后，szlib 选书帮分支（§6 第 4 条）不经 `parseTitle` 的角色拆分，直接独立建 Book；二者可叠加调用次序（先占位短路判定，再走选书帮 barcode 独立分支）。
 - 极端情况：责任者区出现 `=`/`:` 误作题名分隔 → 仅切首个 `/`，题名区不再二次切到 `=`/`:` 邻近区段；样本中无此噪声，本里程碑不做容错。
 - 题名为半角/全角空格混排时保留原始字符；`normalize` 才做全/半角归一。
+- ` : ` 不再切分后，书库列表/搜索/详情/排序均直接以完整题名工作；系列各册（如《合成城市笔记》四册）在列表中显示为各自完整题名，可区分。已导入旧数据需清空重导后生效（`Book.subtitle` 旧值保留，UI 详情页仍按需展示）。
 - 选书帮占位 `title` 与 `Book.title` 都是 `"福田图书馆读者自选图书"`；`needsReview=true` 期间由人工补全覆盖。
 
 **测试清单（Vitest，`src/lib/title.test.ts`）**
 
-- 上述 9 个 non-empty `szlib-sample.json` title 各产出预期 `ParsedTitle`（正题名/副标题/并列/`authors`/`translators`）。
+- 上述 9 个 non-empty `szlib-sample.json` title 各产出预期 `ParsedTitle`（正题名/并列/`authors`/`translators`）；含 ` : ` 的样本（`合成编程指南 : 第7版`、`合成漫画 : 漫画版`）断言完整题名不切分。
 - `""` 与 `"福田图书馆读者自选图书"`：短路返回 `isPlaceholder=true`、空数组。
+- 丛书分册样本：`合成城市笔记 : 地名故事/ 合成作者丙著` → `title='合成城市笔记 : 地名故事'`、`authors=['合成作者丙']`。
 - 角色词覆盖：`著`/`译`/`编`/`绘`/无角色词；多组 `;` 切分；`等` 保留于姓名字符串。
 - 确定性：同一输入两次调用深等价。
 - 与 `normalize` 互不调用（`title.ts` 无依赖 `normalize.ts`）；匹配去重由 `dedupe.ts` 在归一后做。

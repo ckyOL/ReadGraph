@@ -6,10 +6,13 @@ const PLACEHOLDER_TITLES = new Set<string>(['福田图书馆读者自选图书']
 
 /** parseTitle 输出形状。 */
 export interface ParsedTitle {
-  /** 正题名（去副/并列/责任）；占位书名时原样 */
+  /**
+   * 正题名（去并列/责任；占位书名时原样）。
+   * 深图流通数据中 ` : ` 既可能是丛书:分册（合成城市笔记 : 地名故事），
+   * 也可能是正题名:副题名（合成欲望社会 : "丧失大志时代"的新·国富论），
+   * 语法上无法可靠区分，故不再切分，` : ` 段并入正题名（§10.13）。
+   */
   title: string
-  /** ` : ` 右侧拼回原分隔符，无则 null */
-  subtitle: string | null
   /** ` = ` 右侧各段；空数组 */
   parallelTitles: string[]
   /** 著/编/主编/绘 命中或无角色词默认；不含 normalize */
@@ -67,7 +70,6 @@ function splitPersons(group: string): string[] {
 export function parseTitle(rawTitle: string): ParsedTitle {
   const placeholder: ParsedTitle = {
     title: rawTitle,
-    subtitle: null,
     parallelTitles: [],
     authors: [],
     translators: [],
@@ -85,11 +87,10 @@ export function parseTitle(rawTitle: string): ParsedTitle {
   const mainPart = titleParts[0] ?? ''
   const parallelTitles = titleParts.slice(1)
 
-  // 3. 正题名段再以 ` : ` 切：首段 title，剩余以 ` : ` 拼回 subtitle。
-  const mainParts = mainPart.split(' : ')
-  const title = mainParts[0]?.trim() ?? ''
-  const subtitle =
-    mainParts.length > 1 ? mainParts.slice(1).join(' : ').trim() : null
+  // 3. 正题名段整体保留（不再按 ` : ` 切分副题名，见接口注释）：
+  //    丛书分册（合成城市笔记 : 地名故事）与正题名副题名（合成欲望社会 : …）同构不可辨，
+  //    切分会让书库列表里系列各册同名；` : ` 段并入 title 保证列表可区分。
+  const title = mainPart.trim()
 
   // 4. 责任区以 `;` 切责任声明组；每组建/译归属。
   const authors: string[] = []
@@ -118,5 +119,5 @@ export function parseTitle(rawTitle: string): ParsedTitle {
     }
   }
 
-  return { title, subtitle, parallelTitles, authors, translators, isPlaceholder: false }
+  return { title, parallelTitles, authors, translators, isPlaceholder: false }
 }

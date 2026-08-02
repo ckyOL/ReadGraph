@@ -200,7 +200,7 @@ export const szlibParser: SourceParser = {
           ;(b as Record<string, unknown>)._bookKey = key
           books.push(b)
         } else {
-          const b = { isbn13, isbn10, title: parsed.title, subtitle: parsed.subtitle, authors: parsed.authors, translators: parsed.translators, publisher: null, publishDate: null, edition: null, pages: null, price: null, subjects: [], tags: [], coverUrl: null, description: null, needsReview: false, sourceIds: [source.id], parallelTitles: parsed.parallelTitles } as Partial<Book>
+          const b = { isbn13, isbn10, title: parsed.title, subtitle: null, authors: parsed.authors, translators: parsed.translators, publisher: null, publishDate: null, edition: null, pages: null, price: null, subjects: [], tags: [], coverUrl: null, description: null, needsReview: false, sourceIds: [source.id], parallelTitles: parsed.parallelTitles } as Partial<Book>
           ;(b as Record<string, unknown>)._bookKey = key
           books.push(b)
         }

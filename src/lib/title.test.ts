@@ -11,7 +11,6 @@ describe('parseTitle', () => {
   it('合成绘本甲 = Synthetic story/ (日)合成作者著;合成译者译', () => {
     expect(parseTitle('合成绘本甲 = Synthetic story/ (日)合成作者著;合成译者译')).toEqual({
       title: '合成绘本甲',
-      subtitle: null,
       parallelTitles: ['Synthetic story'],
       authors: ['合成作者'],
       translators: ['合成译者'],
@@ -19,10 +18,9 @@ describe('parseTitle', () => {
     })
   })
 
-  it('合成编程指南 : 第7版/ (美)合成作者甲著;合成译者甲译', () => {
+  it('合成编程指南 : 第7版/ (美)合成作者甲著;合成译者甲译（不再切副题名）', () => {
     expect(parseTitle('合成编程指南 : 第7版/ (美)合成作者甲著;合成译者甲译')).toEqual({
-      title: '合成编程指南',
-      subtitle: '第7版',
+      title: '合成编程指南 : 第7版',
       parallelTitles: [],
       authors: ['合成作者甲'],
       translators: ['合成译者甲'],
@@ -35,7 +33,6 @@ describe('parseTitle', () => {
       parseTitle('合成算法论 = Introduction to algorithms/ 合成作者等著;合成译者译'),
     ).toEqual({
       title: '合成算法论',
-      subtitle: null,
       parallelTitles: ['Introduction to algorithms'],
       authors: ['合成作者等'],
       translators: ['合成译者'],
@@ -46,7 +43,6 @@ describe('parseTitle', () => {
   it('合成深度学/ (美)合成作者等著;合成译者等译', () => {
     expect(parseTitle('合成深度学/ (美)合成作者等著;合成译者等译')).toEqual({
       title: '合成深度学',
-      subtitle: null,
       parallelTitles: [],
       authors: ['合成作者等'],
       translators: ['合成译者等'],
@@ -57,7 +53,6 @@ describe('parseTitle', () => {
   it('合成图解手册/ (日)合成作者乙著;合成译者乙译', () => {
     expect(parseTitle('合成图解手册/ (日)合成作者乙著;合成译者乙译')).toEqual({
       title: '合成图解手册',
-      subtitle: null,
       parallelTitles: [],
       authors: ['合成作者乙'],
       translators: ['合成译者乙'],
@@ -68,7 +63,6 @@ describe('parseTitle', () => {
   it('合成亲密论/ (美)合成作者著;合成译者译', () => {
     expect(parseTitle('合成亲密论/ (美)合成作者著;合成译者译')).toEqual({
       title: '合成亲密论',
-      subtitle: null,
       parallelTitles: [],
       authors: ['合成作者'],
       translators: ['合成译者'],
@@ -76,12 +70,21 @@ describe('parseTitle', () => {
     })
   })
 
-  it('合成漫画 : 漫画版/ 合成作者著（无译者）', () => {
+  it('合成漫画 : 漫画版/ 合成作者著（无译者，不再切副题名）', () => {
     expect(parseTitle('合成漫画 : 漫画版/ 合成作者著')).toEqual({
-      title: '合成漫画',
-      subtitle: '漫画版',
+      title: '合成漫画 : 漫画版',
       parallelTitles: [],
       authors: ['合成作者'],
+      translators: [],
+      isPlaceholder: false,
+    })
+  })
+
+  it('丛书分册不切分：合成城市笔记 : 地名故事 → 完整题名', () => {
+    expect(parseTitle('合成城市笔记 : 地名故事/ 合成作者丙著')).toEqual({
+      title: '合成城市笔记 : 地名故事',
+      parallelTitles: [],
+      authors: ['合成作者丙'],
       translators: [],
       isPlaceholder: false,
     })
@@ -90,7 +93,6 @@ describe('parseTitle', () => {
   it('福田图书馆读者自选图书 → 占位短路', () => {
     expect(parseTitle('福田图书馆读者自选图书')).toEqual({
       title: '福田图书馆读者自选图书',
-      subtitle: null,
       parallelTitles: [],
       authors: [],
       translators: [],
@@ -101,7 +103,6 @@ describe('parseTitle', () => {
   it('无条码测试书/ 无条码作者著（无 ISBN 测试）', () => {
     expect(parseTitle('无条码测试书/ 无条码作者著')).toEqual({
       title: '无条码测试书',
-      subtitle: null,
       parallelTitles: [],
       authors: ['无条码作者'],
       translators: [],
@@ -112,7 +113,6 @@ describe('parseTitle', () => {
   it('空串短路返回 isPlaceholder=true', () => {
     expect(parseTitle('')).toEqual({
       title: '',
-      subtitle: null,
       parallelTitles: [],
       authors: [],
       translators: [],
@@ -157,8 +157,8 @@ describe('parseTitle', () => {
     }
   })
 
-  it('不调用 normalize（无依赖）——紧贴冒号不误切', () => {
-    // J238.2 没有 ` : `（带两侧空格），不应把 J238.2 拆出 subtitle。
+  it('不调用 normalize（无依赖）——紧贴半角冒号（如 J238.2）不误切', () => {
+    // J238.2 是分类号而非分隔符；` : ` 只要求两侧空格，紧贴冒号天然安全。
     expect(parseTitle('J238.2/ 某作者著').title).toBe('J238.2')
   })
 })
