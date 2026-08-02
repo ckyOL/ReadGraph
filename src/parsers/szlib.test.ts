@@ -184,4 +184,31 @@ describe('szlibParser.parse', () => {
     expect(a).toEqual([1, 3])
     expect(b).toEqual([2, 4])
   })
+
+  it('只有借出无归还（EOF 仍开启）：status=borrowed、returnedAt=null（borrow-cycle 规则表）', () => {
+    const rows = [
+      { metatable: 'bibliosm', date: '20260510', time: '18:18:29', optype: '读者借出', metaid: 4473139, title: '甲书/ 甲著', barcode: 'B1', ISBN: '9789863446200', addr: '中心馆' },
+    ]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    expect(r.borrowCycles).toHaveLength(1)
+    const c = r.borrowCycles[0]!
+    expect(c.status).toBe('borrowed')
+    expect(c.returnedAt).toBeNull()
+    expect(c.borrowLocation).toBe('中心馆')
+  })
+
+  it('同一书目借出未还又借：前一周期 status=unknown（规则表），末周期 EOF 开启为 borrowed', () => {
+    const rows = [
+      { metatable: 'bibliosm', date: '20260510', time: '18:18:29', optype: '读者借出', metaid: 4473139, title: '甲书/ 甲著', barcode: 'B1', ISBN: '9789863446200' },
+      { metatable: 'bibliosm', date: '20260601', time: '10:00:00', optype: '读者借出', metaid: 4473139, title: '甲书/ 甲著', barcode: 'B1', ISBN: '9789863446200' },
+    ]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    expect(r.borrowCycles).toHaveLength(2)
+    const sorted = [...r.borrowCycles].sort(
+      (a, b) => (a.borrowedAt ?? new Date(0)).getTime() - (b.borrowedAt ?? new Date(0)).getTime(),
+    )
+    expect(sorted.map((c) => c.status)).toEqual(['unknown', 'borrowed'])
+    expect(sorted[0]!.returnedAt).toBeNull()
+    expect(sorted[1]!.returnedAt).toBeNull()
+  })
 })

@@ -161,7 +161,8 @@ export const szlibParser: SourceParser = {
     for (const g of byBarcode.values()) {
       // 借还配对按书目身份（metaid）而非「最近一次借出」：同组（尤其空条码
       // 期刊）交错借还（借A 借B 还A 还B）时栈式配对会把还回错配成纯还回，
-      // 或把开放周期挂到错误的书。同一 metaid 的借出未还又借（异常）时先关闭旧周期。
+      // 或把开放周期挂到错误的书。同一 metaid 的借出未还又借（异常）时先关闭旧周期
+      // ——连续两次借出，前一周期归还日期无从确定，status='unknown'（borrow-cycle.md 规则表）。
       const openByMetaId = new Map<
         string,
         { borrowedAt: Date; borrowLocation: string | null; rows: RawRow[] }
@@ -193,8 +194,10 @@ export const szlibParser: SourceParser = {
           }
         }
       }
+      // 文件末尾仍开启的周期 = 只有借出、无归还 → status='borrowed'、
+      // returnedAt=null（borrow-cycle.md 派生规则表第一行）。
       for (const open of openByMetaId.values()) {
-        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: open.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, open.rows)
+        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: null, status: 'borrowed', borrowLocation: open.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, open.rows)
       }
     }
     const books: Partial<Book>[] = []

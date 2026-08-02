@@ -56,6 +56,7 @@
    - 遇到 `"读者还回文献"`：
      - 若当前已有开启的周期，将其作为归还时间，闭合该周期。同时提取 `returnLocation` 为当前记录的 `addr`。
      - 若无开启的周期（即“只有还没有借”，可能因为借出记录在导出的时间范围外），则创建一个状态为 `unknown` 的半闭合周期，并记录 `catalogRecordId`，以及 `returnLocation` 为当前记录的 `addr`。
+   - 文件末尾仍开启的周期（只有借出、无归还）→ `status='borrowed'`、`returnedAt=null`（对照 [borrow-cycle 派生规则表](../borrow-cycle.md)第一行）。
 
 ### 4. 数据去重与合并
 由于深图新 API **提供了 ISBN 和系统内部 metaid**，解析器在去重与合并方面更为可靠：
