@@ -164,7 +164,8 @@ test.describe('import critical path (G-5)', () => {
     })
     await expect(page.getByText(/Encoding: utf-8|编码: utf-8/)).toBeVisible()
     await expect(page.getByText(/First 10 rows preview|前 10 条预览/)).toBeVisible()
-    await expect(page.getByText('再见绘梨').first()).toBeVisible()
+    // 预览可见夹具首行（隐私虚构化后标题为「合成书目001」）。
+    await expect(page.getByText('合成书目001').first()).toBeVisible()
     // 预览已按 parser.filterRows 剔除「自助查询」等无用条目（样本含自助查询/读者续借行）。
     await expect(page.locator('table').getByText('自助查询')).toHaveCount(0)
     await expect(page.locator('table').getByText('读者续借')).toHaveCount(0)
@@ -180,7 +181,7 @@ test.describe('import critical path (G-5)', () => {
     // 落库 → 书库可见（含分类号芯片与来源徽标）。
     await page.getByRole('link', { name: /Go to library|去书库/ }).click()
     await expect(page).toHaveURL('/library')
-    await expect(page.getByRole('link', { name: '再见绘梨' })).toBeVisible()
+    await expect(page.getByRole('link', { name: '合成书目001' })).toBeVisible()
     await expect(page.getByText('深圳图书馆').first()).toBeVisible()
 
     // Dashboard 统计卡片。
@@ -188,6 +189,6 @@ test.describe('import critical path (G-5)', () => {
     await expect(page.locator('[data-stat="books"]')).toContainText('11')
     await expect(page.locator('[data-stat="cycles"]')).toContainText('12')
     // 最近借阅列表出现导入的书。
-    await expect(page.getByText('再见绘梨').first()).toBeVisible()
+    await expect(page.getByText('合成书目001').first()).toBeVisible()
   })
 })
