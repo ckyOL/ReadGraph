@@ -210,7 +210,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
           ))}
         </nav>
       )}
-      <div ref={ref} className="h-[360px] w-full" lang={i18n.language} />
+      <div ref={ref} className="h-[480px] w-full" lang={i18n.language} />
     </div>
   )
 }

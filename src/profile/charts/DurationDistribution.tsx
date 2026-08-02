@@ -104,7 +104,7 @@ function DurationDistributionImpl({
           {fmtDays(summary.medianDurationDays)}
         </span>
       </div>
-      <div ref={ref} className="h-[220px] w-full" lang={language} />
+      <div ref={ref} className="h-[320px] w-full" lang={language} />
     </div>
   )
 }

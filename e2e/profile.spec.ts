@@ -41,13 +41,17 @@ test.describe('profile page — charts with seeded data', () => {
     await page.goto('/profile')
     // 概览卡片出现（标记数据已灌入）。
     await expect(page.getByText(/Books|藏书数/).first()).toBeVisible()
-    // 至少 4 个 canvas（treemap + gantt + volume + duration）。
-    await expect(page.locator('canvas')).toHaveCount(4, { timeout: 10000 })
-    // 每个 canvas 应有非零尺寸。
-    const canvases = page.locator('canvas')
-    const count = await canvases.count()
-    for (let i = 0; i < count; i++) {
-      const box = await canvases.nth(i).boundingBox()
+    // 图表区为 Tabs：逐个激活，每次恰好一个 canvas（treemap + gantt + volume + duration）。
+    const chartTabs = [
+      /Classification distribution|分类法分布/,
+      /Borrow timeline|借阅甘特带/,
+      /Borrow volume|借阅量/,
+      /Borrow duration distribution|借阅时长分布/,
+    ]
+    for (const name of chartTabs) {
+      await page.getByRole('tab', { name }).click()
+      await expect(page.locator('canvas')).toHaveCount(1, { timeout: 10000 })
+      const box = await page.locator('canvas').boundingBox()
       expect(box).not.toBeNull()
       expect(box!.width).toBeGreaterThan(10)
       expect(box!.height).toBeGreaterThan(10)
@@ -60,11 +64,11 @@ test.describe('profile page — charts with seeded data', () => {
     const firstCanvas = page.locator('canvas').first()
     const before = await firstCanvas.screenshot()
     // 切换时间范围 Select 为近 1 年，触发柱图/treemap 重绘（useTransition 期间
-    // 显示 Skeleton，canvas 数量短暂变化 → 等待过渡完成后再断言）。
+    // 当前 tab 内容显示 Skeleton，canvas 短暂消失 → 等待过渡完成后再断言）。
     await page.getByRole('combobox').first().click()
     await page.getByRole('option', { name: /Last 1 year|近 1 年/ }).click()
     // 切换「近 1 年」后：2024 夹具落在窗口外，借阅量/甘特降级为 Empty（无 canvas），
-    // 分类 treemap / 时长分布仍有数据。断言 canvas 仍存在（重绘生效），不要求恰好 4。
+    // 分类 treemap（默认 tab）与时长分布仍有数据。断言 canvas 存在（重绘生效）。
     await expect.poll(
       async () => await page.locator('canvas').count(),
       { timeout: 15000, message: 'canvas count settles after transition' },
@@ -186,14 +190,16 @@ test.describe('profile page — gantt multi-lane render (performance baseline)',
     }, [SEED_KEY, payload] as const)
 
     await page.goto('/profile')
-    // 4 图表全部渲染（含 150-lane 甘特），canvas 稳定为 4。
+    // 切到甘特 tab：150 lane 大库下高度自适应封顶（min 280 / max 624），不再压扁 lane。
+    await page.getByRole('tab', { name: /Borrow timeline|借阅甘特带/ }).click()
     await expect.poll(
       async () => await page.locator('canvas').count(),
-      { timeout: 20000, message: 'multi-lane canvas count settles at 4' },
-    ).toBe(4)
-    const ganttCanvas = page.locator('canvas').nth(1)
-    const box = await ganttCanvas.boundingBox()
+      { timeout: 20000, message: 'gantt canvas settles at 1' },
+    ).toBe(1)
+    const box = await page.locator('canvas').boundingBox()
     expect(box).not.toBeNull()
     expect(box!.width).toBeGreaterThan(50)
+    // 150 lane 超出可视上限 → 视口封顶 624px 且启用 y 轴缩放，高度远大于旧固定 320px。
+    expect(box!.height).toBeGreaterThan(400)
   })
 })

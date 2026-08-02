@@ -106,7 +106,7 @@ function BorrowVolumeBarImpl({
     )
   }
 
-  return <div ref={ref} className="h-[260px] w-full" lang={language} />
+  return <div ref={ref} className="h-[360px] w-full" lang={language} />
 }
 
 export const BorrowVolumeBar = memo(BorrowVolumeBarImpl)

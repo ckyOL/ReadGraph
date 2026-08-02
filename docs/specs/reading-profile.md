@@ -104,19 +104,22 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 数据色（蓝宝石/青绿方向）**只在本页发力**，其余界面保持冷静灰（[design-decisions](../design-decisions.md) 阅读图谱方向 B）。
 - import 策略：`echarts` 核按需引入 `echarts/core` + 注册的图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer`，不走 `echarts` barrel；shadcn 组件按需 import（`bundle-barrel-imports`）。ECharts 初始化组件用 `lazy()`/动态 import 在 `/profile` 激活时加载（`bundle-dynamic-imports`、`bundle-conditional`）。
 - **v6 实例化约束**（图表实例化落地时必须遵守，规避 v6 breaking）：
-  - `option.legend.top`/`bottom` 显式声明锚定位置，不依赖 v6 默认（v6 legend 默认移到底部，与本页图谱块竖向堆叠布局冲突）。
+  - `option.legend.top`/`bottom` 显式声明锚定位置，不依赖 v6 默认（v6 legend 默认移到底部，与本页图谱块布局冲突）。
   - 若使用 `axisName`（轴标题），显式设 `grid.outerBoundsMode: 'none'`（或对应轴 `nameMoveOverlap: false`），避免 v6 默认开启的外溢/重叠规避导致轴位微移。
 
 ## 4. UI 设计说明
 
 **布局**（单页全幅，方向 B 图谱语言）：
 - 顶部一行概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 平均借阅时长），等宽数字 + 标签；卡片窄、克制，不抢图谱视觉。
-- 卡片下方为图表区，竖向堆叠的「图谱块」：分类法 treemap（大块，高度 ≥ 320px）→ 借阅甘特带（高度按 lane 数自适应，≥ 280px）→ 借阅量柱图 + 时长分布（两列，移动端折叠为单列）。
-- 图表是主角、全幅；无外层装饰卡片包裹图谱块（[ui-navigation §3](ui-navigation.md#3-各功能页布局与空状态) 禁卡片套卡片），仅以 `border-t` 分隔。
+- 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅量 / 借阅时长分布，标签复用 `profile.chart.*.title`，不新增 i18n 键）：
+  - 每次仅激活一个图谱块，独占全幅宽度与视口高度，互不挤压（书多时甘特 lane 不再被压扁）；
+  - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）。
+- 图表是主角、全幅；无外层装饰卡片包裹图谱块（[ui-navigation §3](ui-navigation.md#3-各功能页布局与空状态) 禁卡片套卡片）；TabsList 即区块标题，内容区不重复标题。
 
 **交互**：
 - 顶部工具条：分类体系切换（`SegmentedControl`：CLC/DDC/LCC/UDC，仅列数据中实际出现的体系）、时间范围（`Select`：全部 / 近 1 年 / 近 3 年 / 自定义区间）、displayTimezone 跟随设置（不在本页改，只显示当前值）。
-- 切换交互走 `useTransition` 标注非紧迫更新，期间图表区显示 `Skeleton`（不阻断概览卡片与导航，`rerender-transitions`/`rendering-usetransition-loading`）。
+- 切换交互走 `useTransition` 标注非紧迫更新，期间当前 tab 内容区显示 `Skeleton`（tab 栏保持稳定，不闪断；不阻断概览卡片与导航，`rerender-transitions`/`rendering-usetransition-loading`）。
+- 图表区 Tabs：切换 tab 时非激活图谱块卸载（echarts 实例随卸载 `dispose`，仅激活块占用 DOM/定时器；甘特 `nowTick` 定时器仅在激活时运行）；切回时按当前 option 重新 init，容器尺寸变化由 `useECharts` 的 ResizeObserver 自适应 `resize`。
 - treemap 块下钻（点一级类目展开子类）为可选增强；本里程碑要求一级呈现可交互高亮与 tooltip，子类下钻标 TODO。
 - 无破坏性操作：本页只读，不做任何写库或重置入口。
 
@@ -126,7 +129,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 加载态：`useLiveQuery` 未就绪时 `Skeleton`；大数据 Worker 计算时 `Progress`。
 - 错误态：聚合抛错（数据异常的周期）被边界捕获，对应图谱块降级为 `Empty` + 错误文案（不崩溃整页）。
 
-**响应式**：移动端单列堆叠，图表最小高度不塌缩；甘特带在窄屏启用横向滚动（`overflow-x-auto`）而非压缩 lane。所有可见文本经 `react-i18next` `t()`，namespace `pages`（`profile.*`），禁止硬编码中英文字面量（[i18n-conventions](../i18n-conventions.md)）。
+**响应式**：移动端 TabsList 允许横向滚动（`overflow-x-auto`）而非换行挤压标签；图表最小高度不塌缩；甘特带在窄屏启用横向滚动（`overflow-x-auto`）而非压缩 lane。所有可见文本经 `react-i18next` `t()`，namespace `pages`（`profile.*`），禁止硬编码中英文字面量（[i18n-conventions](../i18n-conventions.md)）。
 
 ## 5. 数据契约与边界
 
@@ -149,6 +152,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 5. 作为用户，切中英 → 概览卡片标签、treemap 类目名、坐标轴月份名、tooltip 均切换语言。
 6. 作为用户，大库（≥ GANTT_THRESHOLD）打开 `/profile` → 甘特带视口下采样，滚动顺畅、概览卡片与其他图表仍秒开；聚合结果数值与全量一致。
 7. 作为用户，存在 `borrowedAt > returnedAt` 异常数据 → 该周期在甘特标记异常态，不进入时长直方图，整页不崩溃。
+8. 作为用户，书多（lane 数超过可视上限 26）→ 甘特 tab 高度自适应封顶 624px 并启用 y 轴缩放，lane 高度保持可读，不被压扁；切 tab 后各图表全幅呈现，互不挤压。
 
 ## 7. 测试清单
 
@@ -164,10 +168,10 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
-- 脱敏数据下 ECharts canvas 非空像素（treemap/柱图/甘特分别校验）。
+- 脱敏数据下逐 tab 激活后 ECharts canvas 非空像素（treemap/柱图/甘特分别校验；每次仅激活一个 canvas）。
 - 分类体系 `SegmentedControl` 切换后 canvas 重绘、类目 tooltip 文本随 locale 切换。
 - 暗色切换 → 图表配色变化（canvas 像素采样差异），reload 仍为暗色。
-- 大库夹具下甘特视口下采样：滚动流畅，不一次性渲染超量矩形（性能基线，可选）。
+- 大库夹具下甘特 tab：高度自适应封顶（`[280, 624]px`）并启用 y 轴缩放，滚动流畅，不一次性渲染超量矩形（性能基线，可选）。
 
 ## 8. React 性能规则引用
 

@@ -4,7 +4,7 @@
 // dataZoom 视口；超量时按最近活跃 lane 封顶渲染矩形数（不一次性渲染超量矩形）。
 import { memo, useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { EChartsOption } from 'echarts'
+import type { EChartsOption, DataZoomComponentOption } from 'echarts'
 
 import type { ProfileStatsResult } from '@/lib/profile-stats'
 import type { BorrowStatus } from '@/types/entities'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/empty'
 
 import { useECharts, useChartPalette } from './use-echarts'
+import { computeGanttViewport, GANTT_MAX_VISIBLE_LANES } from './gantt-viewport'
 
 /** 大数据启用视口下采样的阈值（reading-profile §5 候选 5000 区间）。 */
 export const GANTT_THRESHOLD = 5000
@@ -65,8 +66,14 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
 
   const hasData = data.length > 0
 
-  const { option, laneCount } = useMemo(() => {
-    if (!hasData) return { option: null as EChartsOption | null, laneCount: 0 }
+  const { option, laneCount, viewport } = useMemo(() => {
+    if (!hasData) {
+      return {
+        option: null as EChartsOption | null,
+        laneCount: 0,
+        viewport: computeGanttViewport(0),
+      }
+    }
 
     // 选择保留的 lane：超量时按最近 borrowedAt 排序取前 N，使矩形数封顶。
     const ranked = data
@@ -125,6 +132,38 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
 
     const laneLabels = lanes.map((l) => l.label)
 
+    // 视口高度按 lane 数自适应；超可视上限时启用 y 轴缩放（slider 拖拽浏览，
+    // 默认窗口 = 最新可视 lane 数），lane 保持可读高度不被压扁。
+    const viewport = computeGanttViewport(lanes.length)
+    const dataZoom: DataZoomComponentOption[] = [
+      // 大数据（≥ GANTT_THRESHOLD）x 视口下采样：域外折叠为疏密指示条。
+      ...(downsample
+        ? ([{ type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+            {
+              type: 'slider',
+              xAxisIndex: 0,
+              height: 18,
+              bottom: 12,
+              filterMode: 'none',
+            }] satisfies DataZoomComponentOption[])
+        : []),
+      // lane 超可视上限：右侧 y 缩放 slider；inverse 下首位 lane 在顶，
+      // 默认窗口 [0, 可视上限) 即最新 lane。
+      ...(viewport.yZoom
+        ? ([{
+              type: 'slider',
+              yAxisIndex: 0,
+              width: 14,
+              right: 0,
+              top: 8,
+              bottom: downsample ? 48 : 16,
+              filterMode: 'none',
+              startValue: 0,
+              endValue: GANTT_MAX_VISIBLE_LANES - 1,
+            }] satisfies DataZoomComponentOption[])
+        : []),
+    ]
+
     const opt: EChartsOption = {
       tooltip: {
         formatter: (p) => {
@@ -141,7 +180,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
       },
       grid: {
         left: 8,
-        right: 16,
+        right: viewport.yZoom ? 22 : 16,
         top: 8,
         bottom: downsample ? 48 : 16,
         containLabel: true,
@@ -163,12 +202,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
           fontSize: 11,
         },
       },
-      dataZoom: downsample
-        ? [
-            { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-            { type: 'slider', xAxisIndex: 0, height: 18, bottom: 12, filterMode: 'none' },
-          ]
-        : undefined,
+      dataZoom,
       series: [
         {
           type: 'custom',
@@ -196,7 +230,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
         },
       ],
     }
-    return { option: opt, laneCount: lanes.length }
+    return { option: opt, laneCount: lanes.length, viewport }
   }, [data, hasData, now, palette, t, i18n.language])
 
   const ref = useECharts(option)
@@ -221,7 +255,12 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
           {t('profile.chart.density')} · {collapsed}
         </span>
       )}
-      <div ref={ref} className="h-[320px] w-full overflow-x-auto" lang={i18n.language} />
+      <div
+        ref={ref}
+        className="w-full overflow-x-auto"
+        style={{ height: viewport.height }}
+        lang={i18n.language}
+      />
     </div>
   )
 }

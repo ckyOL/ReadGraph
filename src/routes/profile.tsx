@@ -20,6 +20,12 @@ import type { ClassificationSystem } from '@/types/entities'
 import { CLASSIFICATION_SYSTEMS } from '@/lib/classification'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '@/components/ui/tabs'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -237,66 +243,90 @@ function ProfilePage() {
       ) : (
         <>
           <SummaryCards result={result} pending={isPending || computing} />
-          <div className="mt-4 space-y-6">
-            {isPending || computing ? (
-              <ProfileSkeleton />
-            ) : (
-              <>
-                <ChartSection title={t('profile.chart.classification.title')}>
-                  <ErrorBoundary title={errorTitle} description={errorDesc}>
-                    <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
-                      <ClassificationTreemap
-                        data={result?.classification ?? []}
-                        system={effectiveSystem}
-                        emptyTitle={partialTitle}
-                        emptyDescription={partialDesc}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                </ChartSection>
+          {/* 图表区 Tabs：每次激活一个图谱块，独占全幅视口，互不挤压（reading-profile §4）。 */}
+          <Tabs defaultValue="classification" className="mt-4 gap-3">
+            <TabsList className="overflow-x-auto">
+              <TabsTrigger value="classification">
+                {t('profile.chart.classification.title')}
+              </TabsTrigger>
+              <TabsTrigger value="gantt">
+                {t('profile.chart.gantt.title')}
+              </TabsTrigger>
+              <TabsTrigger value="volume">
+                {t('profile.chart.volume.title')}
+              </TabsTrigger>
+              <TabsTrigger value="duration">
+                {t('profile.chart.duration.title')}
+              </TabsTrigger>
+            </TabsList>
 
-                <ChartSection title={t('profile.chart.gantt.title')}>
-                  <ErrorBoundary title={errorTitle} description={errorDesc}>
-                    <Suspense fallback={<Skeleton className="h-[320px] w-full" />}>
-                      <BorrowGantt
-                        data={result?.gantt ?? []}
-                        emptyTitle={partialTitle}
-                        emptyDescription={partialDesc}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                </ChartSection>
+            <TabsContent value="classification">
+              {isPending || computing ? (
+                <Skeleton className="h-[480px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[480px] w-full" />}>
+                    <ClassificationTreemap
+                      data={result?.classification ?? []}
+                      system={effectiveSystem}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
 
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  <ChartSection title={t('profile.chart.volume.title')}>
-                    <ErrorBoundary title={errorTitle} description={errorDesc}>
-                      <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
-                        <BorrowVolumeBar
-                          data={result?.borrowVolume ?? []}
-                          displayTimezone={displayTimezone}
-                          emptyTitle={partialTitle}
-                          emptyDescription={partialDesc}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </ChartSection>
+            <TabsContent value="gantt">
+              {isPending || computing ? (
+                <Skeleton className="h-[624px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[624px] w-full" />}>
+                    <BorrowGantt
+                      data={result?.gantt ?? []}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
 
-                  <ChartSection title={t('profile.chart.duration.title')}>
-                    <ErrorBoundary title={errorTitle} description={errorDesc}>
-                      <Suspense fallback={<Skeleton className="h-[240px] w-full" />}>
-                        <DurationDistribution
-                          data={result?.durationDistribution ?? []}
-                          summary={result?.summary ?? EMPTY_SUMMARY}
-                          emptyTitle={partialTitle}
-                          emptyDescription={partialDesc}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </ChartSection>
-                </div>
-              </>
-            )}
-          </div>
+            <TabsContent value="volume">
+              {isPending || computing ? (
+                <Skeleton className="h-[360px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                    <BorrowVolumeBar
+                      data={result?.borrowVolume ?? []}
+                      displayTimezone={displayTimezone}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
+
+            <TabsContent value="duration">
+              {isPending || computing ? (
+                <Skeleton className="h-[360px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                    <DurationDistribution
+                      data={result?.durationDistribution ?? []}
+                      summary={result?.summary ?? EMPTY_SUMMARY}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>
@@ -309,21 +339,6 @@ const EMPTY_SUMMARY = {
   inBorrow: 0,
   avgDurationDays: null as number | null,
   medianDurationDays: null as number | null,
-}
-
-function ChartSection({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className="border-t border-border pt-4">
-      <h2 className="mb-2 text-sm font-medium text-muted-foreground">{title}</h2>
-      {children}
-    </section>
-  )
 }
 
 const SummaryCards = memo(function SummaryCards({
@@ -363,18 +378,15 @@ const SummaryCards = memo(function SummaryCards({
 
 function ProfileSkeleton() {
   return (
-    <div className="mt-4 space-y-6">
+    <div className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-20 w-full" />
         ))}
       </div>
-      <Skeleton className="h-[360px] w-full" />
-      <Skeleton className="h-[320px] w-full" />
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Skeleton className="h-[260px] w-full" />
-        <Skeleton className="h-[240px] w-full" />
-      </div>
+      {/* tab 栏 + 当前 tab 视口（与 Tabs 布局对齐）。 */}
+      <Skeleton className="h-8 w-full max-w-md" />
+      <Skeleton className="h-[480px] w-full" />
     </div>
   )
 }
