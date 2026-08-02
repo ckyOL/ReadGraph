@@ -22,6 +22,7 @@
   "library.column.source": "Source",
   "library.column.classification": "Classification",
   "library.column.borrows": "Borrows",
+  "library.column.borrowed": "Borrowed",
   "library.empty.title": "Library is empty",
   "library.empty.description": "Imported books will appear here.",
   "library.empty.action": "Go to import",

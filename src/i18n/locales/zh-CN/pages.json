@@ -22,6 +22,7 @@
   "library.column.source": "来源",
   "library.column.classification": "分类",
   "library.column.borrows": "借阅",
+  "library.column.borrowed": "借阅时间",
   "library.empty.title": "书库为空",
   "library.empty.description": "导入借阅数据后，书目会出现在这里。",
   "library.empty.action": "去导入",

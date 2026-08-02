@@ -32,12 +32,14 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import type { Book } from '@/types/entities'
+import { readPreferences } from '@/lib/preferences'
+import { formatDateInTz } from '@/lib/display-time'
 
 export const Route = createFileRoute('/library/')({
   component: LibraryPage,
 })
 
-type SortKey = 'title' | 'author' | 'isbn' | 'borrows'
+type SortKey = 'title' | 'author' | 'isbn' | 'borrowed' | 'borrows'
 type SortDir = 'asc' | 'desc'
 
 interface LibraryRow {
@@ -47,6 +49,7 @@ interface LibraryRow {
   sourceName: string | null
   classification: { system: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other'; code: string } | null
   borrowCount: number
+  lastBorrowedAt: Date | null
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -71,12 +74,16 @@ function LibraryPage() {
 
   const loading = data === undefined
   const [books, catalogRecords, borrowCycles, sources] = data ?? [[], [], [], []]
+  const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
 
   const rows = useMemo<LibraryRow[]>(() => {
     const sourceById = new Map(sources.map((s) => [s.id, s]))
     const cycleCountByBook = new Map<string, number>()
+    const lastBorrowedByBook = new Map<string, Date>()
     for (const c of borrowCycles) {
       cycleCountByBook.set(c.bookId, (cycleCountByBook.get(c.bookId) ?? 0) + 1)
+      const prev = lastBorrowedByBook.get(c.bookId)
+      if (!prev || c.borrowedAt > prev) lastBorrowedByBook.set(c.bookId, c.borrowedAt)
     }
     return books.map((book) => {
       const cr = catalogRecords.find((c) => c.bookId === book.id)
@@ -89,6 +96,7 @@ function LibraryPage() {
         sourceName: source?.name ?? null,
         classification: entry ? { system: entry.system, code: entry.code } : null,
         borrowCount: cycleCountByBook.get(book.id) ?? 0,
+        lastBorrowedAt: lastBorrowedByBook.get(book.id) ?? null,
       }
     })
   }, [books, catalogRecords, borrowCycles, sources])
@@ -114,6 +122,13 @@ function LibraryPage() {
           return collator.compare(a.authors, b.authors) * dir
         case 'isbn':
           return (a.isbn13 ?? '').localeCompare(b.isbn13 ?? '') * dir
+        case 'borrowed': {
+          // 无借阅记录恒排末尾，不随排序方向翻转
+          if (!a.lastBorrowedAt && !b.lastBorrowedAt) return 0
+          if (!a.lastBorrowedAt) return 1
+          if (!b.lastBorrowedAt) return -1
+          return (a.lastBorrowedAt.getTime() - b.lastBorrowedAt.getTime()) * dir
+        }
         case 'borrows':
           return (a.borrowCount - b.borrowCount) * dir
         default:
@@ -213,6 +228,9 @@ function LibraryPage() {
                 <TableHead className="hidden md:table-cell">
                   {t('library.column.source')}
                 </TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  {sortButton('borrowed', t('library.column.borrowed'))}
+                </TableHead>
                 <TableHead className="hidden sm:table-cell">
                   {t('library.column.classification')}
                 </TableHead>
@@ -252,6 +270,13 @@ function LibraryPage() {
                     ) : (
                       '—'
                     )}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    <span className="tabular-nums text-muted-foreground">
+                      {r.lastBorrowedAt
+                        ? formatDateInTz(r.lastBorrowedAt, displayTimezone)
+                        : '—'}
+                    </span>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     {r.classification ? (
