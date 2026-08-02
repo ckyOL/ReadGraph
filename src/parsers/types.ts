@@ -27,6 +27,11 @@ export interface SourceParser {
   parse(rawData: string | ArrayBuffer, source: Source): ParseResult
   /** 验证原始数据格式是否匹配此 Parser（自动检测来源）。 */
   validate(rawData: string | ArrayBuffer): boolean
+  /**
+   * 行级预过滤：返回剔除无效/无用记录（如「自助查询」「读者续借」）后的行，
+   * 供导入预览使用。必须与 parse 的有效行集合一致，保证「预览所见即导入所得」。
+   */
+  filterRows(rows: Record<string, unknown>[]): Record<string, unknown>[]
 }
 
 /** 解析结果：候选实体的「部分」描述（id 等由 pipeline 派生补全）。 */

@@ -45,6 +45,21 @@ describe('szlibParser.parse', () => {
     expect(res.stats.skippedRecords).toBeGreaterThanOrEqual(2)
   })
 
+  it('filterRows 剔除自助查询/读者续借等无用行，预览与导入同源', () => {
+    const rows = sample as Record<string, unknown>[]
+    const filtered = szlibParser.filterRows(rows)
+    // 预览行 = parse 实际消费的有效行（借出/还回），无用条目一行不留。
+    expect(filtered.length).toBe(rows.length - res.stats.skippedRecords)
+    expect(filtered.every((r) => ['读者借出', '读者还回文献'].includes(String(r.optype)))).toBe(true)
+    expect(filtered.some((r) => String(r.optype) === '自助查询')).toBe(false)
+    expect(filtered.some((r) => String(r.optype) === '读者续借')).toBe(false)
+    // 与 parse 消费的行一一对应（同一过滤标准）。
+    const parseConsumed = (sample as Record<string, unknown>[]).filter(
+      (r) => ['读者借出', '读者还回文献'].includes(String(r.optype)),
+    )
+    expect(filtered).toEqual(parseConsumed)
+  })
+
   it('产出 Books 数量正确（选书帮按 barcode 独立）', () => {
     // 9 个唯一非占位书目 + 2 个独立选书帮 barcode。
     const phBooks = res.books.filter((b) => b.needsReview === true)

@@ -63,6 +63,7 @@ src/routes/
 3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
    - 空态：无周期 `Empty`。
 4. **导入（/import）**：单页完成全部流程——顶部来源选择，主体区文件选择（选后即显示前 10 条预览与字段映射说明并可直接执行），右侧栏常驻导入报告（执行中进度 / 失败信息 / 完成后统计与 `ParseWarning` 列表）。
+   - 预览行先经 `SourceParser.filterRows` 行级预过滤（[szlib-parser §1](../metadata/parsers/szlib-parser.md#1-记录过滤)），剔除「自助查询」「读者续借」等无用条目；预览与导入共用同一过滤标准，**预览所见即导入所得**（`executeImport` 在预分配 `RawRecord` 壳前同样调用 `filterRows`，无用条目不落 `rawRecords`）。
    - 更换来源会清空已选文件与报告，避免跨来源脏预览。
    - 空态：无来源时自动落库 [source](../metadata/source.md) `SOURCE_TEMPLATES` 首个模板并选中（幂等），不再提供「从模板创建」交互。
 5. **阅读画像（/profile）**：方向 B，图表主导、全幅。ECharts（thin adapter，见 [reading-profile](reading-profile.md)）渲染：
@@ -98,7 +99,7 @@ src/routes/
   - 系统重置为「全有或全无」单事务清空（[internal-schema](../metadata/internal-schema.md) 系统重置），UI 不提供单次导入撤销。
 - 边界：
   - 空库首次进入：Dashboard/书库/时间线/画像均 `Empty` + 导入入口。
-  - 大文件（≥50MB，[import-workflow](../metadata/import-workflow.md) 通用约束）：预览限前 10 条，导入执行在 Web Worker（[design-decisions](../design-decisions.md) 并发与性能），UI 显示 `Progress`/`Spinner`，不阻塞导航。
+  - 大文件（≥50MB，[import-workflow](../metadata/import-workflow.md) 通用约束）：预览限前 10 条（已剔除无用条目，见 §3 第 4 条），导入执行在 Web Worker（[design-decisions](../design-decisions.md) 并发与性能），UI 显示 `Progress`/`Spinner`，不阻塞导航。
   - 离线可用：所有静态资产本地打包，PWA 预留（v1 不强求）。
 
 ## 7. 用户故事

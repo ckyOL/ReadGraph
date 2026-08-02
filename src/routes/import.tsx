@@ -45,6 +45,8 @@ interface FileInfo {
 
 /**
  * 单页导入：顶部来源选择，主体区文件选择（选后即预览），右侧栏常驻导入报告。
+ * 预览行经 parser.filterRows 预过滤（剔除「自助查询」「读者续借」等无用条目），
+ * 与 parse 共用同一过滤标准——预览所见即导入所得。
  * 无来源时自动落库预置模板（取代原「从模板创建」步骤），ensureSourceFromTemplate
  * 幂等（parserId 唯一），重复挂载/并发安全。
  */
@@ -105,7 +107,8 @@ function ImportPage() {
       return
     }
     setFileInfo({ name: file.name, size: file.size, encoding: detectedEncoding, text })
-    setRows(JSON.parse(text) as Record<string, unknown>[])
+    // 预览展示 parser 预过滤后的行（剔除自助查询/读者续借等），与导入保持一致。
+    setRows(parser.filterRows(JSON.parse(text) as Record<string, unknown>[]))
   }
 
   const startImport = async () => {

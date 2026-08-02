@@ -165,6 +165,9 @@ test.describe('import critical path (G-5)', () => {
     await expect(page.getByText(/Encoding: utf-8|编码: utf-8/)).toBeVisible()
     await expect(page.getByText(/First 10 rows preview|前 10 条预览/)).toBeVisible()
     await expect(page.getByText('再见绘梨').first()).toBeVisible()
+    // 预览已按 parser.filterRows 剔除「自助查询」等无用条目（样本含自助查询/读者续借行）。
+    await expect(page.locator('table').getByText('自助查询')).toHaveCount(0)
+    await expect(page.locator('table').getByText('读者续借')).toHaveCount(0)
 
     // 执行 → 右侧栏报告。
     await page.getByRole('button', { name: /Start import|开始导入/ }).click()

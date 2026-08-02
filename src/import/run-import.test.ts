@@ -9,6 +9,7 @@ import {
 } from '@/db/test-helpers'
 import { executeImport, buildRawRecords } from './run-import'
 import type { ImportMeta } from '@/parsers/pipeline'
+import { szlibParser } from '@/parsers/szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
 
 installFakeIndexedDB()
@@ -97,12 +98,18 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     expect(catalogs.length).toBe(result.catalogRecords.length)
     expect(cycles.length).toBe(result.borrowCycles.length)
     expect(logs).toHaveLength(1)
-    expect(raws).toHaveLength(sample.length)
+    // rawRecords 只保留 parser.filterRows 过滤后的有效行（样本含 1 条自助查询 + 1 条读者续借）。
+    const filtered = szlibParser.filterRows(sample as Record<string, unknown>[])
+    expect(raws).toHaveLength(filtered.length)
+    expect(raws).not.toHaveLength(sample.length)
+    const optypeOf = (rr: (typeof raws)[number]): string =>
+      'optype' in rr.data && typeof rr.data.optype === 'string' ? rr.data.optype : ''
+    expect(raws.every((r) => !['自助查询', '读者续借'].includes(optypeOf(r)))).toBe(true)
     // classCodes 派生字段必须在导入写路径补写（treemap 下钻等 classCodes 索引查询依赖）。
     for (const cr of catalogs) {
       expect(cr.classCodes).toEqual(cr.classifications.map((c) => c.code))
     }
-    expect(logs[0]!.stats.totalRawRecords).toBe(sample.length)
+    expect(logs[0]!.stats.totalRawRecords).toBe(filtered.length)
     expect(logs[0]!.parserId).toBe('szlib')
 
     // 来源最后导入时间与累计记录数回写。

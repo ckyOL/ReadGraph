@@ -17,6 +17,7 @@
 - **忽略** `optype` 为以下值的记录，不参与借阅周期的合成：
   - `"自助查询"`：与借阅状态无关的机器操作。
   - `"读者续借"`：根据设计决策，不影响整体借还周期（若未来需统计续借次数，可再次引入）。
+- 过滤在**行级预过滤阶段**完成：`SourceParser.filterRows`（`src/parsers/szlib.ts` 的 `filterSzlibRows`）在 UI 预览前即剔除上述无用行，`parse` 内部使用同一过滤标准（`VALID_OPTYPES`）。因此**预览所见即导入所得**——「自助查询」「读者续借」等条目不会出现在导入预览中，不产出任何实体，也**不落入 `rawRecords`**（导入装配层在预分配 `RawRecord` 壳前调用同一 `filterRows`，见 [import-workflow](../import-workflow.md) 第 3 步）。
 
 ### 2. 实体提取 (Entity Extraction)
 对于每一条有效流通记录（借或还），系统将提取出两个层级的实体：

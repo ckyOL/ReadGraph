@@ -7,6 +7,10 @@ import { decodeHtmlEntities } from '@/lib/encoding'
 import { parseTitle } from '@/lib/title'
 import type { SourceParser } from './types'
 const PLACEHOLDER_TITLE = '福田图书馆读者自选图书'
+/** 与借阅状态无关、须在解析与预览阶段一并剔除的操作类型（szlib-parser §1）。 */
+const IGNORED_OPTYPES = new Set(['自助查询', '读者续借'])
+/** 参与借还周期合成的合法操作类型（szlib-parser §1）。 */
+const VALID_OPTYPES = new Set(['读者借出', '读者还回文献'])
 interface SzlibRow {
   date: string
   time: string
@@ -42,6 +46,18 @@ interface GroupedCycle {
   barcode: string
   sorted: RawRow[]
 }
+/**
+ * 行级预过滤（szlib-parser §1）：剔除「自助查询」「读者续借」等与借阅状态无关的
+ * 操作，以及未知 optype 行，只保留参与借还周期合成的合法行。parse 与 UI 预览
+ * 共用此过滤标准，保证预览所见即导入所得。
+ */
+export function filterSzlibRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.filter(
+    (row): row is Record<string, unknown> =>
+      row != null && typeof row === 'object' && VALID_OPTYPES.has(row.optype as string),
+  )
+}
+
 function szlibToUtc(date: string, time: string, timezone: string): Date {
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(date)
   const t = /^(\d{2}):(\d{2}):(\d{2})$/.exec(time)
@@ -100,8 +116,6 @@ export const szlibParser: SourceParser = {
     }
     const rows = parsed as SzlibRow[]
     const tz = source.timezone
-    const IGNORED_OPTYPES = new Set(['自助查询', '读者续借'])
-    const VALID = new Set(['读者借出', '读者还回文献'])
     const validRows: RawRow[] = []
     let skippedFiltered = 0
     rows.forEach((row, idx) => {
@@ -112,7 +126,7 @@ export const szlibParser: SourceParser = {
         skippedFiltered++
         return
       }
-      if (!VALID.has(row.optype)) {
+      if (!VALID_OPTYPES.has(row.optype)) {
         skippedFiltered++
         warnings.push({ type: 'format_error', message: `unknown optype "${row.optype ?? ''}"`, recordRef: `row:${rowIndex}` })
         return
@@ -216,5 +230,8 @@ if (!catalogByKey.has(catKey)) {
     }
     const stats = { totalRawRecords: rows.length, parsedBooks: books.length, parsedCatalogRecords: catalogRecords.length, parsedCycles: borrowCycles.length, skippedRecords: skippedFiltered }
     return { books, catalogRecords, borrowCycles, warnings, stats }
+  },
+  filterRows(rows) {
+    return filterSzlibRows(rows)
   },
 }

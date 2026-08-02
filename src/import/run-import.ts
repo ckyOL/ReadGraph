@@ -67,8 +67,9 @@ async function runInWorker(
 }
 
 /**
- * 执行一次导入：validate → 预分配 rows → existing 显式读取 → 管线
- * （大文件走 Worker）→ 单事务写库 + 来源回写。返回管线产出。
+ * 执行一次导入：validate → filterRows 行级预过滤（剔除「自助查询」等无用
+ * 条目）→ 预分配 rows → existing 显式读取 → 管线（大文件走 Worker）→
+ * 单事务写库 + 来源回写。返回管线产出。
  *
  * 抛错场景（不落库）：来源不存在、JSON 非法、Parser 不匹配。
  */
@@ -98,7 +99,9 @@ export async function executeImport(
     detectedEncoding: req.detectedEncoding,
     importedAt,
   }
-  const rows = buildRawRecords(parsed as Record<string, unknown>[], meta, req.sourceId)
+  // 与预览共用 parser.filterRows：无用条目（自助查询/读者续借等）在进入
+  // 管线与落库前即剔除，rawRecords 只保留有效行（溯源/备份/重放均不含无用条目）。
+  const rows = buildRawRecords(parser.filterRows(parsed as Record<string, unknown>[]), meta, req.sourceId)
   const existing: ExistingState = {
     books: await db.books.toArray(),
     catalogRecords: await db.catalogRecords.toArray(),

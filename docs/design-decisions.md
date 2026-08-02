@@ -39,7 +39,7 @@
 **原因**:
 - 配对逻辑与数据来源格式强相关
 - 一次性完成避免后续重复计算
-- 保留原始记录在 rawRecords store 中，可随时重新解析
+- 保留原始记录在 rawRecords store 中，可随时重新解析；**无用条目（如「自助查询」「读者续借」）在导入装配层经 `SourceParser.filterRows` 剔除后才落库**，rawRecords 只保留 parser 实际消费的有效行——预览所见即导入所得（见 [szlib-parser §1](./metadata/parsers/szlib-parser.md#1-记录过滤)）
 
 **约束**:
 - 每个 Parser 必须实现自己的配对逻辑

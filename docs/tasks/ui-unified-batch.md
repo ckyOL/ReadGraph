@@ -79,6 +79,7 @@
 
 ## 状态
 
+- 2026-08-02 导入剔除无用条目（预览 + 落库）：`SourceParser` 新增行级预过滤 `filterRows`（szlib 实现 `filterSzlibRows`，剔除「自助查询」「读者续借」及未知 optype），导入页预览改用过滤后行，与 `parse` 共用同一 `VALID_OPTYPES` 标准——预览所见即导入所得；`executeImport` 在预分配 `RawRecord` 壳前同样调用 `filterRows`，**无用条目不落 `rawRecords`**、不计入 `ImportLog.stats.totalRawRecords`（备份/重放输入随之变小，重放仍与快照等价）。`import.tsx`/`run-import.ts`/`szlib.ts` 及对应测试、[szlib-parser §1](../metadata/parsers/szlib-parser.md#1-记录过滤)、[import-workflow](../metadata/import-workflow.md) 第 3 步、[ui-navigation §3 第 4 条](../specs/ui-navigation.md#3-各功能页布局与空状态)、[design-decisions §3](../design-decisions.md#3-借还配对在导入时完成)、[internal-schema rawRecords](../metadata/internal-schema.md#object-store-rawrecords) 同步更新。
 - 2026-07-31 导入页改版（单页）：移除多步向导与「从模板创建」交互，来源选择置顶，主体区选文件（选后即显示前 10 条预览），右侧栏常驻报告（进度/失败/统计 + `ParseWarning`）；无来源时自动落库预置模板首个并选中（`ensureSourceFromTemplate` 幂等）；模板/parser 名称简化（`深圳图书馆` / `Shenzhen Library`）；`import.step.*`、`import.source.template/create`、`import.back/next` i18n 键移除，新增 `import.file.rechoose`/`import.report.heading/empty`；[ui-navigation §3](../specs/ui-navigation.md#3-各功能页布局与空状态)、[settings §6](../specs/settings.md#6-来源归属)、[source](../metadata/source.md) 同步改写；E2E 导入关键路径改用自动建源流程。
 - 2026-07-31 设置页移除来源管理：`Source` 的创建归属导入向导（模板绑定 `parserId`，随 parser 适配预置），设置页不再提供来源管理区——删除 `src/settings/sources-section.tsx`，设置页收敛为偏好区 + 数据区两区；`settings.sources.*` i18n 键与对应 E2E 用例移除，重置对话框取消键改用 `settings.reset.cancel`；[settings 规格 §6](../specs/settings.md#6-来源归属) 同步改写为「来源归属」。
 

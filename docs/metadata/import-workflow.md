@@ -24,6 +24,8 @@ Agent 实现要点：
 
 3. 预览与确认
    - 解析前 10 条记录展示预览
+   - 预览行先经 `SourceParser.filterRows` 行级预过滤，剔除「自助查询」「读者续借」等无用条目——预览所见即导入所得
+   - **过滤在导入装配层同样生效**：`executeImport` 在预分配 `RawRecord` 壳之前调用同一 `filterRows`，无用条目不落 `rawRecords`、不计入 `ImportLog.stats.totalRawRecords`
    - 显示字段映射结果
    - 显示检测到的警告
 
