@@ -71,6 +71,8 @@ export const catalogRecordSchema = z.object({
   metaIdKey: z.union([z.null(), z.string()]),
   barcodes: z.array(z.string()),
   classifications: z.array(classificationEntrySchema),
+  // 旧导出无此字段时默认 null 兜底（review 规格 §2：非索引字段，无需 db 版本升级）。
+  volume: z.union([z.null(), z.string()]).default(null),
   createdAt: utcDate,
   updatedAt: utcDate,
 })

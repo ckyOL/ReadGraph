@@ -34,6 +34,7 @@ import {
 import type { Book } from '@/types/entities'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
+import { isSetBook } from '@/lib/review'
 
 export const Route = createFileRoute('/library/')({
   component: LibraryPage,
@@ -253,6 +254,9 @@ function LibraryPage() {
                       </Link>
                       {r.book.needsReview && (
                         <Badge variant="destructive">{t('library.needsReview')}</Badge>
+                      )}
+                      {!r.book.needsReview && isSetBook(r.book.id, catalogRecords) && (
+                        <Badge variant="outline">{t('library.set')}</Badge>
                       )}
                     </div>
                   </TableCell>

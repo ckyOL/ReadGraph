@@ -93,16 +93,22 @@ export function importPipeline(
     candidateBarcodes.push(barcode)
   }
 
-  // 3. 编目/书目去重（§10.6 第 1~4 条）。
-  const dedupeState: DedupeState = {
+  // 3. 编目/书目去重（§10.6 第 1~4 条 + review 规格 §9.2 套装候选置标）。
+  const dedupeInput: DedupeState = {
     books: existing.books,
     catalogRecords: existing.catalogRecords,
     borrowCycles: existing.borrowCycles,
   }
-  const { bookIdByBarcode, bookIds, warnings: ddWarnings } = dedupeCatalogsAndBooks(
+  const {
+    state: dedupeState,
+    bookIdByBarcode,
+    bookIds,
+    reviewFlags,
+    warnings: ddWarnings,
+  } = dedupeCatalogsAndBooks(
     candidates,
     candidateBarcodes,
-    dedupeState,
+    dedupeInput,
     parser,
   )
   warnings.push(...ddWarnings)
@@ -172,7 +178,8 @@ export function importPipeline(
           description: (bookPartial.description ?? null) as string | null,
           createdAt: now,
           updatedAt: now,
-          needsReview: (bookPartial.needsReview ?? false) as boolean,
+          // review 规格 §9.2：套装候选（批内同 ISBN 多 metaid 等）置 needsReview。
+          needsReview: ((bookPartial.needsReview ?? false) || reviewFlags[i]) as boolean,
           sourceIds: (bookPartial.sourceIds ?? [source.id]) as string[],
           parallelTitles: (bookPartial.parallelTitles ?? []) as string[],
         })
@@ -186,6 +193,7 @@ export function importPipeline(
       metaIdKey,
       barcodes: (cr.barcodes ?? []) as string[],
       classifications: (cr.classifications ?? []) as CatalogRecord['classifications'],
+      volume: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -368,7 +376,8 @@ export function importPipeline(
   }
 
   return {
-    books: [...existing.books, ...newBooks],
+    // 既有 Book 可能被去重置标（套装候选），用去重后的 state.books 而非 existing.books。
+    books: [...dedupeState.books, ...newBooks],
     catalogRecords: [...existing.catalogRecords, ...newCatalogRecords],
     borrowCycles: finalCycles,
     importLog,

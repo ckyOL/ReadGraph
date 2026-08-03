@@ -69,11 +69,12 @@ describe('i18n bootstrap', () => {
     expect(i18n.options.fallbackLng).toContain('zh-CN')
   })
 
-  it('loads the three configured namespaces', () => {
+  it('loads the four configured namespaces', () => {
     expect(i18n.options.defaultNS).toBe('common')
     expect(Array.isArray(i18n.options.ns)).toBe(true)
     expect(i18n.options.ns).toContain('nav')
     expect(i18n.options.ns).toContain('pages')
+    expect(i18n.options.ns).toContain('review')
   })
 
   it('translates a nav key in both configured languages', async () => {

@@ -37,6 +37,7 @@ const validCatalogRecord = {
   metaIdKey: '123456',
   barcodes: ['BC001'],
   classifications: [{ system: 'clc', code: 'TP312' }],
+  volume: null,
   createdAt: now(),
   updatedAt: now(),
 }
@@ -133,6 +134,26 @@ describe('entity schemas — reject invalid', () => {
         classifications: [{ system: 'xyz', code: 'TP' }],
       }).success,
     ).toBe(false)
+  })
+  it('catalogRecord rejects non-string/non-null volume', () => {
+    expect(
+      catalogRecordSchema.safeParse({ ...validCatalogRecord, volume: 3 }).success,
+    ).toBe(false)
+  })
+  it('catalogRecord accepts volume string and null', () => {
+    expect(
+      catalogRecordSchema.safeParse({ ...validCatalogRecord, volume: '3' }).success,
+    ).toBe(true)
+    expect(
+      catalogRecordSchema.safeParse({ ...validCatalogRecord, volume: null }).success,
+    ).toBe(true)
+  })
+  it('catalogRecord missing volume defaults to null (旧导出兼容)', () => {
+    const { volume: _omit, ...rest } = validCatalogRecord
+    void _omit
+    const r = catalogRecordSchema.safeParse(rest)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.volume).toBeNull()
   })
   it('borrowCycle rejects bad status enum', () => {
     expect(borrowCycleSchema.safeParse({ ...validBorrowCycle, status: 'overdue' }).success).toBe(false)

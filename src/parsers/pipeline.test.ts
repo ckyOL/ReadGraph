@@ -166,6 +166,12 @@ describe('importPipeline — 同 ISBN 多条码（一书多册）批内合并（
     for (const cr of r.catalogRecords) {
       expect(cr.bookId).toBe(r.books[0]!.id)
     }
+    // 同 ISBN 不同 metaid（卷 3/卷 4）→ 套装候选：Book 置 needsReview + duplicate 警告含双方 metaid。
+    expect(r.books[0]!.needsReview).toBe(true)
+    const setWarn = r.warnings.find(
+      (w) => w.type === 'duplicate' && w.message.includes('9001') && w.message.includes('9002'),
+    )
+    expect(setWarn).toBeDefined()
     // 两借阅周期各挂到自己的编目（按条码，不串挂）。
     expect(r.borrowCycles).toHaveLength(2)
     const crByBc = new Map(r.catalogRecords.map((cr) => [cr.barcodes[0], cr]))

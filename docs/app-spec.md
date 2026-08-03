@@ -213,7 +213,8 @@ pnpm install --ignore-scripts
 | 4 | 阅读画像与图表规格 | ✅ 已补 | [specs/reading-profile.md](./specs/reading-profile.md) | 统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单 — §2 聚合与 §3 buildTheme 已 TDD 落地（20 suites/196 tests 绿）；UI 组件归入统一 UI 里程碑 |
 | 5 | 设置与系统重置规格 | ✅ 已补 | [specs/settings.md](./specs/settings.md) | 偏好持久化、重置的原子性与确认流程、备份导出与重建模式对照；备份序列化纯函数 `src/db/backup.ts` 已 TDD 落地 — UI 装配归入统一 UI 里程碑 |
 | 6 | OPAC 编目补全规格 | ✅ 已补 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) | 深图 getBookDetail 接口契约、字段映射与只填空合并、`CatalogRecord.opacEnrichment` schema 增量、CORS 部署与降级、执行模型 — 纯函数 `parseOpacDetail`/`mapOpacDetail` 待 TDD 落地 |
-| 7 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
+| 7 | 待审书目页规格 | ✅ 已落地 | [specs/review.md](./specs/review.md) | 选书帮占位补全 + 同 ISBN 套装结构化的统一 /review 页；`CatalogRecord.volume`、dedupe 套装候选置标、`src/lib/volume.ts`、补全/合并/套装/拆书 Sheet、书库/详情徽标联动 — 已 TDD 落地（见 ui-navigation §8） |
+| 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 

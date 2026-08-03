@@ -1,5 +1,15 @@
 import { Outlet, createRootRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useLiveQuery } from 'dexie-react-hooks'
+import {
+  BarChart3Icon,
+  ClipboardCheckIcon,
+  LayoutDashboardIcon,
+  LibraryIcon,
+  SettingsIcon,
+  TimelineIcon,
+  UploadIcon,
+} from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -8,19 +18,22 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuBadge,
   SidebarInset,
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
 
 import { ThemeProvider } from '@/hooks/use-theme'
+import { db } from '@/db/db-instance'
 const navItems = [
-  { to: '/', key: 'dashboard' as const },
-  { to: '/library', key: 'library' as const },
-  { to: '/timeline', key: 'timeline' as const },
-  { to: '/import', key: 'import' as const },
-  { to: '/profile', key: 'profile' as const },
-  { to: '/settings', key: 'settings' as const },
+  { to: '/', key: 'dashboard' as const, Icon: LayoutDashboardIcon },
+  { to: '/library', key: 'library' as const, Icon: LibraryIcon },
+  { to: '/timeline', key: 'timeline' as const, Icon: TimelineIcon },
+  { to: '/import', key: 'import' as const, Icon: UploadIcon },
+  { to: '/profile', key: 'profile' as const, Icon: BarChart3Icon },
+  { to: '/review', key: 'review' as const, Icon: ClipboardCheckIcon },
+  { to: '/settings', key: 'settings' as const, Icon: SettingsIcon },
 ]
 
 export const Route = createRootRoute({
@@ -30,6 +43,11 @@ export const Route = createRootRoute({
 function SidebarNav() {
   const { t } = useTranslation('nav')
   const { isMobile, setOpenMobile } = useSidebar()
+  // 待审徽标：needsReview=true 的 Book 数（review 规格 §3，响应式计数）。
+  const reviewCount = useLiveQuery(
+    () => db.books.where('needsReview').equals(1).count(),
+    [],
+  )
   return (
     <SidebarContent>
       <SidebarMenu>
@@ -39,8 +57,14 @@ function SidebarNav() {
               asChild
               onClick={isMobile ? () => setOpenMobile(false) : undefined}
             >
-              <Link to={item.to}>{t(item.key)}</Link>
+              <Link to={item.to}>
+                <item.Icon />
+                <span>{t(item.key)}</span>
+              </Link>
             </SidebarMenuButton>
+            {item.key === 'review' && (reviewCount ?? 0) > 0 && (
+              <SidebarMenuBadge>{reviewCount}</SidebarMenuBadge>
+            )}
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

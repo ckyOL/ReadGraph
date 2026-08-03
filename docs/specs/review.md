@@ -1,6 +1,6 @@
 # 待审书目页（/review）设计规格
 
-> 状态：规格（SDD 阶段 1 定稿，待 Tests(Red)）。本文档整合两类人工审核——**选书帮占位补全**（既有，szlib-parser §5）与**套装结构化**（同 ISBN 多卷，本规格新增）——统一收口到 /review 页。
+> 状态：已落地（SDD 阶段 1 定稿 → Tests(Red) → Code → Tests(Green)，2026-08-03）。本文档整合两类人工审核——**选书帮占位补全**（既有，szlib-parser §5）与**套装结构化**（同 ISBN 多卷，本规格新增）——统一收口到 /review 页。
 > 关联：design-decisions §4、internal-schema 去重策略、import-pipeline §6、szlib-parser §4/§5、ui-navigation §2/§3。本文档由 book-merge-granularity.md 升级而来。
 
 ## 1. 背景：两类需要人工审核的数据

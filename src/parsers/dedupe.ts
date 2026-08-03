@@ -55,6 +55,8 @@ export function dedupeCatalogsAndBooks(
   state: DedupeState
   bookIdByBarcode: Map<string, string>
   bookIds: string[]
+  /** 逐候选待审标记（review 规格 §2/§9.2）：同 ISBN 多卷合并/跨源异题名合并 → 套装候选。 */
+  reviewFlags: boolean[]
   warnings: ParseWarning[]
 } {
   const warnings: ParseWarning[] = []
@@ -65,6 +67,7 @@ export function dedupeCatalogsAndBooks(
   }
   const bookIdByBarcode = new Map<string, string>()
   const bookIds: string[] = []
+  const reviewFlags: boolean[] = candidates.map(() => false)
 
   // existing 索引：编目按 sourceId+barcode 与 sourceId+metaIdKey；书按 isbn13。
   const crByBarcode = new Map<string, CatalogRecord>()
@@ -90,6 +93,12 @@ export function dedupeCatalogsAndBooks(
   // 值即 pipeline 的 `new:` 派生 token：`new:isbn:<isbn13>` / `new:noisbn:<题名|著者>`。
   const batchBookByIsbn = new Map<string, string>()
   const batchBookByTitleAuthor = new Map<string, string>()
+  // 批内同 ISBN 多 metaid（套装候选）追踪：组首候选索引/metaid + 已警告的 metaid 对。
+  const batchIsbnFirstIdx = new Map<string, number>()
+  const batchIsbnFirstMetaId = new Map<string, string | null>()
+  const batchIsbnFlaggedMeta = new Set<string>()
+  // 本批次内已置 needsReview 的既有 Book（避免同批多候选重复置标/重复警告）。
+  const flaggedBookIds = new Set<string>()
 
   candidates.forEach((cand, i) => {
     const barcode = barcodes[i] ?? ''
@@ -133,6 +142,34 @@ export function dedupeCatalogsAndBooks(
       const matchedBook = bookByIsbn.get(isbn)
       if (matchedBook) {
         assignBook(matchedBook.id)
+        // 同 ISBN 多卷/多作品（review 规格 §1.2）：同源异 metaid 或跨源异题名
+        // → 合并仍进行，但 Book 置 needsReview 作为套装候选，警告含双方 metaid。
+        if (!flaggedBookIds.has(matchedBook.id)) {
+          const crsOfBook = existing.catalogRecords.filter(
+            (c) => c.bookId === matchedBook.id,
+          )
+          const sameSourceCrs = crsOfBook.filter((c) => c.sourceId === sourceId)
+          const sameSourceDiffMeta =
+            cr.metaIdKey != null &&
+            sameSourceCrs.length > 0 &&
+            sameSourceCrs.some((c) => c.metaIdKey !== cr.metaIdKey)
+          const crossSourceDiffTitle =
+            crsOfBook.some((c) => c.sourceId !== sourceId) &&
+            normalize(bookP.title ?? '') !== '' &&
+            normalize(bookP.title ?? '') !== normalize(matchedBook.title)
+          if (sameSourceDiffMeta || crossSourceDiffTitle) {
+            flaggedBookIds.add(matchedBook.id)
+            state.books = state.books.map((b) =>
+              b.id === matchedBook.id ? { ...b, needsReview: true } : b,
+            )
+            reviewFlags[i] = true
+            warnings.push({
+              type: 'duplicate',
+              message: `同 ISBN 多卷候选：metaid ${crsOfBook[0]?.metaIdKey ?? '无'} ↔ ${cr.metaIdKey ?? '无'} 并入同一 Book「${matchedBook.title}」，请到 /review 审核`,
+              recordRef: barcode ? `barcode:${barcode}` : null,
+            })
+          }
+        }
         return
       }
     }
@@ -160,6 +197,31 @@ export function dedupeCatalogsAndBooks(
     const batchIsbn = bookP.isbn13 ?? null
     if (batchIsbn) {
       const token = batchBookByIsbn.get(batchIsbn) ?? `new:isbn:${batchIsbn}`
+      if (batchBookByIsbn.has(batchIsbn)) {
+        // 批内同 ISBN 多 metaid（如卷 3/卷 4 共用 ISBN）→ 套装候选：
+        // 置标传播到组首候选（pipeline 在组首建 Book），警告含双方 metaid。
+        const firstMeta = batchIsbnFirstMetaId.get(batchIsbn) ?? null
+        const candMeta = cr.metaIdKey ?? null
+        if (
+          firstMeta != null &&
+          candMeta != null &&
+          firstMeta !== candMeta &&
+          !batchIsbnFlaggedMeta.has(`${batchIsbn}|${candMeta}`)
+        ) {
+          batchIsbnFlaggedMeta.add(`${batchIsbn}|${candMeta}`)
+          const firstIdx = batchIsbnFirstIdx.get(batchIsbn)
+          if (firstIdx != null) reviewFlags[firstIdx] = true
+          reviewFlags[i] = true
+          warnings.push({
+            type: 'duplicate',
+            message: `同 ISBN 多卷候选：metaid ${firstMeta} ↔ ${candMeta} 并入同一 Book，请到 /review 审核`,
+            recordRef: barcode ? `barcode:${barcode}` : null,
+          })
+        }
+      } else {
+        batchIsbnFirstIdx.set(batchIsbn, i)
+        batchIsbnFirstMetaId.set(batchIsbn, cr.metaIdKey ?? null)
+      }
       batchBookByIsbn.set(batchIsbn, token)
       assignBook(token)
       return
@@ -180,8 +242,7 @@ export function dedupeCatalogsAndBooks(
     assignBook(`new:u:${i}`)
   })
 
-  void state
-  return { state, bookIdByBarcode, bookIds, warnings }
+  return { state, bookIdByBarcode, bookIds, reviewFlags, warnings }
 }
 
 /**

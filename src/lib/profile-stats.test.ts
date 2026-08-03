@@ -51,6 +51,7 @@ function makeCatalog(
     metaIdKey: null,
     barcodes: [],
     classifications: [],
+    volume: null,
     createdAt: Day1,
     updatedAt: Day1,
     ...over,

@@ -47,6 +47,18 @@ export function CatalogRecordCard({ record, source }: CatalogRecordCardProps) {
       {hasHeader && hasItems && <div className="my-2.5 border-t" />}
       {hasItems && (
         <dl className="space-y-1">
+          {(record.volume ?? null) !== null && record.volume !== '' && (
+            <div className="flex items-baseline gap-3 text-sm">
+              <dt className="w-14 shrink-0 text-xs text-muted-foreground">
+                {t('bookDetail.field.volume')}
+              </dt>
+              <dd>
+                <Badge variant="outline" className="rounded-none">
+                  {record.volume}
+                </Badge>
+              </dd>
+            </div>
+          )}
           {record.barcodes.map((b) => (
             <div key={b} className="flex items-baseline gap-3 text-sm">
               <dt className="w-14 shrink-0 text-xs text-muted-foreground">

@@ -147,6 +147,12 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     // 978-7-5740-1274-5 两副本（条码 04400514707329 / 04400514707325）→ 同一 Book。
     const merged = result.books.filter((b) => b.isbn13 === '9787574012745')
     expect(merged).toHaveLength(1)
+    // 同 ISBN 异 metaid（7109377/7109378）→ 套装候选：Book 置 needsReview + 警告含双方 metaid。
+    expect(merged[0]!.needsReview).toBe(true)
+    const setWarn = result.importLog.warnings.find(
+      (w) => w.type === 'duplicate' && w.message.includes('7109377') && w.message.includes('7109378'),
+    )
+    expect(setWarn).toBeDefined()
     const crs = result.catalogRecords.filter((c) => c.bookId === merged[0]!.id)
     expect(crs).toHaveLength(2)
     expect(crs.map((c) => c.barcodes[0]).sort()).toEqual([

@@ -56,7 +56,7 @@ function splitRole(
 }
 
 /** 以 `，/,/，` 拆同一责任声明组内的多人。 */
-function splitPersons(group: string): string[] {
+export function splitPersons(group: string): string[] {
   return group
     .split(/[，/,/，]/)
     .map((p) => p.trim())

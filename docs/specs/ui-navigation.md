@@ -43,6 +43,7 @@ src/routes/
     $bookId.tsx           书目详情（/library/$bookId）
   timeline.tsx            借阅时间线脊柱（/timeline）
   import.tsx              导入（/import）：单页——来源选择 + 文件/预览 + 右侧报告
+  review.tsx              待审（/review）：选书帮占位补全 + 同 ISBN 套装候选（见 review 规格）
   profile.tsx             阅读画像（/profile）：图表主导（方向 B）
   settings.tsx            设置（/settings）：主题/locale/时区/系统重置
 ```
@@ -72,6 +73,10 @@ src/routes/
    - 按月/按年借阅量柱图、借阅时长分布。
    - 空态：无数据 `Empty`，图表区隐去占位，给出导入入口。
 6. **设置（/settings）**：[设置与系统重置规格](settings.md)。
+7. **待审（/review）**：[待审书目页规格](review.md)：聚合选书帮占位补全与同 ISBN 套装结构化两类人工审核。列表（Tabs 分流 + 搜索 + 类型徽标）→ 行「审核」打开对应 Sheet（640px / 移动端 Drawer）。
+   - 选书帮补全 Sheet：已知信息（barcode/分类/借阅）+ 补全字段（书名必填、作者顿号分隔、ISBN 归一化校验）+ 合并到已有书目（搜索 → 选中 → AlertDialog 确认 → 借阅归入目标书）。
+   - 套装 Sheet：书目（题名前缀建议、ISBN 只读）+ 编目卷号（题名原文、volume 预填 `parseVolumeFromTitle`）+ 保存为套装 / 不是套装 / 拆为独立 Book（AlertDialog 二次确认）。
+   - 侧边栏「待审」入口带 `needsReview=true` 计数徽标；书库列表套装 Book 加「套装」outline Badge，详情页编目卡显示卷号 Badge。
 
 ## 4. 主题与暗色模式骨架
 
@@ -115,6 +120,7 @@ src/routes/
 
 **Vitest（单元/集成）**
 - AppShell 渲染与路由树懒加载（mock routeTree）。
+- ✅ 待审（review 规格 §9.7 已落地）：`CatalogRecord.volume` schema；`src/lib/volume.ts` 卷号解析/去尾；dedupe 套装候选置标（同源异 metaid / 跨源异题名 / 批内同 ISBN 多 metaid，同源同 metaid 复本不置标）；pipeline/run-import 卷3/卷4 夹具 1 Book + `needsReview=true` + 警告；待审派生模型（kind 判定/行聚合/编目题名溯源/Tabs 分流）；review 动作库（补全、合并重挂、套装保存、不是套装、拆书）；/review 页与两个表单 SSR 渲染契约。
 - ✅ locale Provider：读写 `readgraph:preferences`，Zod 同义校验非法值降级（已落地，见 `src/lib/locale.test.ts`、`src/hooks/use-locale.test.tsx`、`src/i18n/i18n.test.ts`）。theme Provider 待数据层里程碑。
 - 日期/时区纯函数：UTC ↔ `displayTimezone`、`source.timezone` 转换（对照 [design-decisions §2](../design-decisions.md)）。
 - 分类号芯片渲染：CLC/DDC code 与 category 映射。

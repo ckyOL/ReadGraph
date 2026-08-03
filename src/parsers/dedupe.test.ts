@@ -46,6 +46,7 @@ function mkCatalog(p: Partial<CatalogRecord>): CatalogRecord {
     metaIdKey: null,
     barcodes: [],
     classifications: [],
+    volume: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...p,
@@ -166,6 +167,142 @@ describe('dedupeCatalogsAndBooks', () => {
     expect(r.bookIdByBarcode.get('C1')).toBe('new:isbn:9780000000001')
     expect(r.bookIdByBarcode.get('C3')).toBe('new:isbn:9780000000002')
     expect(r.bookIdByBarcode.get('C4')).toBe('new:noisbn:丙书|丙著')
+  })
+
+  it('同 ISBN 合并已有 Book：同源异 metaid → 合并 + 置标 + 警告含双方 metaid', () => {
+    const existing: DedupeState = {
+      books: [
+        mkBook({
+          id: 'bk-set',
+          isbn13: '9787574012745',
+          title: '合成书目052 : 合成副题 52 . 3',
+        }),
+      ],
+      catalogRecords: [
+        mkCatalog({ id: 'cr-v3', bookId: 'bk-set', barcodes: ['B3'], metaIdKey: '7109377' }),
+      ],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['B4'], metaIdKey: '7109378' },
+          bookPartial: {
+            isbn13: '9787574012745',
+            title: '合成书目053 : 合成副题 53 . 4',
+            sourceIds: ['szlib'],
+          },
+          isPlaceholder: false,
+        },
+      ],
+      ['B4'],
+      existing,
+      szlibParser,
+    )
+    expect(r.bookIdByBarcode.get('B4')).toBe('bk-set')
+    expect(r.reviewFlags).toEqual([true])
+    const flagged = r.state.books.find((b) => b.id === 'bk-set')!
+    expect(flagged.needsReview).toBe(true)
+    const w = r.warnings.find((x) => x.type === 'duplicate')
+    expect(w?.message).toContain('7109377')
+    expect(w?.message).toContain('7109378')
+  })
+
+  it('同 ISBN 合并已有 Book：同源同 metaid 多复本 → 不置标', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-copy', isbn13: '9780000000001', title: '甲书' })],
+      catalogRecords: [
+        mkCatalog({ id: 'cr-a', bookId: 'bk-copy', barcodes: ['A1'], metaIdKey: '9001' }),
+      ],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['A2'], metaIdKey: '9001' },
+          bookPartial: { isbn13: '9780000000001', title: '甲书', sourceIds: ['szlib'] },
+          isPlaceholder: false,
+        },
+      ],
+      ['A2'],
+      existing,
+      szlibParser,
+    )
+    expect(r.reviewFlags).toEqual([false])
+    expect(r.state.books.find((b) => b.id === 'bk-copy')!.needsReview).toBe(false)
+    expect(r.warnings).toEqual([])
+  })
+
+  it('同 ISBN 合并已有 Book：跨源异题名 → 置标；跨源同题名 → 不置标', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-cross', isbn13: '9780000000002', title: '甲书' })],
+      catalogRecords: [
+        mkCatalog({ id: 'cr-a', bookId: 'bk-cross', barcodes: ['A1'], metaIdKey: '1' }),
+      ],
+      borrowCycles: [],
+    }
+    // 跨源异题名（乙书）：合并但置标。
+    const diff = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'srcB', barcodes: ['B1'], metaIdKey: '2' },
+          bookPartial: { isbn13: '9780000000002', title: '乙书', sourceIds: ['srcB'] },
+          isPlaceholder: false,
+        },
+      ],
+      ['B1'],
+      existing,
+      szlibParser,
+    )
+    expect(diff.reviewFlags).toEqual([true])
+    expect(diff.state.books.find((b) => b.id === 'bk-cross')!.needsReview).toBe(true)
+    // 跨源同题名（甲书）：正常跨馆合并，不置标。
+    const same = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'srcB', barcodes: ['B2'], metaIdKey: '3' },
+          bookPartial: { isbn13: '9780000000002', title: '甲书', sourceIds: ['srcB'] },
+          isPlaceholder: false,
+        },
+      ],
+      ['B2'],
+      existing,
+      szlibParser,
+    )
+    expect(same.reviewFlags).toEqual([false])
+    expect(same.state.books.find((b) => b.id === 'bk-cross')!.needsReview).toBe(false)
+  })
+
+  it('批内同 ISBN 不同 metaid（卷 3/卷 4）→ 组首候选置标 + 警告含双方 metaid', () => {
+    const r = dedupeCatalogsAndBooks(
+      [
+        { partial: { sourceId: 'szlib', barcodes: ['V3'], metaIdKey: '7109377' }, bookPartial: { isbn13: '9787574012745', title: '合成书目052', authors: ['甲'] }, isPlaceholder: false },
+        { partial: { sourceId: 'szlib', barcodes: ['V4'], metaIdKey: '7109378' }, bookPartial: { isbn13: '9787574012745', title: '合成书目053', authors: ['甲'] }, isPlaceholder: false },
+      ],
+      ['V3', 'V4'],
+      { books: [], catalogRecords: [], borrowCycles: [] },
+      szlibParser,
+    )
+    expect(r.bookIds).toEqual(['new:isbn:9787574012745', 'new:isbn:9787574012745'])
+    // 置标传播到组首候选（pipeline 在组首建 Book 时置 needsReview）。
+    expect(r.reviewFlags).toEqual([true, true])
+    const w = r.warnings.find((x) => x.type === 'duplicate')
+    expect(w?.message).toContain('7109377')
+    expect(w?.message).toContain('7109378')
+  })
+
+  it('批内同 ISBN 同 metaid 多副本（一书多册）→ 不置标', () => {
+    const r = dedupeCatalogsAndBooks(
+      [
+        { partial: { sourceId: 'szlib', barcodes: ['C1'], metaIdKey: '9001' }, bookPartial: { isbn13: '9780000000001', title: '甲书', authors: ['甲著'] }, isPlaceholder: false },
+        { partial: { sourceId: 'szlib', barcodes: ['C2'], metaIdKey: '9001' }, bookPartial: { isbn13: '9780000000001', title: '甲书', authors: ['甲著'] }, isPlaceholder: false },
+      ],
+      ['C1', 'C2'],
+      { books: [], catalogRecords: [], borrowCycles: [] },
+      szlibParser,
+    )
+    expect(r.reviewFlags).toEqual([false, false])
+    expect(r.warnings).toEqual([])
   })
 
   it('空条码候选不命中 barcode 索引（多书共享空键 last-wins 会错挂到别的书），按 metaIdKey 消歧（回归）', () => {
