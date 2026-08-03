@@ -19,7 +19,7 @@ import {
   saveSetBook,
   searchMergeTargets,
   splitSetBook,
-} from './review-actions'
+} from './-review-actions'
 
 installFakeIndexedDB()
 

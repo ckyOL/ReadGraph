@@ -7,9 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import i18n, { changeLanguage } from '@/i18n'
 import type { Book, BorrowCycle, CatalogRecord, RawRecord, Source } from '@/types/entities'
-import { ReviewPage } from '../review'
-import { PlaceholderForm } from './placeholder-sheet'
-import { SetForm, suggestSetTitle } from './set-sheet'
+import { ReviewPage } from './-review-page'
+import { PlaceholderForm } from './-placeholder-sheet'
+import { SetForm, suggestSetTitle } from './-set-sheet'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 // dexie-react-hooks 在 node 测试环境无法跑真实 Dexie 订阅，mock 为受控返回值；

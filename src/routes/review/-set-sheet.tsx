@@ -37,7 +37,7 @@ import {
 import { catalogTitleByRecord } from '@/lib/review'
 import { parseVolumeFromTitle, stripVolumeSuffix } from '@/lib/volume'
 import type { Book, BorrowCycle, CatalogRecord, RawRecord, Source } from '@/types/entities'
-import { markNotSet, saveSetBook, splitSetBook } from './review-actions'
+import { markNotSet, saveSetBook, splitSetBook } from './-review-actions'
 
 export interface SetSheetProps {
   book: Book

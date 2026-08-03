@@ -31,7 +31,7 @@ import { normalizeIsbn } from '@/lib/isbn'
 import { splitPersons } from '@/lib/title'
 import { formatDateInTz } from '@/lib/display-time'
 import type { Book, BorrowCycle, CatalogRecord, Source } from '@/types/entities'
-import { completePlaceholder, mergePlaceholderInto, searchMergeTargets } from './review-actions'
+import { completePlaceholder, mergePlaceholderInto, searchMergeTargets } from './-review-actions'
 
 export interface PlaceholderSheetProps {
   book: Book
