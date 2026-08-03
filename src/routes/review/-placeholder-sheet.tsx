@@ -10,12 +10,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,15 +46,15 @@ export interface PlaceholderSheetProps {
 export function PlaceholderSheet(props: PlaceholderSheetProps) {
   const { t } = useTranslation('review')
   return (
-    <Sheet open onOpenChange={(open) => !open && props.onDone()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-[640px]">
-        <SheetHeader>
-          <SheetTitle>{t('placeholder.title')}</SheetTitle>
-          <SheetDescription>{props.book.title}</SheetDescription>
-        </SheetHeader>
+    <Dialog open onOpenChange={(open) => !open && props.onDone()}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{t('placeholder.title')}</DialogTitle>
+          <DialogDescription>{props.book.title}</DialogDescription>
+        </DialogHeader>
         <PlaceholderForm {...props} />
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
 
