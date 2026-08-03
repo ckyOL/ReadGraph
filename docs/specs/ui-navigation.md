@@ -43,7 +43,6 @@ src/routes/
     $bookId.tsx           书目详情（/library/$bookId）
   timeline.tsx            借阅时间线脊柱（/timeline）
   import.tsx              导入（/import）：单页——来源选择 + 文件/预览 + 右侧报告
-  review.tsx              待审（/review）：选书帮占位补全 + 同 ISBN 套装候选（见 review 规格）
   profile.tsx             阅读画像（/profile）：图表主导（方向 B）
   settings.tsx            设置（/settings）：主题/locale/时区/系统重置
 ```
@@ -58,8 +57,8 @@ src/routes/
 
 1. **Dashboard（/）**：概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 最近导入）+ 最近借阅列表 + 快速入口（导入 / 书库）。
    - 空态：`Empty` + 首次导入引导（按钮跳 `/import`）。
-2. **书库（/library）**：`Table` 密实列表，列含书名、作者、ISBN13、来源徽标（`Badge`）、分类号芯片、借阅次数；可搜索/筛选/排序。
-   - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。
+2. **书库（/library）**：`Table` 密实列表，列含书名、作者、ISBN13、来源徽标（`Badge`）、分类号芯片、借阅次数；可搜索/筛选/排序。状态徽标列：占位书「占位」（destructive）、套装 Book「套装」（outline），普通书无徽标；顶部类型筛选 Select（全部/待完善/占位/套装，派生判定）；徽标可直达详情页编辑。侧边栏「书库」入口带 `needsReview=true` 计数徽标（原「待审」入口删除）。待完善数据的发现与过滤全部由此承载（见 [book-editing §5](book-editing.md#5-书库列表承载待完善标记与过滤)）。
+   - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。头部动作区「编辑」（search `edit=true` 驱动宽屏 Dialog，Book 全字段 + 编目 volume/barcodes/classifications，见 [book-editing](book-editing.md)）与「更多」菜单（待审书：标记为已确认/合并到已有书目/拆为独立 Book，破坏性操作 AlertDialog 二次确认）。
    - 空态：无 Book 时 `Empty` + 导入引导。
 3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
    - 空态：无周期 `Empty`。
@@ -73,10 +72,7 @@ src/routes/
    - 按月/按年借阅量柱图、借阅时长分布。
    - 空态：无数据 `Empty`，图表区隐去占位，给出导入入口。
 6. **设置（/settings）**：[设置与系统重置规格](settings.md)。
-7. **待审（/review）**：[待审书目页规格](review.md)：聚合选书帮占位补全与同 ISBN 套装结构化两类人工审核。列表（Tabs 分流 + 搜索 + 类型徽标）→ 行「审核」打开对应 Sheet（640px / 移动端 Drawer）。
-   - 选书帮补全 Sheet：已知信息（barcode/分类/借阅）+ 补全字段（书名必填、作者顿号分隔、ISBN 归一化校验）+ 合并到已有书目（搜索 → 选中 → AlertDialog 确认 → 借阅归入目标书）。
-   - 套装 Sheet：书目（题名前缀建议、ISBN 只读）+ 编目卷号（题名原文、volume 预填 `parseVolumeFromTitle`）+ 保存为套装 / 不是套装 / 拆为独立 Book（AlertDialog 二次确认）。
-   - 侧边栏「待审」入口带 `needsReview=true` 计数徽标；书库列表套装 Book 加「套装」outline Badge，详情页编目卡显示卷号 Badge。
+7. **待完善（无独立页）**：编辑能力统一在 [/library/$bookId 编辑 Dialog](book-editing.md)（全字段 + 编目 volume/barcodes/classifications，保存即解除待审标记）；合并到已有书目、拆为独立 Book 在详情页「更多」菜单（AlertDialog 二次确认）。待审类型语义见 [book-editing §10](book-editing.md#10-待审类型语义并入自原-reviewmd)；详情页编目卡显示卷号 Badge。
 
 ## 4. 主题与暗色模式骨架
 
@@ -110,7 +106,7 @@ src/routes/
 ## 7. 用户故事
 
 - 作为新用户，首次打开空库 → 在 Dashboard 看到引导，一键进入导入页，自动落库「深圳图书馆」来源，选文件完成一次导入，看到 Books/周期 入库。
-- 作为用户，在书库按分类号筛选、按借阅次数排序，点开某 Book 看 CatalogRecord 与借阅时间线。
+- 作为用户，在书库按分类号筛选、按借阅次数排序，点开某 Book 看 CatalogRecord 与借阅时间线；通过「待完善/占位/套装」类型筛选定位待完善书，进详情页一键编辑修正。
 - 作为用户，在时间线按来源筛选，查看当前在借（status='borrowed'）。
 - 作为用户，在阅读画像看到分类法 treemap 与借阅甘特带，空数据时见导入入口。
 - 作为用户，在设置切暗色、切中英，刷新后偏好保留。
@@ -120,14 +116,15 @@ src/routes/
 
 **Vitest（单元/集成）**
 - AppShell 渲染与路由树懒加载（mock routeTree）。
-- ✅ 待审（review 规格 §9.7 已落地）：`CatalogRecord.volume` schema；`src/lib/volume.ts` 卷号解析/去尾；dedupe 套装候选置标（同源异 metaid / 跨源异题名 / 批内同 ISBN 多 metaid，同源同 metaid 复本不置标）；pipeline/run-import 卷3/卷4 夹具 1 Book + `needsReview=true` + 警告；待审派生模型（kind 判定/行聚合/编目题名溯源/Tabs 分流）；review 动作库（补全、合并重挂、套装保存、不是套装、拆书）；/review 页与两个表单 SSR 渲染契约。
+- ✅ 待审语义（book-editing §10 已落地）：`CatalogRecord.volume` schema；`src/lib/volume.ts` 卷号解析/去尾；dedupe 套装候选置标（同源异 metaid / 跨源异题名 / 批内同 ISBN 多 metaid，同源同 metaid 复本不置标）；pipeline/run-import 卷3/卷4 夹具 1 Book + `needsReview=true` + 警告；派生模型（kind 判定/编目题名溯源）。
+- 统一编辑（book-editing 规格）：`updateBookWithRecords`（事务写回/解除标记/Zod 回滚/ISBN 冲突拒绝）；`markReviewed`；合并重挂/拆书用例迁移；编辑表单 SSR 契约 + 校验内联错误；详情页 `search.edit` 驱动 Dialog；书库类型筛选三分支与徽标列；Sidebar 无「待审」项 + 书库计数徽标。
 - ✅ locale Provider：读写 `readgraph:preferences`，Zod 同义校验非法值降级（已落地，见 `src/lib/locale.test.ts`、`src/hooks/use-locale.test.tsx`、`src/i18n/i18n.test.ts`）。theme Provider 待数据层里程碑。
 - 日期/时区纯函数：UTC ↔ `displayTimezone`、`source.timezone` 转换（对照 [design-decisions §2](../design-decisions.md)）。
 - 分类号芯片渲染：CLC/DDC code 与 category 映射。
 - Empty 状态在各页分支渲染正确。
 
 **Playwright（E2E）**
-- 侧栏导航：六页跳转、当前项高亮、移动端折叠展开。
+- 侧栏导航：五页跳转、当前项高亮、移动端折叠展开。
 - 暗色切换持久：切换后 reload 仍为暗色。
 - locale 切换：中英文本切换且 `html[lang]` 更新。
 - 空态 → 导入：空 Dashboard 点导入入口到 `/import`。

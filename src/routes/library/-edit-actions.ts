@@ -1,6 +1,6 @@
-// /review 页数据库动作（review 规格 §5/§6）。运行时编排：读改写全部走 Dexie
-// 事务，写前对实体过 Zod 校验（与 Repository 契约一致，失败整体回滚）。
-// 派生逻辑（kind 判定、行聚合、编目题名溯源）在 src/lib/review.ts（纯函数）。
+// 书目统一编辑动作库（book-editing 规格 §2/§4；原 review/-review-actions.ts 迁移合流）。
+// 运行时编排：读改写全部走 Dexie 事务，写前对实体过 Zod 校验（与 Repository 契约一致，
+// 失败整体回滚）。派生逻辑（kind 判定、套装派生、编目题名溯源）在 src/lib/book-status.ts。
 import type { ReadGraphDB } from '@/db/db'
 import {
   bookSchema,
@@ -10,9 +10,9 @@ import {
 } from '@/db/schemas'
 import { uuid } from '@/db/uuid'
 import { normalizeIsbn } from '@/lib/isbn'
-import { catalogTitleByRecord } from '@/lib/review'
+import { catalogTitleByRecord } from '@/lib/book-status'
 import { z } from 'zod'
-import type { Book, CatalogRecord } from '@/types/entities'
+import type { Book, CatalogRecord, ClassificationEntry } from '@/types/entities'
 
 const now = (): Date => new Date()
 
@@ -22,40 +22,110 @@ function validated<S extends z.ZodType>(schema: S, value: z.input<S>): z.output<
   return r.data
 }
 
-/** 选书帮补全字段（§5 保存：补全 + needsReview=false）。 */
-export interface PlaceholderCompletion {
-  title: string
-  authors: string[]
-  isbn13: string | null
-  isbn10: string | null
+/** ISBN 唯一冲突（book-editing 规格 §4.2）：另一 Book 已占用该 ISBN，保存阻断。 */
+export class IsbnConflictError extends Error {
+  readonly otherTitle: string
+
+  constructor(otherTitle: string) {
+    super('isbn-conflict')
+    this.name = 'IsbnConflictError'
+    this.otherTitle = otherTitle
+  }
 }
 
-/** 补全书目：写补全字段 + needsReview=false。 */
-export async function completePlaceholder(
+/** 书目可编辑字段（book-editing 规格 §3.2；sourceIds/needsReview/时间戳由动作层维护）。 */
+export interface BookDraft {
+  title: string
+  subtitle: string | null
+  parallelTitles: string[]
+  authors: string[]
+  translators: string[]
+  publisher: string | null
+  publishDate: string | null
+  edition: string | null
+  pages: number | null
+  price: { amount: number; currency: string } | null
+  isbn13: string | null
+  isbn10: string | null
+  subjects: string[]
+  tags: string[]
+  description: string | null
+  coverUrl: string | null
+}
+
+/** 编目可编辑字段（book-editing 规格 §3.3；metaId/metaIdKey/sourceId/bookId 只读）。 */
+export interface CatalogRecordDraft {
+  id: string
+  volume: string | null
+  barcodes: string[]
+  classifications: ClassificationEntry[]
+}
+
+/**
+ * 统一保存（book-editing 规格 §2.1/§3.4）：单事务写 Book 全字段 + 各编目
+ * volume/barcodes/classifications，成功即 needsReview=false、updatedAt=now。
+ * 取代原 completePlaceholder（补全）与 saveSetBook（套装保存）。
+ * ISBN 冲突预检：归一化后命中他书 → 抛 IsbnConflictError（整体回滚）。
+ */
+export async function updateBookWithRecords(
   db: ReadGraphDB,
   bookId: string,
-  input: PlaceholderCompletion,
+  book: BookDraft,
+  records: CatalogRecordDraft[],
 ): Promise<void> {
-  await db.transaction('rw', db.books, async () => {
-    const book = await db.books.get(bookId)
-    if (!book) throw new Error(`completePlaceholder: book not found: ${bookId}`)
-    const updated: Book = {
-      ...book,
-      title: input.title,
-      authors: input.authors,
-      isbn13: input.isbn13,
-      isbn10: input.isbn10,
-      needsReview: false,
-      updatedAt: now(),
+  await db.transaction('rw', [db.books, db.catalogRecords], async () => {
+    const existing = await db.books.get(bookId)
+    if (!existing) throw new Error(`updateBookWithRecords: book not found: ${bookId}`)
+
+    if (book.isbn13) {
+      const hit = await db.books.where('isbn13').equals(book.isbn13).first()
+      if (hit && hit.id !== bookId) throw new IsbnConflictError(hit.title)
     }
-    await db.books.put(validated(bookSchema, updated))
+
+    await db.books.put(
+      validated(bookSchema, {
+        ...existing,
+        ...book,
+        needsReview: false,
+        updatedAt: now(),
+      }),
+    )
+
+    const crs = await db.catalogRecords.where('bookId').equals(bookId).toArray()
+    const draftById = new Map(records.map((r) => [r.id, r]))
+    const updates = crs.map((c) => {
+      const d = draftById.get(c.id)
+      if (!d) return c
+      return validated(catalogRecordSchema, {
+        ...c,
+        volume: d.volume,
+        barcodes: d.barcodes,
+        classifications: d.classifications,
+        updatedAt: now(),
+      })
+    })
+    if (updates.length > 0) {
+      await db.catalogRecords.bulkPut(updates)
+    }
   })
 }
 
 /**
- * 合并到已有书目（§5 合并确认流）：占位 Book 删除，其 CatalogRecord 与
- * BorrowCycle 重挂目标书（catalogRecordId 不变，仍指被移挂的编目），
- * rawRecords 同步重指；目标书保持原状，needsReview 解除。
+ * 标记为已确认（book-editing 规格 §4.3）：仅 needsReview=false，title/volume 不动。
+ * 承接原 markNotSet「不是套装」语义。
+ */
+export async function markReviewed(db: ReadGraphDB, bookId: string): Promise<void> {
+  await db.transaction('rw', db.books, async () => {
+    const book = await db.books.get(bookId)
+    if (!book) throw new Error(`markReviewed: book not found: ${bookId}`)
+    await db.books.put(validated(bookSchema, { ...book, needsReview: false, updatedAt: now() }))
+  })
+}
+
+/**
+ * 合并到已有书目（占位书）：占位 Book 删除，其 CatalogRecord 与 BorrowCycle
+ * 重挂目标书（catalogRecordId 不变，仍指被移挂的编目），rawRecords 同步重指；
+ * 目标书保持原状，needsReview 解除。
  */
 export async function mergePlaceholderInto(
   db: ReadGraphDB,
@@ -105,47 +175,7 @@ export async function mergePlaceholderInto(
 }
 
 /**
- * 保存为套装（§6 保存）：写入各编目 volume（null 清空）+ Book.title +
- * needsReview=false。volumes 键为编目 id；未出现的编目不动。
- */
-export async function saveSetBook(
-  db: ReadGraphDB,
-  bookId: string,
-  title: string,
-  volumes: ReadonlyMap<string, string | null>,
-): Promise<void> {
-  await db.transaction('rw', [db.books, db.catalogRecords], async () => {
-    const book = await db.books.get(bookId)
-    if (!book) throw new Error(`saveSetBook: book not found: ${bookId}`)
-    await db.books.put(validated(bookSchema, { ...book, title, needsReview: false, updatedAt: now() }))
-    const crs = await db.catalogRecords.where('bookId').equals(bookId).toArray()
-    if (crs.length > 0) {
-      await db.catalogRecords.bulkPut(
-        crs.map((c) => {
-          if (!volumes.has(c.id)) return c
-          const v = volumes.get(c.id)!
-          return validated(catalogRecordSchema, {
-            ...c,
-            volume: v === '' ? null : v,
-            updatedAt: now(),
-          })
-        }),
-      )
-    }
-  })
-}
-
-/** 不是套装（§6）：仅 needsReview=false，title/volume 不动。 */
-export async function markNotSet(db: ReadGraphDB, bookId: string): Promise<void> {
-  await db.transaction('rw', db.books, async () => {
-    const book = await db.books.get(bookId)
-    if (!book) throw new Error(`markNotSet: book not found: ${bookId}`)
-    await db.books.put(validated(bookSchema, { ...book, needsReview: false, updatedAt: now() }))
-  })
-}
-
-/**
- * 拆为独立 Book（§6 拆书确认流）：按 metaIdKey 分组拆为多 Book，title 取
+ * 拆为独立 Book（套装候选）：按 metaIdKey 分组拆为多 Book，title 取
  * 各自编目题名原文、volume 保留、needsReview=false；CatalogRecord 与
  * BorrowCycle 按编目重挂；rawRecords 按 metaid/条码重指。
  * 同 ISBN 无法拆分进 books 表 &isbn13 唯一索引 → 拆分书 isbn13/isbn10 置 null
@@ -244,7 +274,7 @@ export async function splitSetBook(db: ReadGraphDB, bookId: string): Promise<voi
 }
 
 /**
- * 合并搜索（§5）：searchByTitle + findByIsbn13 合并去重，排除占位书自身。
+ * 合并搜索：searchByTitle + findByIsbn13 合并去重，排除占位书自身。
  * 空查询返回 []；ISBN 关键词先归一化再精确命中。
  */
 export async function searchMergeTargets(

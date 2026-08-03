@@ -1,12 +1,14 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { MoreHorizontalIcon } from 'lucide-react'
 import { z } from 'zod'
 
 import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
+import { reviewKindOf } from '@/lib/book-status'
 import { CatalogRecordCard } from '@/components/catalog-record'
 import { BorrowCyclesList } from '@/components/borrow-cycles-list'
 import { Badge } from '@/components/ui/badge'
@@ -19,12 +21,31 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { markReviewed, splitSetBook } from './-edit-actions'
+import { EditDialog } from './-edit-dialog'
+import { MergeDialog } from './-merge-dialog'
 
 const bookIdSchema = z.string().min(1)
 
@@ -34,13 +55,24 @@ export const Route = createFileRoute('/library/$bookId')({
     const parsed = bookIdSchema.safeParse(raw.bookId)
     return parsed.success ? { bookId: parsed.data } : false
   },
+  // 编辑对话框由 search `edit=true` 驱动（book-editing 规格 §4.1），URL 状态可刷新/回退。
+  // 不用 default(false)：默认值会使 search 对象与空 URL 不一致，触发 router 自动回写 `?edit=false`。
+  validateSearch: z.object({
+    edit: z.boolean().optional(),
+  }),
   component: BookDetailPage,
 })
 
 function BookDetailPage() {
   const { t } = useTranslation('pages')
   const { bookId } = Route.useParams()
+  const { edit } = Route.useSearch()
+  const navigate = Route.useNavigate()
   const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
+
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitting, setSplitting] = useState(false)
 
   const data = useLiveQuery(
     () =>
@@ -48,14 +80,17 @@ function BookDetailPage() {
         db.books.get(bookId),
         db.catalogRecords.where('bookId').equals(bookId).toArray(),
         db.borrowCycles.where('bookId').equals(bookId).toArray(),
+        // rawRecords 无 bookId 索引（data-layer §3），单书溯源用 filter。
+        db.rawRecords.filter((r) => r.bookId === bookId).toArray(),
         db.sources.toArray(),
       ]),
     [bookId],
   )
 
   const loading = data === undefined
-  const [book, catalogRecords, borrowCycles, sources] = data ?? [
+  const [book, catalogRecords, borrowCycles, rawRecords, sources] = data ?? [
     undefined,
+    [],
     [],
     [],
     [],
@@ -73,6 +108,26 @@ function BookDetailPage() {
       ),
     [borrowCycles],
   )
+
+  const closeEdit = () =>
+    void navigate({ search: (prev) => ({ ...prev, edit: undefined }) })
+
+  const handleMarkReviewed = async () => {
+    if (!book) return
+    await markReviewed(db, book.id)
+  }
+
+  const handleSplit = async () => {
+    if (!book) return
+    setSplitting(true)
+    try {
+      await splitSetBook(db, book.id)
+      // 拆书后原 bookId 不复存在，回书库列表。
+      void navigate({ to: '/library' })
+    } finally {
+      setSplitting(false)
+    }
+  }
 
   if (loading) return <div className="p-6" />
 
@@ -94,6 +149,7 @@ function BookDetailPage() {
     )
   }
 
+  const kind = reviewKindOf(book)
   const metaField = (label: string, value: ReactNode) =>
     value == null || value === '' ? null : (
       <div className="flex gap-2 text-sm">
@@ -111,10 +167,52 @@ function BookDetailPage() {
 
   return (
     <div className="flex flex-col p-6">
-      <h1 className="text-2xl font-bold">{book.title}</h1>
-      {book.authors.length > 0 && (
-        <p className="text-muted-foreground">{book.authors.join(' / ')}</p>
-      )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold">{book.title}</h1>
+          {book.authors.length > 0 && (
+            <p className="text-muted-foreground">{book.authors.join(' / ')}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            onClick={() =>
+              void navigate({ search: (prev) => ({ ...prev, edit: true }) })
+            }
+          >
+            {t('bookDetail.edit')}
+          </Button>
+          {(book.needsReview || kind !== null || catalogRecords.length >= 2) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" aria-label={t('bookDetail.more')}>
+                  <MoreHorizontalIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {book.needsReview && (
+                  <DropdownMenuItem onClick={() => void handleMarkReviewed()}>
+                    {t('bookDetail.more.markReviewed')}
+                  </DropdownMenuItem>
+                )}
+                {kind === 'placeholder' && (
+                  <DropdownMenuItem onClick={() => setMergeOpen(true)}>
+                    {t('bookDetail.more.merge')}
+                  </DropdownMenuItem>
+                )}
+                {kind === 'set' && catalogRecords.length >= 2 && (
+                  <DropdownMenuItem
+                    onClick={() => setSplitOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    {t('bookDetail.more.split')}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
@@ -186,6 +284,53 @@ function BookDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* 编辑对话框：URL search.edit 驱动 */}
+      {edit && (
+        <EditDialog
+          book={book}
+          catalogRecords={catalogRecords}
+          rawRecords={rawRecords}
+          sources={sources}
+          open={edit}
+          onOpenChange={(open) => !open && closeEdit()}
+        />
+      )}
+
+      {/* 占位书：合并到已有书目 */}
+      {kind === 'placeholder' && (
+        <MergeDialog
+          book={book}
+          borrowCycles={borrowCycles}
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          onMerged={(targetId) =>
+            void navigate({ to: '/library/$bookId', params: { bookId: targetId } })
+          }
+        />
+      )}
+
+      {/* 套装候选：拆为独立 Book（二次确认） */}
+      <AlertDialog open={splitOpen} onOpenChange={setSplitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('bookDetail.more.split.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('bookDetail.more.split.confirmDesc', { count: catalogRecords.length })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel', { ns: 'edit' })}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={splitting}
+              onClick={() => void handleSplit()}
+            >
+              {t('bookDetail.more.split.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -45,7 +45,7 @@ function matchVolumeSuffix(title: string): VolumeMatch | null {
   return null
 }
 
-/** 从题名末尾提取卷号；无匹配 → null（由用户在 /review 人工填写）。 */
+/** 从题名末尾提取卷号；无匹配 → null（由用户在详情页编辑表单填写）。 */
 export function parseVolumeFromTitle(title: string): string | null {
   return matchVolumeSuffix(title)?.volume ?? null
 }

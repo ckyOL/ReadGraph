@@ -77,7 +77,7 @@ const booksStore = {
  *   - [sourceId, metaIdKey] (compound) — 特定来源的编目唯一定位（类型稳定的去重键）
  *
  * 实体字段另含 `volume: string | null`（原文卷号，如 "3"/"上"；非索引字段，
- * 无需 db 版本升级）。套装候选（同 ISBN 多卷）在 /review 页由用户结构化后写入；
+ * 无需 db 版本升级）。套装候选（同 ISBN 多卷）由用户在详情页编辑表单结构化后写入（[book-editing](../specs/book-editing.md)）；
  * 旧导出无此字段时 schema 默认 null 兼容。
  */
 const catalogRecordsStore = {
@@ -272,17 +272,17 @@ Book 去重与归并（合并规则）:
    - 先通过 `sourceId` + `barcode` 或 `sourceId` + `metaIdKey` 匹配是否已有相同的本地编目记录（`metaIdKey` 为 `metaId` 归一化后的 string，避免 int/string 类型不一致导致漏判）。如果找到，说明是同一个馆的同一编目记录，直接沿用。
 2. Book 级精确匹配:
    - 提取出 `isbn13`，在全局 `books` 中匹配。若找到相同 ISBN，则自动将新生成的 `CatalogRecord` 挂载到该 `Book` 下。
-   - **套装候选置标**：合并若属「同源异 metaid」（同馆异编目）或「跨源异题名」（他馆同 ISBN 异题名），Book 置 `needsReview=true`（警告含双方 metaid），交 [/review 待审页](../specs/review.md) 人工结构化；同源同 metaid 多复本不置标。批内同 ISBN 多 metaid 同样置标。
+   - **套装候选置标**：合并若属「同源异 metaid」（同馆异编目）或「跨源异题名」（他馆同 ISBN 异题名），Book 置 `needsReview=true`（警告含双方 metaid），交 [/library/$bookId 编辑表单](../specs/book-editing.md) 人工结构化；同源同 metaid 多复本不置标。批内同 ISBN 多 metaid 同样置标。
 3. Book 级模糊匹配 (兜底):
    - 既无相同条码/metaIdKey，且无有效 ISBN，则比较 `normalize(title)` + `normalize(authors[0])` → 建议合并（需用户手动确认）。
 
 ## 待审语义（needsReview）
 
-`Book.needsReview=true` 表示导入期零决策、待人工确认的书目，全部收口到 [/review 待审页](../specs/review.md)：
+`Book.needsReview=true` 表示导入期零决策、待人工确认的书目，由书库列表标记与过滤发现，编辑统一在 [/library/$bookId 编辑表单](../specs/book-editing.md) 完成（语义定义见 [book-editing §10 待审类型语义](../specs/book-editing.md#10-待审类型语义并入自原-reviewmd)）：
 
-- **选书帮占位**：`needsReview=true && isbn13 === null`（各 barcode 独立 Book）→ 补全表单（§5）。
-- **套装候选**：`needsReview=true && isbn13 !== null`（同 ISBN 多卷合并）→ 套装表单（§6）。
-- 类型判定为查询派生不落库；补全/结构化/确认非套装后 `needsReview=false` 退出待审列表。
+- **选书帮占位**：`needsReview=true && isbn13 === null`（各 barcode 独立 Book）→ 补全（书名/作者/ISBN 必填，保存即解除）。
+- **套装候选**：`needsReview=true && isbn13 !== null`（同 ISBN 多卷合并）→ 卷号结构化 / 确认非套装 / 拆为独立 Book。
+- 类型判定为查询派生不落库；补全/结构化/确认后 `needsReview=false` 退出待完善筛选。
 
 BorrowCycle 去重:
 1. 精确匹配: sourceId + barcode + borrowedAt → 重复导入，跳过

@@ -1,4 +1,4 @@
-// review 规格 §5/§6：/review 数据库动作单测（fake-indexeddb，复用 run-import 测试模式）。
+// book-editing 规格 §2/§4/§7：统一编辑动作库单测（fake-indexeddb，原 review/-review-actions.test.ts 迁移）。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import type { ReadGraphDB } from '@/db/db'
@@ -13,13 +13,15 @@ import {
 } from '@/db/test-helpers'
 import type { Book, BorrowCycle, CatalogRecord, RawRecord } from '@/types/entities'
 import {
-  completePlaceholder,
-  markNotSet,
+  IsbnConflictError,
+  markReviewed,
   mergePlaceholderInto,
-  saveSetBook,
   searchMergeTargets,
   splitSetBook,
-} from './-review-actions'
+  updateBookWithRecords,
+  type BookDraft,
+  type CatalogRecordDraft,
+} from './-edit-actions'
 
 installFakeIndexedDB()
 
@@ -45,43 +47,163 @@ async function putAll(
   if (raws.length) await db.rawRecords.bulkPut(raws)
 }
 
-describe('completePlaceholder — 补全书目', () => {
-  it('写补全字段 + needsReview=false，解除待审', async () => {
+function draft(over: Partial<BookDraft> = {}): BookDraft {
+  return {
+    title: '真实的书',
+    subtitle: null,
+    parallelTitles: [],
+    authors: ['作者甲'],
+    translators: [],
+    publisher: null,
+    publishDate: null,
+    edition: null,
+    pages: null,
+    price: null,
+    isbn13: null,
+    isbn10: null,
+    subjects: [],
+    tags: [],
+    description: null,
+    coverUrl: null,
+    ...over,
+  }
+}
+
+describe('updateBookWithRecords — 统一保存（补全/套装/普通编辑合流）', () => {
+  it('写全字段 + needsReview=false，解除待审（占位补全语义）', async () => {
     const ph = makeBook('bk-ph', null, '福田图书馆读者自选图书', true)
     await putAll([ph])
-    await completePlaceholder(db, 'bk-ph', {
-      title: '真实的书',
-      authors: ['作者甲'],
-      isbn13: '9780000000001',
-      isbn10: null,
-    })
+    await updateBookWithRecords(
+      db,
+      'bk-ph',
+      draft({
+        title: '真实的书',
+        authors: ['作者甲'],
+        subtitle: '副题',
+        parallelTitles: ['Parallel Title'],
+        translators: ['译者乙'],
+        publisher: '出版社',
+        publishDate: '2024-05',
+        edition: '第2版',
+        pages: 320,
+        price: { amount: 45.5, currency: 'CNY' },
+        isbn13: '9780000000001',
+        isbn10: null,
+        subjects: ['文学'],
+        tags: ['想重读'],
+        description: '简介',
+        coverUrl: 'https://example.com/cover.jpg',
+      }),
+      [],
+    )
     const after = (await db.books.get('bk-ph'))!
     expect(after.title).toBe('真实的书')
     expect(after.authors).toEqual(['作者甲'])
+    expect(after.subtitle).toBe('副题')
+    expect(after.parallelTitles).toEqual(['Parallel Title'])
+    expect(after.translators).toEqual(['译者乙'])
+    expect(after.publisher).toBe('出版社')
+    expect(after.publishDate).toBe('2024-05')
+    expect(after.edition).toBe('第2版')
+    expect(after.pages).toBe(320)
+    expect(after.price).toEqual({ amount: 45.5, currency: 'CNY' })
     expect(after.isbn13).toBe('9780000000001')
+    expect(after.subjects).toEqual(['文学'])
+    expect(after.tags).toEqual(['想重读'])
+    expect(after.description).toBe('简介')
+    expect(after.coverUrl).toBe('https://example.com/cover.jpg')
     expect(after.needsReview).toBe(false)
+    expect(after.updatedAt.getTime()).toBeGreaterThanOrEqual(after.createdAt.getTime())
+  })
+
+  it('写各编目 volume/barcodes/classifications（套装保存语义）', async () => {
+    const set = makeBook('bk-set', '9787574012745', '合成书目052 : 合成副题 52 . 3', true)
+    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
+    const cr4 = makeCatalog('cr-v4', 'bk-set', 'src-sz', 'B4', 7109378)
+    await putAll([set], [cr3, cr4])
+
+    await updateBookWithRecords(
+      db,
+      'bk-set',
+      draft({ title: '合成书目', isbn13: '9787574012745' }),
+      [
+        { id: 'cr-v3', volume: '3', barcodes: ['B3', 'B3X'], classifications: [{ system: 'clc', code: 'I247' }] },
+        { id: 'cr-v4', volume: '4', barcodes: ['B4'], classifications: [] },
+      ],
+    )
+
+    const book = (await db.books.get('bk-set'))!
+    expect(book.title).toBe('合成书目')
+    expect(book.needsReview).toBe(false)
+    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBe('3')
+    expect((await db.catalogRecords.get('cr-v3'))!.barcodes).toEqual(['B3', 'B3X'])
+    expect((await db.catalogRecords.get('cr-v3'))!.classifications).toEqual([
+      { system: 'clc', code: 'I247' },
+    ])
+    expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
+  })
+
+  it('volume 清空（null）；未出现在表单的编目不动', async () => {
+    const set = makeBook('bk-set', '9787574012745', 'x', true)
+    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
+    const cr4 = makeCatalog('cr-v4', 'bk-set', 'src-sz', 'B4', 7109378)
+    cr4.volume = '4'
+    await putAll([set], [cr3, cr4])
+
+    await updateBookWithRecords(db, 'bk-set', draft({ title: 'x', isbn13: '9787574012745' }), [
+      { id: 'cr-v3', volume: null, barcodes: ['B3'], classifications: [] },
+    ])
+
+    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBeNull()
+    expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
   })
 
   it('非法 ISBN-13 经 zod 拒绝且不写库（回滚）', async () => {
     const ph = makeBook('bk-ph', null, '福田图书馆读者自选图书', true)
     await putAll([ph])
     await expect(
-      completePlaceholder(db, 'bk-ph', {
-        title: '坏 ISBN',
-        authors: [],
-        isbn13: '123', // 非 13 位纯数字
-        isbn10: null,
-      }),
+      updateBookWithRecords(db, 'bk-ph', draft({ isbn13: '123' }), []), // 非 13 位纯数字
     ).rejects.toThrow()
     const after = (await db.books.get('bk-ph'))!
     expect(after.title).toBe('福田图书馆读者自选图书')
     expect(after.needsReview).toBe(true)
   })
 
-  it('书不存在抛错', async () => {
+  it('ISBN 唯一冲突（他书占用）抛 IsbnConflictError 且回滚', async () => {
+    const ph = makeBook('bk-ph', null, '福田图书馆读者自选图书', true)
+    const other = makeBook('bk-other', '9780000000001', '已占用的书')
+    await putAll([ph, other])
     await expect(
-      completePlaceholder(db, 'nope', { title: 'x', authors: [], isbn13: null, isbn10: null }),
-    ).rejects.toThrow()
+      updateBookWithRecords(db, 'bk-ph', draft({ title: '改了题名', isbn13: '9780000000001' }), []),
+    ).rejects.toBeInstanceOf(IsbnConflictError)
+    // 回滚：占位书未被修改。
+    const after = (await db.books.get('bk-ph'))!
+    expect(after.title).toBe('福田图书馆读者自选图书')
+    expect(after.needsReview).toBe(true)
+  })
+
+  it('改自身 ISBN 为同值通过（不视为冲突）', async () => {
+    const ph = makeBook('bk-ph', '9780000000001', '原题名', true)
+    await putAll([ph])
+    await updateBookWithRecords(db, 'bk-ph', draft({ isbn13: '9780000000001' }), [])
+    expect((await db.books.get('bk-ph'))!.needsReview).toBe(false)
+  })
+
+  it('书不存在抛错', async () => {
+    await expect(updateBookWithRecords(db, 'nope', draft(), [])).rejects.toThrow()
+  })
+})
+
+describe('markReviewed — 标记为已确认（原「不是套装」）', () => {
+  it('仅 needsReview=false，title/volume 不动', async () => {
+    const set = makeBook('bk-set', '9787574012745', '原题名', true)
+    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
+    cr3.volume = '3'
+    await putAll([set], [cr3])
+    await markReviewed(db, 'bk-set')
+    expect((await db.books.get('bk-set'))!.needsReview).toBe(false)
+    expect((await db.books.get('bk-set'))!.title).toBe('原题名')
+    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBe('3')
   })
 })
 
@@ -123,58 +245,6 @@ describe('mergePlaceholderInto — 合并到已有书目', () => {
     const ph = makeBook('bk-ph', null, '福田图书馆读者自选图书', true)
     await putAll([ph])
     await expect(mergePlaceholderInto(db, 'bk-ph', 'bk-ph')).rejects.toThrow()
-  })
-})
-
-describe('saveSetBook — 保存为套装', () => {
-  it('写各编目 volume + Book.title + needsReview=false', async () => {
-    const set = makeBook('bk-set', '9787574012745', '合成书目052 : 合成副题 52 . 3')
-    set.needsReview = true
-    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
-    const cr4 = makeCatalog('cr-v4', 'bk-set', 'src-sz', 'B4', 7109378)
-    await putAll([set], [cr3, cr4])
-
-    await saveSetBook(
-      db,
-      'bk-set',
-      '合成书目',
-      new Map([
-        ['cr-v3', '3'],
-        ['cr-v4', '4'],
-      ]),
-    )
-
-    const book = (await db.books.get('bk-set'))!
-    expect(book.title).toBe('合成书目')
-    expect(book.needsReview).toBe(false)
-    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBe('3')
-    expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
-  })
-
-  it('volume 清空（空串 → null）；未出现在表单的编目不动', async () => {
-    const set = makeBook('bk-set', '9787574012745', 'x', true)
-    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
-    const cr4 = makeCatalog('cr-v4', 'bk-set', 'src-sz', 'B4', 7109378)
-    cr4.volume = '4'
-    await putAll([set], [cr3, cr4])
-
-    await saveSetBook(db, 'bk-set', 'x', new Map([['cr-v3', '']]))
-
-    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBeNull()
-    expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
-  })
-})
-
-describe('markNotSet — 不是套装', () => {
-  it('仅 needsReview=false，title/volume 不动', async () => {
-    const set = makeBook('bk-set', '9787574012745', '原题名', true)
-    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
-    cr3.volume = '3'
-    await putAll([set], [cr3])
-    await markNotSet(db, 'bk-set')
-    expect((await db.books.get('bk-set'))!.needsReview).toBe(false)
-    expect((await db.books.get('bk-set'))!.title).toBe('原题名')
-    expect((await db.catalogRecords.get('cr-v3'))!.volume).toBe('3')
   })
 })
 
@@ -251,3 +321,12 @@ describe('searchMergeTargets — 合并搜索', () => {
     expect(await searchMergeTargets(db, '   ', 'bk-x')).toEqual([])
   })
 })
+
+// 类型健全性：CatalogRecordDraft 与动作签名对齐（无运行时行为）。
+const _draftShape: CatalogRecordDraft = {
+  id: 'cr-1',
+  volume: null,
+  barcodes: [],
+  classifications: [],
+}
+void _draftShape

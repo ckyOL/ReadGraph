@@ -165,7 +165,7 @@ export function dedupeCatalogsAndBooks(
             reviewFlags[i] = true
             warnings.push({
               type: 'duplicate',
-              message: `同 ISBN 多卷候选：metaid ${crsOfBook[0]?.metaIdKey ?? '无'} ↔ ${cr.metaIdKey ?? '无'} 并入同一 Book「${matchedBook.title}」，请到 /review 审核`,
+              message: `同 ISBN 多卷候选：metaid ${crsOfBook[0]?.metaIdKey ?? '无'} ↔ ${cr.metaIdKey ?? '无'} 并入同一 Book「${matchedBook.title}」，请到书库筛选「套装候选」，在详情页编辑`,
               recordRef: barcode ? `barcode:${barcode}` : null,
             })
           }
@@ -214,7 +214,7 @@ export function dedupeCatalogsAndBooks(
           reviewFlags[i] = true
           warnings.push({
             type: 'duplicate',
-            message: `同 ISBN 多卷候选：metaid ${firstMeta} ↔ ${candMeta} 并入同一 Book，请到 /review 审核`,
+            message: `同 ISBN 多卷候选：metaid ${firstMeta} ↔ ${candMeta} 并入同一 Book，请到书库筛选「套装候选」，在详情页编辑`,
             recordRef: barcode ? `barcode:${barcode}` : null,
           })
         }

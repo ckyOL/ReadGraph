@@ -74,7 +74,7 @@ describe('i18n bootstrap', () => {
     expect(Array.isArray(i18n.options.ns)).toBe(true)
     expect(i18n.options.ns).toContain('nav')
     expect(i18n.options.ns).toContain('pages')
-    expect(i18n.options.ns).toContain('review')
+    expect(i18n.options.ns).toContain('edit')
   })
 
   it('translates a nav key in both configured languages', async () => {

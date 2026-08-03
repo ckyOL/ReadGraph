@@ -1,14 +1,15 @@
-// review 规格 §2/§4/§8：待审派生模型单测。
+// book-editing 规格 §2/§5：待审派生模型单测（原 review.test.ts 迁移：删列表聚合，
+// 增 reviewBadgeOf / filterBookByReviewType 书库承载断言）。
 import { describe, it, expect } from 'vitest'
 
-import type { Book, BorrowCycle, CatalogRecord, RawRecord } from '@/types/entities'
+import type { Book, CatalogRecord, RawRecord } from '@/types/entities'
 import {
-  buildReviewRows,
   catalogTitleByRecord,
-  filterReviewRows,
+  filterBookByReviewType,
   isSetBook,
+  reviewBadgeOf,
   reviewKindOf,
-} from './review'
+} from './book-status'
 
 function mkBook(over: Partial<Book>): Book {
   return {
@@ -53,25 +54,6 @@ function mkCr(over: Partial<CatalogRecord>): CatalogRecord {
   }
 }
 
-function mkCycle(over: Partial<BorrowCycle>): BorrowCycle {
-  return {
-    id: 'cy-1',
-    bookId: 'bk-1',
-    catalogRecordId: 'cr-1',
-    sourceId: 'szlib',
-    borrowedAt: new Date('2026-05-01T00:00:00.000Z'),
-    returnedAt: null,
-    status: 'borrowed',
-    borrowLocation: null,
-    returnLocation: null,
-    rawRecordIds: [],
-    barcode: null,
-    createdAt: new Date('2026-05-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-05-01T00:00:00.000Z'),
-    ...over,
-  }
-}
-
 describe('reviewKindOf — 待审类型判定（派生不落库）', () => {
   it('needsReview=false → null（无论 ISBN）', () => {
     expect(reviewKindOf({ needsReview: false, isbn13: null })).toBeNull()
@@ -82,56 +64,6 @@ describe('reviewKindOf — 待审类型判定（派生不落库）', () => {
   })
   it('needsReview=true && isbn13!==null → set（套装候选）', () => {
     expect(reviewKindOf({ needsReview: true, isbn13: '9787574012745' })).toBe('set')
-  })
-})
-
-describe('buildReviewRows — 列表聚合', () => {
-  const placeholder = mkBook({ id: 'bk-ph', needsReview: true, isbn13: null, title: '福田图书馆读者自选图书' })
-  const setBook = mkBook({ id: 'bk-set', needsReview: true, isbn13: '9787574012745', title: '合成书目052' })
-  const reviewed = mkBook({ id: 'bk-done', needsReview: false, isbn13: '9780000000001', title: '已审' })
-  const crs = [
-    mkCr({ id: 'cr-ph1', bookId: 'bk-ph' }),
-    mkCr({ id: 'cr-ph2', bookId: 'bk-ph' }),
-    mkCr({ id: 'cr-set1', bookId: 'bk-set' }),
-    mkCr({ id: 'cr-set2', bookId: 'bk-set' }),
-  ]
-  const cycles = [
-    mkCycle({ id: 'cy-ph1', bookId: 'bk-ph', borrowedAt: new Date('2026-04-01T00:00:00.000Z') }),
-    mkCycle({ id: 'cy-ph2', bookId: 'bk-ph', borrowedAt: new Date('2026-06-01T00:00:00.000Z') }),
-    mkCycle({ id: 'cy-set1', bookId: 'bk-set', borrowedAt: new Date('2026-05-01T00:00:00.000Z') }),
-  ]
-
-  it('只聚合待审 Book，带编目数/借阅数/最近借阅', () => {
-    const rows = buildReviewRows([placeholder, setBook, reviewed], crs, cycles)
-    expect(rows).toHaveLength(2)
-    const ph = rows.find((r) => r.book.id === 'bk-ph')!
-    expect(ph.kind).toBe('placeholder')
-    expect(ph.catalogCount).toBe(2)
-    expect(ph.borrowCount).toBe(2)
-    expect(ph.lastBorrowedAt!.toISOString()).toBe('2026-06-01T00:00:00.000Z')
-    const set = rows.find((r) => r.book.id === 'bk-set')!
-    expect(set.kind).toBe('set')
-    expect(set.borrowCount).toBe(1)
-  })
-
-  it('排序：占位在前；同类型按借阅次数降序', () => {
-    const a = mkBook({ id: 'ph-a', needsReview: true, isbn13: null, title: 'A占位' })
-    const b = mkBook({ id: 'ph-b', needsReview: true, isbn13: null, title: 'B占位' })
-    const s1 = mkBook({ id: 'set-1', needsReview: true, isbn13: '9780000000001', title: 'S1' })
-    const s2 = mkBook({ id: 'set-2', needsReview: true, isbn13: '9780000000002', title: 'S2' })
-    const cycles2 = [
-      mkCycle({ id: 'c1', bookId: 'ph-a' }),
-      mkCycle({ id: 'c2', bookId: 'ph-a' }),
-      mkCycle({ id: 'c3', bookId: 'set-2' }),
-      mkCycle({ id: 'c4', bookId: 'set-2' }),
-      mkCycle({ id: 'c5', bookId: 'set-2' }),
-    ]
-    const rows = buildReviewRows([s2, b, s1, a], [], cycles2)
-    expect(rows.map((r) => r.book.id)).toEqual(['ph-a', 'ph-b', 'set-2', 'set-1'])
-  })
-
-  it('无待审 → 空数组', () => {
-    expect(buildReviewRows([reviewed], crs, cycles)).toEqual([])
   })
 })
 
@@ -155,22 +87,51 @@ describe('isSetBook — 套装判定（≥2 个 volume 非空编目）', () => {
   })
 })
 
-describe('filterReviewRows — Tabs 分流与搜索', () => {
-  const ph = mkBook({ id: 'ph', needsReview: true, isbn13: null, title: '福田图书馆读者自选图书' })
-  const set1 = mkBook({ id: 'set1', needsReview: true, isbn13: '9787574012745', title: '合成书目052' })
-  const rows = buildReviewRows([set1, ph], [], [])
-
-  it('all 全量；placeholder/set 各自分流', () => {
-    expect(filterReviewRows(rows, 'all', '').map((r) => r.book.id)).toEqual(['ph', 'set1'])
-    expect(filterReviewRows(rows, 'placeholder', '').map((r) => r.book.id)).toEqual(['ph'])
-    expect(filterReviewRows(rows, 'set', '').map((r) => r.book.id)).toEqual(['set1'])
+describe('reviewBadgeOf — 书库列表状态徽标', () => {
+  it('占位书 → placeholder', () => {
+    const ph = mkBook({ id: 'bk-ph', needsReview: true, isbn13: null })
+    expect(reviewBadgeOf(ph, 'bk-ph', [])).toBe('placeholder')
   })
+  it('待审套装候选（isbn13 非空、volume 未填）→ set', () => {
+    const cand = mkBook({ id: 'bk-c', needsReview: true, isbn13: '9787574012745' })
+    expect(reviewBadgeOf(cand, 'bk-c', [mkCr({ bookId: 'bk-c', volume: null })])).toBe('set')
+  })
+  it('已结构化套装（needsReview=false、≥2 volume）→ set', () => {
+    const done = mkBook({ id: 'bk-s', needsReview: false, isbn13: '9787574012745' })
+    const crs = [
+      mkCr({ bookId: 'bk-s', volume: '3' }),
+      mkCr({ bookId: 'bk-s', volume: '4' }),
+    ]
+    expect(reviewBadgeOf(done, 'bk-s', crs)).toBe('set')
+  })
+  it('普通书（非待审、非套装）→ null', () => {
+    const normal = mkBook({ id: 'bk-n', needsReview: false, isbn13: '9780000000001' })
+    expect(reviewBadgeOf(normal, 'bk-n', [mkCr({ bookId: 'bk-n', volume: null })])).toBeNull()
+  })
+})
 
-  it('搜索按题名/ISBN 子串（大小写不敏感）', () => {
-    expect(filterReviewRows(rows, 'all', '合成').map((r) => r.book.id)).toEqual(['set1'])
-    expect(filterReviewRows(rows, 'all', '7574').map((r) => r.book.id)).toEqual(['set1'])
-    expect(filterReviewRows(rows, 'set', '书目').map((r) => r.book.id)).toEqual(['set1'])
-    expect(filterReviewRows(rows, 'all', '不存在')).toEqual([])
+describe('filterBookByReviewType — 书库类型筛选（全部/待完善/占位/套装候选）', () => {
+  const ph = mkBook({ needsReview: true, isbn13: null })
+  const cand = mkBook({ needsReview: true, isbn13: '9787574012745' })
+  const done = mkBook({ needsReview: false, isbn13: '9780000000001' })
+
+  it('all 全量', () => {
+    expect(filterBookByReviewType(ph, 'all')).toBe(true)
+    expect(filterBookByReviewType(cand, 'all')).toBe(true)
+    expect(filterBookByReviewType(done, 'all')).toBe(true)
+  })
+  it('needsReview 只取待完善（含占位与套装候选）', () => {
+    expect(filterBookByReviewType(ph, 'needsReview')).toBe(true)
+    expect(filterBookByReviewType(cand, 'needsReview')).toBe(true)
+    expect(filterBookByReviewType(done, 'needsReview')).toBe(false)
+  })
+  it('placeholder 只取占位；set 只取套装候选（已确认书不命中）', () => {
+    expect(filterBookByReviewType(ph, 'placeholder')).toBe(true)
+    expect(filterBookByReviewType(cand, 'placeholder')).toBe(false)
+    expect(filterBookByReviewType(done, 'placeholder')).toBe(false)
+    expect(filterBookByReviewType(cand, 'set')).toBe(true)
+    expect(filterBookByReviewType(ph, 'set')).toBe(false)
+    expect(filterBookByReviewType(done, 'set')).toBe(false)
   })
 })
 
@@ -202,7 +163,7 @@ describe('catalogTitleByRecord — 编目题名原文溯源', () => {
       id: 'raw-3',
       importLogId: 'log-1',
       sourceId: 'szlib',
-      data: { metaid: 0, barcode: 'B5', title: '合成期刊', },
+      data: { metaid: 0, barcode: 'B5', title: '合成期刊' },
       rowIndex: 3,
       borrowCycleId: null,
       bookId: 'bk-other',

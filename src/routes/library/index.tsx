@@ -34,7 +34,11 @@ import {
 import type { Book } from '@/types/entities'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
-import { isSetBook } from '@/lib/review'
+import {
+  filterBookByReviewType,
+  reviewBadgeOf,
+  type ReviewTypeFilter,
+} from '@/lib/book-status'
 
 export const Route = createFileRoute('/library/')({
   component: LibraryPage,
@@ -70,6 +74,7 @@ function LibraryPage() {
 
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [reviewFilter, setReviewFilter] = useState<ReviewTypeFilter>('all')
   const [sortKey, setSortKey] = useState<SortKey>('title')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -116,6 +121,9 @@ function LibraryPage() {
     if (sourceFilter !== 'all') {
       out = out.filter((r) => r.book.sourceIds.includes(sourceFilter))
     }
+    if (reviewFilter !== 'all') {
+      out = out.filter((r) => filterBookByReviewType(r.book, reviewFilter))
+    }
     const dir = sortDir === 'asc' ? 1 : -1
     return [...out].sort((a, b) => {
       switch (sortKey) {
@@ -136,7 +144,7 @@ function LibraryPage() {
           return collator.compare(a.book.title, b.book.title) * dir
       }
     })
-  }, [rows, search, sourceFilter, sortKey, sortDir])
+  }, [rows, search, sourceFilter, reviewFilter, sortKey, sortDir])
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -214,6 +222,29 @@ function LibraryPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">
+                {t('library.filter.status')}
+              </span>
+              <Select
+                value={reviewFilter}
+                onValueChange={(v) => setReviewFilter(v as ReviewTypeFilter)}
+              >
+                <SelectTrigger className="h-8 w-36 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('library.filter.allStatus')}</SelectItem>
+                  <SelectItem value="needsReview">
+                    {t('library.filter.needsReview')}
+                  </SelectItem>
+                  <SelectItem value="placeholder">
+                    {t('library.filter.placeholder')}
+                  </SelectItem>
+                  <SelectItem value="set">{t('library.filter.set')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <Table className="mt-4">
@@ -241,60 +272,73 @@ function LibraryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((r) => (
-                <TableRow key={r.book.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        to="/library/$bookId"
-                        params={{ bookId: r.book.id }}
-                        className="min-w-0 truncate hover:underline"
-                      >
-                        {r.book.title}
-                      </Link>
-                      {r.book.needsReview && (
-                        <Badge variant="destructive">{t('library.needsReview')}</Badge>
+              {filtered.map((r) => {
+                const badge = reviewBadgeOf(r.book, r.book.id, catalogRecords)
+                return (
+                  <TableRow key={r.book.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to="/library/$bookId"
+                          params={{ bookId: r.book.id }}
+                          className="min-w-0 truncate hover:underline"
+                        >
+                          {r.book.title}
+                        </Link>
+                        {badge && (
+                          <Link
+                            to="/library/$bookId"
+                            params={{ bookId: r.book.id }}
+                            search={{ edit: true }}
+                            aria-label={`${badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')} ${r.book.title}`}
+                          >
+                            <Badge
+                              variant={badge === 'placeholder' ? 'destructive' : 'outline'}
+                            >
+                              {badge === 'placeholder'
+                                ? t('library.badge.placeholder')
+                                : t('library.set')}
+                            </Badge>
+                          </Link>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="text-muted-foreground">{r.authors}</span>
+                    </TableCell>
+                    <TableCell className="hidden font-mono text-xs lg:table-cell">
+                      {r.isbn13 ?? '—'}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {r.sourceName ? (
+                        <Badge variant="outline" className="rounded-none">
+                          {r.sourceName}
+                        </Badge>
+                      ) : (
+                        '—'
                       )}
-                      {!r.book.needsReview && isSetBook(r.book.id, catalogRecords) && (
-                        <Badge variant="outline">{t('library.set')}</Badge>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <span className="tabular-nums text-muted-foreground">
+                        {r.lastBorrowedAt
+                          ? formatDateInTz(r.lastBorrowedAt, displayTimezone)
+                          : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {r.classification ? (
+                        <ClassificationBadge
+                          system={r.classification.system}
+                          code={r.classification.code}
+                        />
+                      ) : (
+                        '—'
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <span className="text-muted-foreground">{r.authors}</span>
-                  </TableCell>
-                  <TableCell className="hidden font-mono text-xs lg:table-cell">
-                    {r.isbn13 ?? '—'}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {r.sourceName ? (
-                      <Badge variant="outline" className="rounded-none">
-                        {r.sourceName}
-                      </Badge>
-                    ) : (
-                      '—'
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <span className="tabular-nums text-muted-foreground">
-                      {r.lastBorrowedAt
-                        ? formatDateInTz(r.lastBorrowedAt, displayTimezone)
-                        : '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {r.classification ? (
-                      <ClassificationBadge
-                        system={r.classification.system}
-                        code={r.classification.code}
-                      />
-                    ) : (
-                      '—'
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{r.borrowCount}</TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{r.borrowCount}</TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
           {filtered.length === 0 && (

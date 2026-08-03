@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   BarChart3Icon,
-  ClipboardCheckIcon,
   LayoutDashboardIcon,
   LibraryIcon,
   SettingsIcon,
@@ -32,7 +31,6 @@ const navItems = [
   { to: '/timeline', key: 'timeline' as const, Icon: TimelineIcon },
   { to: '/import', key: 'import' as const, Icon: UploadIcon },
   { to: '/profile', key: 'profile' as const, Icon: BarChart3Icon },
-  { to: '/review', key: 'review' as const, Icon: ClipboardCheckIcon },
   { to: '/settings', key: 'settings' as const, Icon: SettingsIcon },
 ]
 
@@ -43,7 +41,7 @@ export const Route = createRootRoute({
 function SidebarNav() {
   const { t } = useTranslation('nav')
   const { isMobile, setOpenMobile } = useSidebar()
-  // 待审徽标：needsReview=true 的 Book 数（review 规格 §3，响应式计数）。
+  // 待完善徽标：needsReview=true 的 Book 数（book-editing 规格 §5.3，响应式计数，挂书库入口）。
   const reviewCount = useLiveQuery(
     () => db.books.where('needsReview').equals(1).count(),
     [],
@@ -62,7 +60,7 @@ function SidebarNav() {
                 <span>{t(item.key)}</span>
               </Link>
             </SidebarMenuButton>
-            {item.key === 'review' && (reviewCount ?? 0) > 0 && (
+            {item.key === 'library' && (reviewCount ?? 0) > 0 && (
               <SidebarMenuBadge>{reviewCount}</SidebarMenuBadge>
             )}
           </SidebarMenuItem>

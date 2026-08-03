@@ -52,7 +52,7 @@ export interface CatalogRecord {
   metaIdKey: string | null
   barcodes: string[]
   classifications: ClassificationEntry[]
-  /** 原文卷号（如 "3"/"上"）；套装候选由用户在 /review 页结构化。 */
+  /** 原文卷号（如 "3"/"上"）；套装候选由用户在详情页编辑表单结构化。 */
   volume: string | null
   /** classCodes multiEntry 索引派生字段：存储前由 deriveClassCodes 补写（schema 不校验；存量缺失由启动回填）。 */
   classCodes?: string[]

@@ -62,7 +62,7 @@
 由于深图新 API **提供了 ISBN 和系统内部 metaid**，解析器在去重与合并方面更为可靠：
 1. **CatalogRecord 级匹配 (最优先)**：首先依赖 `sourceId` + `barcode` 或 `sourceId` + `metaIdKey` 定位已存在的本地编目记录 `CatalogRecord`（`metaIdKey` 为 `metaid` 归一化后的 string，避免 int/string 类型不一致导致漏判）。如果找到，说明是同一个馆的同一次或不同复本，直接沿用。
 2. **Book 级基于 ISBN 的书目合并**：如果这是一个新的编目，优先使用提取出的合法 `ISBN` 在全局书库中查找匹配。若找到相同 ISBN 的 `Book`，则自动将新生成的 `CatalogRecord` 挂载到该 `Book` 之下。
-   - **套装候选置标**：合并发生时若属「同源异 metaid」（同一馆不同 metaid 并入一书）或「跨源异题名」（他馆同 ISBN 但题名不同），Book 置 `needsReview=true` 作为**套装候选**（同 ISBN 多卷/多作品），警告文案含双方 metaid；用户在 [/review 待审页](../../specs/review.md) 结构化卷号或确认非套装后解除。同源同 metaid 多复本不置标。
+   - **套装候选置标**：合并发生时若属「同源异 metaid」（同一馆不同 metaid 并入一书）或「跨源异题名」（他馆同 ISBN 但题名不同），Book 置 `needsReview=true` 作为**套装候选**（同 ISBN 多卷/多作品），警告文案含双方 metaid；用户在 [/library/$bookId 编辑表单](../../specs/book-editing.md) 结构化卷号或确认非套装后解除。同源同 metaid 多复本不置标。
 3. **回退机制 (无 ISBN 处理)**：对于 `ISBN` 为空或无效的记录（如部分老旧书目），若也无法通过 `metaid` 找到已有 `CatalogRecord`，系统只能退回到依赖 `title` 的模糊匹配，视为新书导入，后续由 UI 提供“按书名建议合并”的功能，由用户人工确认。
 
 
@@ -129,12 +129,12 @@
 
 #### 导入后 UX 流程
 
-导入完成后，两类待审（选书帮占位 + 同 ISBN 套装候选）统一收口到 **[/review 待审页](../../specs/review.md)**（侧边栏「待审」入口 + 计数徽标）：
+导入完成后，两类待审（选书帮占位 + 同 ISBN 套装候选）由**书库列表标记与过滤**发现（占位/套装徽标 + 类型筛选 + 侧边栏「书库」计数徽标，见 [book-editing §5](../../specs/book-editing.md#5-书库列表承载待完善标记与过滤)），编辑统一在 [/library/$bookId 编辑表单](../../specs/book-editing.md) 完成：
 
-1. **审阅入口**：/review 列表按类型徽标区分两类待审；选书帮占位 = destructive「占位」、套装候选 = outline「套装」。
-2. **逐本补全**（review 规格 §5）：补全表单展示已知信息（barcode、索书号、借阅时间），用户手动填入真实书名、作者（逗号/顿号分隔）、ISBN，或通过封面识别。
-3. **手动合并**（review 规格 §5）：若选书帮 barcode 实际对应库中已有书目，可搜索目标书并合并（借阅归入目标书、占位书删除）。
-4. **解除标记**：用户提交补全或合并后，`needsReview` 设为 `false`；此后该书参与正常的 ISBN/title 去重流程。
+1. **发现入口**：书库列表按类型徽标区分两类待审；选书帮占位 = destructive「占位」、套装候选 = outline「套装」；类型筛选可直接定位。
+2. **逐本补全**：详情页编辑表单展示已知信息（barcode、索书号、借阅时间），用户手动填入真实书名、作者（逗号/顿号分隔）、ISBN，或通过封面识别。
+3. **手动合并**：若选书帮 barcode 实际对应库中已有书目，详情页「更多」菜单搜索目标书并合并（借阅归入目标书、占位书删除）。
+4. **解除标记**：保存补全或合并后，`needsReview` 设为 `false`；此后该书参与正常的 ISBN/title 去重流程。
 
 #### 设计决策理由
 
