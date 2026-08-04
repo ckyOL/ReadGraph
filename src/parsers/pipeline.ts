@@ -103,6 +103,7 @@ export function importPipeline(
     state: dedupeState,
     bookIdByBarcode,
     bookIds,
+    existingCrIds,
     reviewFlags,
     warnings: ddWarnings,
   } = dedupeCatalogsAndBooks(
@@ -140,11 +141,19 @@ export function importPipeline(
       cand.isPlaceholder || !metaIdKey
         ? `${sourceId}|${barcode}`
         : `${sourceId}|${metaIdKey}`
-    const cId = crIdByDerived.get(crDerivedInput) ?? makeCrId(crDerivedInput)
-    crIdByDerived.set(crDerivedInput, cId)
+    // 编目级命中（§10.6 第 1 条）：物理副本已存在，复用既有编目、不产出
+    // 新 CatalogRecord。旧版仍按派生输入建新编目（同 metaIdKey/同条码 → 同
+    // 派生 id），bulkPut 时新记录覆盖既有记录，丢失用户编辑的 volume/
+    // classifications，已结构化套装的徽标随之消失（跨文件增量导入回归）。
+    const matchedCrId = existingCrIds[i] ?? ''
+    const cId = matchedCrId
+      ? matchedCrId
+      : (crIdByDerived.get(crDerivedInput) ?? makeCrId(crDerivedInput))
+    if (!matchedCrId) crIdByDerived.set(crDerivedInput, cId)
     const bcCrs = crIdsByBarcode.get(barcode) ?? []
     bcCrs.push(cId)
     crIdsByBarcode.set(barcode, bcCrs)
+    if (matchedCrId) continue
 
     // 逐候选取结果：同 barcode 多候选（空条码多书）不互相覆盖。
     let bookId = bookIds[i] ?? bookIdByBarcode.get(barcode)
@@ -267,7 +276,10 @@ export function importPipeline(
     ids.add(cr.id)
     barcodeCrIds.set(bcKey, ids)
   }
-  const crById = new Map(newCatalogRecords.map((cr) => [cr.id, cr] as const))
+  // 含既有编目：命中既有编目的新周期按 barcode 唯一命中时也要能解析到记录。
+  const crById = new Map(
+    [...existing.catalogRecords, ...newCatalogRecords].map((cr) => [cr.id, cr] as const),
+  )
 
   // 新周期 → 候选对齐（dedupe 输出 = existing + 未跳过候选，按序）。
   const newCandidateByKey = new Map<string, CandidateCycle>()

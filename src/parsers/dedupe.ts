@@ -55,6 +55,8 @@ export function dedupeCatalogsAndBooks(
   state: DedupeState
   bookIdByBarcode: Map<string, string>
   bookIds: string[]
+  /** 逐候选命中的既有编目 id（§10.6 第 1 条；未命中为空串）：pipeline 据此复用既有编目，不产出新 CatalogRecord。 */
+  existingCrIds: string[]
   /** 逐候选待审标记（review 规格 §2/§9.2）：同 ISBN 多卷合并/跨源异题名合并 → 套装候选。 */
   reviewFlags: boolean[]
   warnings: ParseWarning[]
@@ -67,6 +69,7 @@ export function dedupeCatalogsAndBooks(
   }
   const bookIdByBarcode = new Map<string, string>()
   const bookIds: string[] = []
+  const existingCrIds: string[] = candidates.map(() => '')
   const reviewFlags: boolean[] = candidates.map(() => false)
 
   // existing 索引：编目按 sourceId+barcode 与 sourceId+metaIdKey；书按 isbn13。
@@ -116,6 +119,7 @@ export function dedupeCatalogsAndBooks(
     if (cand.isPlaceholder) {
       const matchedCr = crByBarcode.get(`${sourceId}|${barcode}`)
       if (matchedCr) {
+        existingCrIds[i] = matchedCr.id
         assignBook(matchedCr.bookId)
         return
       }
@@ -132,6 +136,7 @@ export function dedupeCatalogsAndBooks(
       matchedCr = crByMetaIdKey.get(`${sourceId}|${cr.metaIdKey}`)
     }
     if (matchedCr) {
+      existingCrIds[i] = matchedCr.id
       assignBook(matchedCr.bookId)
       return
     }
@@ -242,7 +247,7 @@ export function dedupeCatalogsAndBooks(
     assignBook(`new:u:${i}`)
   })
 
-  return { state, bookIdByBarcode, bookIds, reviewFlags, warnings }
+  return { state, bookIdByBarcode, bookIds, existingCrIds, reviewFlags, warnings }
 }
 
 /**

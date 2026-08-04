@@ -10,6 +10,8 @@ import {
 import { executeImport, buildRawRecords } from './run-import'
 import type { ImportMeta } from '@/parsers/pipeline'
 import { szlibParser } from '@/parsers/szlib'
+import { reviewBadgeOf } from '@/lib/book-status'
+import { updateBookWithRecords } from '@/routes/library/-edit-actions'
 import sample from '@/tests/fixtures/szlib-sample.json'
 // 真实捕获数据：同一 ISBN 978-7-5740-1274-5 出现在两个不同条码（系列卷 3/卷 4），
 // 旧版会产出两条同 ISBN 的 Book，books.bulkPut 触发 &isbn13 唯一索引 ConstraintError。
@@ -264,6 +266,85 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
 
   it('来源不存在抛错', async () => {
     await expect(executeImport(db, request({ sourceId: 'nope' }))).rejects.toThrow()
+  })
+
+  // 回归（跨月 szlib 文件增量导入）：套装书（isbn 9787574012745，metaid
+  // 7109377/7109378）编辑保存卷号后，再导入下月文件（卷 3 同条码同 metaid 还回行）
+  // → 已编辑编目被同派生 id 的新编目 bulkPut 覆盖（volume 回退 null），套装徽标
+  // 消失。修复：编目级命中（§10.6 第 1 条）复用既有编目，不产出新 CatalogRecord。
+  it('编辑保存卷号后再导入新文件：已编辑编目 volume 保留、套装徽标不消失（回归）', async () => {
+    const mayText = JSON.stringify(may)
+    await executeImport(
+      db,
+      request({ fileName: 'szlib-202605.json', fileSize: mayText.length, text: mayText }),
+    )
+    const setBook = (await db.books.where('isbn13').equals('9787574012745').first())!
+    expect(setBook).toBeDefined()
+    expect(setBook.needsReview).toBe(true) // 批内同 ISBN 多 metaid → 套装候选
+    const crsOf = async (bookId: string) =>
+      (await db.catalogRecords.where('bookId').equals(bookId).toArray()).sort(
+        (a, b) => (a.metaIdKey ?? '').localeCompare(b.metaIdKey ?? ''),
+      )
+    const crsBefore = await crsOf(setBook.id)
+    expect(crsBefore.map((c) => c.metaIdKey)).toEqual(['7109377', '7109378'])
+
+    // 用户编辑保存：补全书目 + 各编目卷号（updateBookWithRecords 语义）。
+    const draft = {
+      title: setBook.title,
+      subtitle: setBook.subtitle,
+      parallelTitles: [],
+      authors: [],
+      translators: [],
+      publisher: null,
+      publishDate: null,
+      edition: null,
+      pages: null,
+      price: null,
+      isbn13: '9787574012745',
+      isbn10: null,
+      subjects: [],
+      tags: [],
+      description: null,
+      coverUrl: null,
+    }
+    await updateBookWithRecords(
+      db,
+      setBook.id,
+      draft,
+      crsBefore.map((cr) => ({
+        id: cr.id,
+        volume: cr.metaIdKey === '7109377' ? '3' : '4',
+        barcodes: cr.barcodes,
+        classifications: cr.classifications,
+      })),
+    )
+    const edited = (await db.books.get(setBook.id))!
+    expect(edited.needsReview).toBe(false)
+    const crsEdited = await crsOf(edited.id)
+    expect(crsEdited.map((c) => c.volume)).toEqual(['3', '4'])
+    // 编辑后徽标仍在：已结构化多卷套装的「套装」Badge。
+    expect(reviewBadgeOf(edited, edited.id, crsEdited)).toBe('set')
+
+    // 6 月文件（去敏）：卷 3 同条码同 metaid 还回行 + 同系列其他卷（新 ISBN 新书）。
+    const juneRows = [
+      { date: '20260601', time: '16:32:02', optype: '读者还回文献', cirtype: '中文图书外借', metatable: 'bibliosm', metaid: 7109377, title: '合成书目052 : 合成副题 52 . 3/ 合成著者52著', ISBN: '978-7-5740-1274-5', addr: '合成馆24自助借书机', barcode: '04400514707329', callno: 'J23/4452/3', cardno: '0440050000000', notes: '', ip: '0.0.0.0' },
+      { date: '20260614', time: '19:03:23', optype: '读者还回文献', cirtype: '中文图书外借', metatable: 'bibliosm', metaid: 6260746, title: '合成书目051 : 合成副题 51 . 1/ 合成著者51著', ISBN: '978-7-5140-2585-9', addr: '合成馆25自助借还机', barcode: '04401021533645', callno: 'J238.2/2102:1', cardno: '0440050000000', notes: '', ip: '10.0.0.2' },
+      { date: '20260614', time: '19:03:24', optype: '读者还回文献', cirtype: '中文图书外借', metatable: 'bibliosm', metaid: 6260748, title: '合成书目051 : 合成副题 51 . 2/ 合成著者51著', ISBN: '978-7-5140-2585-9', addr: '合成馆25自助借还机', barcode: '04401021533646', callno: 'J238.2/2102:2', cardno: '0440050000000', notes: '', ip: '10.0.0.2' },
+      { date: '20260604', time: '19:11:31', optype: '读者还回文献', cirtype: '中文图书外借', metatable: 'bibliosm', metaid: 7235981, title: '合成书目054 : 合成副题 54 . 5/ 合成著者54著', ISBN: '978-7-5740-1848-8', addr: '合成馆26自助图书室', barcode: '04400514772486', callno: 'J23/4452/5', cardno: '0440050000000', notes: '', ip: '10.0.0.3' },
+      { date: '20260604', time: '19:11:31', optype: '读者还回文献', cirtype: '中文图书外借', metatable: 'bibliosm', metaid: 7235982, title: '合成书目054 : 合成副题 54 . 6/ 合成著者54著', ISBN: '978-7-5740-1848-8', addr: '合成馆26自助图书室', barcode: '04400514772488', callno: 'J23/4452/6', cardno: '0440050000000', notes: '', ip: '10.0.0.3' },
+    ]
+    const juneText = JSON.stringify(juneRows)
+    await executeImport(
+      db,
+      request({ fileName: 'szlib-202606.json', fileSize: juneText.length, text: juneText }),
+    )
+
+    // 核心断言：卷 3 已编辑编目原样保留（volume '3'），套装徽标不消失。
+    const crsAfter = await crsOf(edited.id)
+    expect(crsAfter).toHaveLength(2)
+    expect(crsAfter.map((c) => c.volume)).toEqual(['3', '4'])
+    const bookAfter = (await db.books.get(edited.id))!
+    expect(reviewBadgeOf(bookAfter, bookAfter.id, crsAfter)).toBe('set')
   })
 
   it('非法 JSON 抛错且不写库', async () => {
