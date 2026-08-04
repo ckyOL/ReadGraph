@@ -9,6 +9,7 @@ import { detectAndDecode, IMPORT_MAX_FILE_SIZE } from '@/lib/encoding'
 import { SOURCE_TEMPLATES, ensureSourceFromTemplate } from '@/lib/source-templates'
 import { getParser } from '@/parsers/registry'
 import { executeImport } from '@/import/run-import'
+import { groupWarnings } from '@/import/warning-groups'
 import type { PipelineResult } from '@/parsers/pipeline'
 import type { Source } from '@/types/entities'
 import { Button } from '@/components/ui/button'
@@ -309,27 +310,43 @@ function ImportPage() {
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium">{t('import.report.warnings')}</p>
+                <p className="text-sm font-medium">
+                  {t('import.report.warnings', { count: result.warnings.length })}
+                </p>
                 {result.warnings.length === 0 ? (
                   <p className="mt-1 text-sm text-muted-foreground">
                     {t('import.report.warnings.none')}
                   </p>
                 ) : (
-                  <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto">
-                    {result.warnings.map((w, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-2 rounded-none border border-border p-2 text-sm"
-                      >
-                        <Badge variant="outline" className="shrink-0 rounded-none">
-                          {t(`import.warning.${w.type}`)}
-                        </Badge>
-                        <span className="min-w-0 flex-1">{w.message}</span>
-                        {w.recordRef && (
-                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                            {w.recordRef}
+                  <ul className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+                    {groupWarnings(result.warnings).map(([type, items]) => (
+                      <li key={type}>
+                        <div className="flex items-center gap-2 border-b border-border pb-1">
+                          <Badge
+                            variant={type === 'format_error' ? 'destructive' : 'outline'}
+                            className="rounded-none"
+                          >
+                            {t(`import.warning.${type}`)}
+                          </Badge>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {t('import.warning.count', { count: items.length })}
                           </span>
-                        )}
+                        </div>
+                        <ul className="mt-1.5 space-y-1.5">
+                          {items.map((w, i) => (
+                            <li key={i} className="border border-border p-2">
+                              <p className="break-words text-sm">{w.message}</p>
+                              {w.recordRef && (
+                                <p
+                                  className="mt-1 truncate font-mono text-xs text-muted-foreground"
+                                  title={w.recordRef}
+                                >
+                                  {w.recordRef}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
                       </li>
                     ))}
                   </ul>
