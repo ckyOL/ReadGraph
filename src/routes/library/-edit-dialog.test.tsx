@@ -1,6 +1,6 @@
 // book-editing 规格 §7.2：统一编辑表单 SSR 静态标记测试（node 环境，仓库既有模式）。
 // 数据流与写库动作已由 -edit-actions.test.ts（fake-indexeddb）覆盖；这里锁定
-// 渲染契约：全字段预填（数组分隔回显）、编目卡（条码/分类/卷号预填）、类型徽标。
+// 渲染契约：全字段预填（数组分隔回显）、编目卡（馆藏号/条码/分类/卷号预填）、类型徽标。
 // 校验规则抽为纯函数 validateBookFields 单测；保存交互由 E2E 覆盖。
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { createElement } from 'react'
@@ -193,9 +193,12 @@ describe('EditForm — 套装候选预填与编目卡', () => {
     // 条码多行（textarea 内容）。
     expect(html).toContain('B3\nB3X')
     expect(html).toContain('B4')
-    // 馆藏号等宽展示。
-    expect(html).toContain('7109377')
-    expect(html).toContain('7109378')
+    // 馆藏号等宽输入预填（metaId → String 回显）。
+    expect(html).toContain('value="7109377"')
+    expect(html).toContain('value="7109378"')
+    // 馆藏号输入 aria-label 区分编目行。
+    expect(html).toContain('aria-label="馆藏号 合成书目052 : 合成副题 52 . 3"')
+    expect(html).toContain('aria-label="馆藏号 合成书目053 : 合成副题 53 . 4"')
     // 来源徽标与题名原文。
     expect(html).toContain('深圳图书馆')
     expect(html).toContain('合成书目052 : 合成副题 52 . 3')
@@ -215,6 +218,8 @@ describe('EditForm — 套装候选预填与编目卡', () => {
     const html = renderForm(set, [withCls], raws)
     expect(html).toContain('I247.5')
     expect(html).toContain('添加分类')
+    // metaId 为 null 的编目：馆藏号输入存在且空白（清空语义）。
+    expect(html).toMatch(/aria-label="馆藏号 [^"]*" value=""/)
   })
 })
 

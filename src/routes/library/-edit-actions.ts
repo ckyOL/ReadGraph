@@ -53,9 +53,11 @@ export interface BookDraft {
   coverUrl: string | null
 }
 
-/** 编目可编辑字段（book-editing 规格 §3.3；metaId/metaIdKey/sourceId/bookId 只读）。 */
+/** 编目可编辑字段（book-editing 规格 §3.3；metaId 可编辑，metaIdKey 随其派生；
+ *  sourceId/bookId 只读）。 */
 export interface CatalogRecordDraft {
   id: string
+  metaId: string | null
   volume: string | null
   barcodes: string[]
   classifications: ClassificationEntry[]
@@ -63,7 +65,8 @@ export interface CatalogRecordDraft {
 
 /**
  * 统一保存（book-editing 规格 §2.1/§3.4）：单事务写 Book 全字段 + 各编目
- * volume/barcodes/classifications，成功即 needsReview=false、updatedAt=now。
+ * metaId/volume/barcodes/classifications（metaIdKey 随 metaId 派生），成功即
+ * needsReview=false、updatedAt=now。
  * 取代原 completePlaceholder（补全）与 saveSetBook（套装保存）。
  * ISBN 冲突预检：归一化后命中他书 → 抛 IsbnConflictError（整体回滚）。
  */
@@ -96,8 +99,13 @@ export async function updateBookWithRecords(
     const updates = crs.map((c) => {
       const d = draftById.get(c.id)
       if (!d) return c
+      // metaIdKey 由 metaId 派生（String(metaId).trim()，空白 → null），与
+      // catalog-record.md 归一化约定一致：索引与去重始终走 metaIdKey。
+      const metaId = d.metaId == null || d.metaId.trim() === '' ? null : d.metaId.trim()
       return validated(catalogRecordSchema, {
         ...c,
+        metaId,
+        metaIdKey: metaId == null ? null : metaId,
         volume: d.volume,
         barcodes: d.barcodes,
         classifications: d.classifications,

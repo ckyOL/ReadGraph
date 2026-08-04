@@ -313,6 +313,7 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
       draft,
       crsBefore.map((cr) => ({
         id: cr.id,
+        metaId: cr.metaId != null ? String(cr.metaId) : null,
         volume: cr.metaIdKey === '7109377' ? '3' : '4',
         barcodes: cr.barcodes,
         classifications: cr.classifications,

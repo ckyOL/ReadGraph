@@ -76,6 +76,7 @@ const PUBLISH_DATE_RE = /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/
 
 /** 编目行本地编辑态。 */
 interface RecordDraft {
+  metaId: string
   volume: string
   /** 条码多行文本（每行一条）。 */
   barcodes: string
@@ -179,6 +180,7 @@ export function EditForm({
     for (const cr of catalogRecords) {
       const parsed = parseVolumeFromTitle(titles.get(cr.id) ?? book.title)
       init[cr.id] = {
+        metaId: cr.metaId != null ? String(cr.metaId) : '',
         volume:
           cr.volume != null && cr.volume !== '' ? cr.volume : (parsed ?? ''),
         barcodes: cr.barcodes.join('\n'),
@@ -238,6 +240,7 @@ export function EditForm({
         const d = records[cr.id]
         return {
           id: cr.id,
+          metaId: d.metaId.trim() === '' ? null : d.metaId.trim(),
           volume: d.volume.trim() === '' ? null : d.volume.trim(),
           barcodes: d.barcodes
             .split('\n')
@@ -386,14 +389,22 @@ export function EditForm({
                         {source.name}
                       </Badge>
                     )}
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {cr.metaId != null ? String(cr.metaId) : '—'}
-                    </span>
                     <span className="text-xs text-muted-foreground">
                       {titles.get(cr.id) ?? book.title}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">
+                        {t('catalog.metaId')}
+                      </label>
+                      <Input
+                        value={d.metaId}
+                        onChange={(e) => setRecord(cr.id, { metaId: e.target.value })}
+                        className="h-8 w-28 font-mono"
+                        aria-label={`${t('catalog.metaId')} ${titles.get(cr.id) ?? cr.id}`}
+                      />
+                    </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">
                         {t('catalog.volume')}

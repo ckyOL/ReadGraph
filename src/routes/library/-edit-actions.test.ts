@@ -127,8 +127,8 @@ describe('updateBookWithRecords — 统一保存（补全/套装/普通编辑合
       'bk-set',
       draft({ title: '合成书目', isbn13: '9787574012745' }),
       [
-        { id: 'cr-v3', volume: '3', barcodes: ['B3', 'B3X'], classifications: [{ system: 'clc', code: 'I247' }] },
-        { id: 'cr-v4', volume: '4', barcodes: ['B4'], classifications: [] },
+        { id: 'cr-v3', metaId: '7109377', volume: '3', barcodes: ['B3', 'B3X'], classifications: [{ system: 'clc', code: 'I247' }] },
+        { id: 'cr-v4', metaId: '7109378', volume: '4', barcodes: ['B4'], classifications: [] },
       ],
     )
 
@@ -151,11 +151,31 @@ describe('updateBookWithRecords — 统一保存（补全/套装/普通编辑合
     await putAll([set], [cr3, cr4])
 
     await updateBookWithRecords(db, 'bk-set', draft({ title: 'x', isbn13: '9787574012745' }), [
-      { id: 'cr-v3', volume: null, barcodes: ['B3'], classifications: [] },
+      { id: 'cr-v3', metaId: '7109377', volume: null, barcodes: ['B3'], classifications: [] },
     ])
 
     expect((await db.catalogRecords.get('cr-v3'))!.volume).toBeNull()
     expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
+  })
+
+  it('metaId 可编辑：写入 + metaIdKey 派生（空白清空为 null）', async () => {
+    const set = makeBook('bk-set', '9787574012745', 'x', true)
+    const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)
+    const cr4 = makeCatalog('cr-v4', 'bk-set', 'src-sz', 'B4', 7109378)
+    await putAll([set], [cr3, cr4])
+
+    // 改馆藏号（含首尾空白 → trim）+ 清空另一条 → metaId/metaIdKey 同步。
+    await updateBookWithRecords(db, 'bk-set', draft({ title: 'x', isbn13: '9787574012745' }), [
+      { id: 'cr-v3', metaId: '  8888888  ', volume: null, barcodes: ['B3'], classifications: [] },
+      { id: 'cr-v4', metaId: '', volume: null, barcodes: ['B4'], classifications: [] },
+    ])
+
+    const after3 = (await db.catalogRecords.get('cr-v3'))!
+    expect(after3.metaId).toBe('8888888')
+    expect(after3.metaIdKey).toBe('8888888') // 派生：String(metaId).trim()
+    const after4 = (await db.catalogRecords.get('cr-v4'))!
+    expect(after4.metaId).toBeNull()
+    expect(after4.metaIdKey).toBeNull()
   })
 
   it('非法 ISBN-13 经 zod 拒绝且不写库（回滚）', async () => {
@@ -325,6 +345,7 @@ describe('searchMergeTargets — 合并搜索', () => {
 // 类型健全性：CatalogRecordDraft 与动作签名对齐（无运行时行为）。
 const _draftShape: CatalogRecordDraft = {
   id: 'cr-1',
+  metaId: null,
   volume: null,
   barcodes: [],
   classifications: [],

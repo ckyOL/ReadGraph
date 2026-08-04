@@ -27,6 +27,7 @@
   "field.coverUrl": "封面 URL",
   "field.coverUrlInvalid": "URL 无效",
   "catalog.volume": "卷号",
+  "catalog.metaId": "馆藏号",
   "catalog.volumeParse": "从题名解析",
   "catalog.barcodes": "条码（每行一条）",
   "catalog.barcodesHint": "空白行将忽略",

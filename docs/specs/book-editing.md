@@ -93,10 +93,11 @@
 
 ### 3.3 编目（CatalogRecord）字段
 
-每个 CatalogRecord 一张 Card（来源徽标 + `metaId`/`metaIdKey` 等宽只读头）：
+每个 CatalogRecord 一张 Card（来源徽标 + 题名原文头）：
 
 | 字段 | 控件 | 处理 |
 |------|------|------|
+| 馆藏号 metaId | Input（等宽） | 预填 `String(cr.metaId)`（null 时空白）；空白清空为 null。保存时按 `String(metaId).trim()` 同步派生 `metaIdKey`（归一化键，供 `[sourceId+metaIdKey]` 索引与去重）。仅修正展示与身份标识，不触发重新去重（去重定型于导入期） |
 | 卷号 volume | Input + 「从题名解析」辅助按钮 | 预填 `parseVolumeFromTitle(catalogTitleByRecord(...))`（套装书）；辅助按钮一键填入解析结果（普通书亦可手动填卷号，为后续转套装留口） |
 | 条码 barcodes | 多行 Input（每行一条）+ 增/删行 | 空白行剔除；数组写回。改条码仅修正展示值，不触发重新去重（去重定型于导入期） |
 | 分类 classifications | 行编辑：system 下拉（clc/ddc/lcc/udc/other）+ code Input + 增/删行 | `category` 由系统按 code 自动映射（复用现有分类映射），不手填；无法映射留空 |
@@ -172,7 +173,7 @@ src/
    - `updateBookWithRecords`：合法全字段写回、`needsReview=false`、`updatedAt` 刷新、Zod 非法（空题名/坏 ISBN）回滚不落库、部分编目失败整体回滚、ISBN 冲突（他书占用）拒绝、改自身 ISBN 为同值通过。
    - `markReviewed`：仅解除标记、数据不动。
    - 迁移断言：`mergePlaceholderInto`/`splitSetBook`/`searchMergeTargets` 行为与既有测试等价（复用原用例，从 review 目录迁移）。
-2. **编辑表单**：`-edit-dialog.tsx` SSR 渲染契约 + 交互（Vitest）：预填正确（数组字段分隔回显）、必填/ISBN/日期/页数/定价校验内联错误、冲突错误展示、保存成功回调。
+2. **编辑表单**：`-edit-dialog.tsx` SSR 渲染契约 + 交互（Vitest）：预填正确（数组字段分隔回显、编目卡馆藏号/卷号/条码/分类预填）、必填/ISBN/日期/页数/定价校验内联错误、冲突错误展示、保存成功回调。
 3. **详情页**：`$bookId.tsx` search `edit` 驱动 Dialog 开合；「更多」菜单按状态显隐。
 4. **书库列表**：类型筛选三分支（待完善/占位/套装）与「全部」等价性；徽标列渲染（占位 destructive / 套装 outline / 普通无）；「完善」跳转断言（URL 带 `edit=true`）；`lib/book-status.ts` 迁移后既有 `reviewKindOf`/`isSetBook`/`catalogTitleByRecord` 断言不回归。
 5. **Sidebar**：无「待审」项；书库项计数徽标 = `needsReview` 书数。
@@ -184,7 +185,7 @@ src/
 - **重建幂等**：人工编辑值清库重导后丢失（既有取舍，§2.3）；volume 预填可重建，纯人工字段不可。
 - **导入覆盖**：导入期字段合并必须尊重人工编辑值（book.md 优先级表）；落地时核对 import-pipeline 合并分支，若现行为「后导入覆盖」，需在管线侧补「已存在人工值不覆盖」规则并加测试——这是本改造唯一可能触及管线的点。
 - **ISBN 冲突**：本期阻断报错；「改 ISBN 触发合并建议」留作未来增强。
-- **条码/分类编辑**：仅修正展示与后续统计口径，不回溯重放 dedupe。
+- **条码/馆藏号/分类编辑**：仅修正展示与后续统计口径，不回溯重放 dedupe。
 - **拆书/合并误操作**：均走 AlertDialog 二次确认；无撤销（与系统「不支持按单次导入撤销」一致）。
 - **历史数据**：本改造无 schema 变更，存量数据零迁移。
 - **书库列表性能**：类型筛选在内存 `filtered` 管线内完成（books/catalogRecords 全量已加载，书库既有模式），无新增查询；`isSetBook` 按编目数组派生，与既有套装 Badge 逻辑同源。

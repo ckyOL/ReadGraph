@@ -27,6 +27,7 @@
   "field.coverUrl": "Cover URL",
   "field.coverUrlInvalid": "Invalid URL",
   "catalog.volume": "Volume",
+  "catalog.metaId": "Meta ID",
   "catalog.volumeParse": "Parse from title",
   "catalog.barcodes": "Barcodes (one per line)",
   "catalog.barcodesHint": "Blank lines are ignored",
