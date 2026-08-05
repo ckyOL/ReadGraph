@@ -38,6 +38,7 @@
 新动作库 `src/routes/library/-edit-actions.ts`（沿用 review 动作库的「事务 + Zod 校验」模式）：
 
 - `updateBookWithRecords(db, bookId, draft)` —— 新核心动作，取代 `completePlaceholder` / `saveSetBook`：单事务写 Book 全字段 + 各编目 volume/barcodes/classifications，成功即 `needsReview=false`、`updatedAt=now`。
+- **扩展点**：OPAC 补全（[opac-enrichment §7.2](opac-enrichment.md#72-应用阶段编辑表单)）以本表单为应用入口——抓取结果预填编辑输入框、用户审视保存；届时 `updateBookWithRecords` 扩展可选 enrichment 载荷（同事务写 `opacEnrichment`），普通编辑行为不变。
 - `markReviewed(db, bookId)` —— 仅解除 `needsReview`（承接「不是套装」语义：不改任何数据、仅确认）。
 - `mergePlaceholderInto` / `splitSetBook` / `searchMergeTargets` —— 从 review 动作库原样迁移（占位合并、拆书、合并搜索）。
 
