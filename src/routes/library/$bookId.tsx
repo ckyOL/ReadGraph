@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -9,6 +9,11 @@ import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
 import { reviewKindOf } from '@/lib/book-status'
+import { parseTitle } from '@/lib/title'
+import { getProvider } from '@/enrich/opac-provider'
+import { enrichOneRecord, hasLookupKey, type EnrichmentContext } from '@/enrich/enrich-service'
+import { setPendingEnrichment, takePendingEnrichment } from '@/enrich/enrich-session'
+import type { CatalogRecord } from '@/types/entities'
 import { CatalogRecordCard } from '@/components/catalog-record'
 import { BorrowCyclesList } from '@/components/borrow-cycles-list'
 import { Badge } from '@/components/ui/badge'
@@ -74,6 +79,28 @@ function BookDetailPage() {
   const [splitOpen, setSplitOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
 
+  // —— OPAC 补全单条入口（opac-enrichment §7.2/§10） ——
+  const { t: te } = useTranslation('enrich')
+  const [enrichingId, setEnrichingId] = useState<string | null>(null)
+  const [enrichMsg, setEnrichMsg] = useState<{ recordId: string; text: string } | null>(null)
+  const [enrichment, setEnrichment] = useState<EnrichmentContext | null>(null)
+
+  // 建议改动上下文经会话内存跨路由传递（批量入口在书库列表页写入）；
+  // 打开编辑 Dialog 时消费一次（刷新/直达无上下文 → 普通编辑，不落 URL）。
+  // consume-once ref：dev StrictMode 双跑 effect 时第二次 take 返回 null 会覆盖
+  // 已消费的上下文——首跑消费后跳过重跑，关闭（edit=false）时复位允许下次再取。
+  const consumedEnrichmentRef = useRef(false)
+  useEffect(() => {
+    if (!edit) {
+      consumedEnrichmentRef.current = false
+      return
+    }
+    if (!consumedEnrichmentRef.current) {
+      consumedEnrichmentRef.current = true
+      setEnrichment(takePendingEnrichment())
+    }
+  }, [edit])
+
   const data = useLiveQuery(
     () =>
       Promise.all([
@@ -131,6 +158,84 @@ function BookDetailPage() {
     }
   }
 
+  /** 单条抓取：成功 → 写入会话上下文并打开编辑 Dialog；not_found/failed → 内联提示（状态已回写）。 */
+  const handleEnrich = async (cr: CatalogRecord) => {
+    if (!book) return
+    const src = sourceById.get(cr.sourceId)
+    const provider = src ? getProvider(src.parserId) : null
+    if (!provider || !src) return
+    setEnrichingId(cr.id)
+    setEnrichMsg(null)
+    try {
+      const outcome = await enrichOneRecord(db, cr, book, src)
+      if (outcome.kind === 'success') {
+        if (edit) {
+          setEnrichment(outcome.context)
+        } else {
+          setPendingEnrichment(outcome.context)
+          void navigate({ search: (prev) => ({ ...prev, edit: true }) })
+        }
+      } else {
+        setEnrichMsg({
+          recordId: cr.id,
+          text: outcome.kind === 'not_found' ? te('notFound') : te('failed'),
+        })
+      }
+    } finally {
+      setEnrichingId(null)
+    }
+  }
+
+  /** 占位 Book：补全入口置灰 + 提示（§7.1），外链同样不提供。 */
+  const isPlaceholderBook =
+    book != null && book.needsReview && parseTitle(book.title).isPlaceholder
+
+  /** 单条补全按钮可见性：provider 命中 + lookupKey 有效；已 fetched 隐藏（幂等，§11.2）。 */
+  const enrichActionsOf = (cr: CatalogRecord): ReactNode => {
+    const src = sourceById.get(cr.sourceId)
+    const provider = src ? getProvider(src.parserId) : null
+    if (!provider || !src || !hasLookupKey(cr, currentBook, provider)) return null
+    if (cr.opacEnrichment?.status === 'fetched') return null
+    if (isPlaceholderBook) {
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" disabled>
+            {te('fetch', { provider: provider.displayName })}
+          </Button>
+          <span className="text-xs text-muted-foreground">{te('placeholderHint')}</span>
+        </div>
+      )
+    }
+    const detailUrl = provider.detailUrl(cr, currentBook)
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={enrichingId === cr.id}
+          onClick={() => void handleEnrich(cr)}
+        >
+          {enrichingId === cr.id
+            ? te('running')
+            : te('fetch', { provider: provider.displayName })}
+        </Button>
+        {detailUrl && (
+          <a
+            href={detailUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            {te('viewInOpac', { provider: provider.displayName })}
+          </a>
+        )}
+        {enrichMsg?.recordId === cr.id && (
+          <span className="text-xs text-destructive">{enrichMsg.text}</span>
+        )}
+      </div>
+    )
+  }
+
   if (loading) return <div className="p-6" />
 
   if (!book) {
@@ -150,6 +255,9 @@ function BookDetailPage() {
       </div>
     )
   }
+
+  // 守卫后 book 收窄为非空；提前定义的闭包（enrichActionsOf）需显式绑定。
+  const currentBook = book
 
   const kind = reviewKindOf(book)
   const metaField = (label: string, value: ReactNode) =>
@@ -260,6 +368,7 @@ function BookDetailPage() {
                     <CatalogRecordCard
                       record={cr}
                       source={sourceById.get(cr.sourceId)}
+                      actions={enrichActionsOf(cr)}
                     />
                   </li>
                 ))}
@@ -287,7 +396,7 @@ function BookDetailPage() {
         </CardContent>
       </Card>
 
-      {/* 编辑对话框：URL search.edit 驱动 */}
+      {/* 编辑对话框：URL search.edit 驱动；enrichment 为补全建议改动上下文（会话内存） */}
       {edit && (
         <EditDialog
           book={book}
@@ -296,6 +405,7 @@ function BookDetailPage() {
           sources={sources}
           open={edit}
           onOpenChange={(open) => !open && closeEdit()}
+          enrichment={enrichment ?? undefined}
         />
       )}
 

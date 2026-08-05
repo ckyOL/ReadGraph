@@ -84,11 +84,12 @@ export function createOpacProviderRegistry(): OpacProviderRegistry {
   return createRegistryCore()
 }
 
-/** 默认全局注册表，默认注册 szlibProvider；其它 provider 按 §2.4 清单增量接入。 */
-const defaultRegistry: OpacProviderRegistry = createRegistryCore()
-defaultRegistry.register(szlibProvider)
+/** 默认全局注册表，默认注册 szlibProvider；其它 provider 按 §2.4 清单增量接入。
+ *  导出供测试注入临时 provider（与 parsers/registry.ts defaultRegistry 同款接缝）。 */
+export const defaultOpacRegistry: OpacProviderRegistry = createRegistryCore()
+defaultOpacRegistry.register(szlibProvider)
 
 /** 便捷：默认注册表查找；未注册返回 null（不抛——补全是可选能力，UI 隐藏入口）。 */
 export function getProvider(parserId: string): OpacProvider | null {
-  return defaultRegistry.getProvider(parserId)
+  return defaultOpacRegistry.getProvider(parserId)
 }

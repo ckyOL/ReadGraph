@@ -342,6 +342,87 @@ describe('searchMergeTargets — 合并搜索', () => {
   })
 })
 
+describe('updateBookWithRecords — enrichment 载荷（opac-enrichment §7.2）', () => {
+  it('带载荷 → 同事务写目标编目 opacEnrichment（providerId/status/fetchedAt/sourceUrl）', async () => {
+    const b = makeBook('bk-en', null, '合成绘本甲')
+    const cr = makeCatalog('cr-en', 'bk-en', 'src-sz', 'BC1', 6092919)
+    await putAll([b], [cr])
+    const fetchedAt = new Date('2026-08-05T02:00:00.000Z')
+    await updateBookWithRecords(
+      db,
+      'bk-en',
+      draft({ title: '合成绘本甲', authors: ['合成作者'] }),
+      [{ id: 'cr-en', metaId: '6092919', volume: null, barcodes: ['BC1'], classifications: [{ system: 'clc', code: 'J238.2' }] }],
+      {
+        recordId: 'cr-en',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt,
+        sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=6092919&client_id=t1',
+      },
+    )
+    const after = (await db.catalogRecords.get('cr-en'))!
+    expect(after.opacEnrichment).toEqual({
+      providerId: 'szlib',
+      status: 'fetched',
+      fetchedAt,
+      sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=6092919&client_id=t1',
+    })
+    // 实体字段照常落库
+    expect(after.classifications).toEqual([{ system: 'clc', code: 'J238.2' }])
+    expect((await db.books.get('bk-en'))!.needsReview).toBe(false)
+  })
+
+  it('不带载荷 → 不触碰 opacEnrichment（保持 null）', async () => {
+    const b = makeBook('bk-en', null, '合成绘本甲')
+    const cr = makeCatalog('cr-en', 'bk-en', 'src-sz', 'BC1', 6092919)
+    await putAll([b], [cr])
+    await updateBookWithRecords(db, 'bk-en', draft({ title: '合成绘本甲' }), [
+      { id: 'cr-en', metaId: '6092919', volume: null, barcodes: ['BC1'], classifications: [] },
+    ])
+    expect((await db.catalogRecords.get('cr-en'))!.opacEnrichment).toBeNull()
+  })
+
+  it('载荷指向不存在的编目 → 抛错，库不变', async () => {
+    const b = makeBook('bk-en', null, '合成绘本甲')
+    const cr = makeCatalog('cr-en', 'bk-en', 'src-sz', 'BC1', 6092919)
+    await putAll([b], [cr])
+    await expect(
+      updateBookWithRecords(db, 'bk-en', draft({ title: '合成绘本甲' }), [
+        { id: 'cr-en', metaId: '6092919', volume: null, barcodes: ['BC1'], classifications: [] },
+      ], {
+        recordId: 'cr-nope',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt: new Date(),
+        sourceUrl: 'https://example.test/',
+      }),
+    ).rejects.toThrow(/recordId not found/)
+    expect((await db.catalogRecords.get('cr-en'))!.opacEnrichment).toBeNull()
+    expect((await db.books.get('bk-en'))!.title).toBe('合成绘本甲')
+  })
+
+  it('Zod 非法（ISBN 冲突兜底为校验失败场景）→ 整体回滚，状态不残留', async () => {
+    const b = makeBook('bk-en', null, '合成绘本甲')
+    const cr = makeCatalog('cr-en', 'bk-en', 'src-sz', 'BC1', 6092919)
+    await putAll([b], [cr])
+    // bookSchema 校验失败（isbn13 非 13 位数字）→ 事务回滚，opacEnrichment 不残留。
+    await expect(
+      updateBookWithRecords(db, 'bk-en', draft({ title: '合成绘本甲', isbn13: 'not-an-isbn' }), [
+        { id: 'cr-en', metaId: '6092919', volume: null, barcodes: ['BC1'], classifications: [] },
+      ], {
+        recordId: 'cr-en',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt: new Date(),
+        sourceUrl: 'https://example.test/',
+      }),
+    ).rejects.toThrow()
+    expect((await db.catalogRecords.get('cr-en'))!.opacEnrichment).toBeNull()
+    expect((await db.books.get('bk-en'))!.isbn13).toBeNull()
+  })
+})
+
 // 类型健全性：CatalogRecordDraft 与动作签名对齐（无运行时行为）。
 const _draftShape: CatalogRecordDraft = {
   id: 'cr-1',

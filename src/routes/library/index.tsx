@@ -40,6 +40,13 @@ import {
   reviewBadgeOf,
   type ReviewTypeFilter,
 } from '@/lib/book-status'
+import {
+  collectCandidates,
+  countPlaceholderExcluded,
+  type EnrichSuccess,
+} from '@/enrich/enrich-service'
+import { setPendingEnrichment } from '@/enrich/enrich-session'
+import { EnrichBatchPanel } from '@/components/enrich-batch'
 
 // 书库筛选/排序状态 URL 化（ui-navigation §3）：全 optional + Zod 校验，默认值不写 URL
 // （干净的 /library）；变更经 navigate replace 回写，不产生历史条目，返回/刷新/直达均保留筛选。
@@ -129,6 +136,25 @@ function LibraryPage() {
   const loading = data === undefined
   const [books, catalogRecords, borrowCycles, sources] = data ?? [[], [], [], []]
   const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
+
+  // —— OPAC 补全批量入口（opac-enrichment §7/§10） ——
+  const enrichCandidates = useMemo(
+    () => collectCandidates(books, catalogRecords, sources),
+    [books, catalogRecords, sources],
+  )
+  const placeholderExcluded = useMemo(
+    () => countPlaceholderExcluded(books, catalogRecords, sources),
+    [books, catalogRecords, sources],
+  )
+  // 应用成功项：建议改动上下文写入会话内存 → 该书编辑 Dialog（详情页消费，不落 URL）。
+  const applyEnrichment = (success: EnrichSuccess) => {
+    setPendingEnrichment(success.context)
+    void navigate({
+      to: '/library/$bookId',
+      params: { bookId: success.book.id },
+      search: { edit: true },
+    })
+  }
 
   const rows = useMemo<LibraryRow[]>(() => {
     const sourceById = new Map(sources.map((s) => [s.id, s]))
@@ -300,6 +326,16 @@ function LibraryPage() {
               </Select>
             </div>
           </div>
+
+          {enrichCandidates.length > 0 && (
+            <div className="mt-4">
+              <EnrichBatchPanel
+                candidates={enrichCandidates}
+                placeholderExcluded={placeholderExcluded}
+                onApply={applyEnrichment}
+              />
+            </div>
+          )}
 
           <Table className="mt-4">
             <TableHeader>

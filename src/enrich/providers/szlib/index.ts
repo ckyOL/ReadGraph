@@ -7,7 +7,12 @@ import type { OpacDetailResult, OpacProvider } from '@/enrich/opac-provider'
 import { fetchWithTimeout } from '@/enrich/opac-client'
 import { parseSzlibDetail } from './detail'
 
-const API_BASE = 'https://www.szlib.org.cn/api/opacservice'
+// dev（vite proxy，同源消除 CORS，§8）走相对路径；test/build 环境恒为绝对直连 URL。
+// 用 MODE 而非 DEV：vitest 下 DEV=true，URL 断言（opac-provider.test.ts）依赖绝对形态。
+const API_BASE =
+  import.meta.env.MODE === 'development'
+    ? '/api/opacservice'
+    : 'https://www.szlib.org.cn/api/opacservice'
 const DETAIL_PAGE = 'https://www.szlib.org.cn/opac/searchDetail'
 /** 编目主表（§3.1：与流通记录 metatable 对应；CatalogRecord 不存 metatable，恒用主表）。 */
 const META_TABLE = 'bibliosm'

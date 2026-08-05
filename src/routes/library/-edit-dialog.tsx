@@ -2,7 +2,7 @@
 // 书目全字段 + 每 CatalogRecord 的 volume/barcodes/classifications；保存走
 // updateBookWithRecords 单事务（ISBN 冲突 IsbnConflictError 内联展示）。
 // 普通书目、选书帮占位、套装候选共用；待审类型差异仅体现在徽标与卷号解析辅助。
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wand2Icon, XIcon } from 'lucide-react'
 
@@ -31,6 +31,9 @@ import { splitPersons } from '@/lib/title'
 import { formatDateInTz } from '@/lib/display-time'
 import { catalogTitleByRecord, reviewBadgeOf } from '@/lib/book-status'
 import { parseVolumeFromTitle } from '@/lib/volume'
+import { cn } from '@/lib/utils'
+import { prefillFromChanges, type EnrichmentChange } from '@/lib/opac-mapping'
+import type { EnrichmentContext } from '@/enrich/enrich-service'
 import type {
   Book,
   CatalogRecord,
@@ -53,6 +56,8 @@ export interface EditDialogProps {
   sources: Source[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** OPAC 补全建议改动上下文（opac-enrichment §5.3/§10）：表单预填 + 现有值对照 + 恢复。 */
+  enrichment?: EnrichmentContext
 }
 
 export function EditDialog(props: EditDialogProps) {
@@ -143,38 +148,99 @@ export function EditForm({
   rawRecords,
   sources,
   onOpenChange,
+  enrichment,
 }: EditDialogProps) {
   const { t } = useTranslation('edit')
   const titles = catalogTitleByRecord(book.id, catalogRecords, rawRecords)
   const sourceById = new Map(sources.map((s) => [s.id, s]))
   const badge = reviewBadgeOf(book, book.id, catalogRecords)
 
-  // —— 书目字段 ——
-  const [title, setTitle] = useState(book.title)
-  const [subtitle, setSubtitle] = useState(book.subtitle ?? '')
-  const [parallelTitles, setParallelTitles] = useState(book.parallelTitles.join('，'))
-  const [authors, setAuthors] = useState(book.authors.join('，'))
-  const [translators, setTranslators] = useState(book.translators.join('，'))
-  const [publisher, setPublisher] = useState(book.publisher ?? '')
+  // —— OPAC 补全上下文（opac-enrichment §5.3/§10） ——
+  // 建议值入框（fill 与 conflict 一视同仁）：表单初始 state = 现有值 ∪ bookPrefill；
+  // conflict 的现有值对照/恢复由 changes 驱动（kind 由 changes 保留，供 UI 展示）。
+  const enrichedRecord = enrichment
+    ? catalogRecords.find((cr) => cr.id === enrichment.recordId)
+    : undefined
+  const prefill = useMemo(
+    () =>
+      enrichment && enrichedRecord
+        ? prefillFromChanges(book, enrichedRecord, enrichment.changes)
+        : null,
+    [enrichment, enrichedRecord, book],
+  )
+  /** conflict 字段现有值（表单同构形态），供「现有：…」对照与恢复。
+   *  上下文指向的编目不存在时整体退化为普通编辑（防御，不渲染补全 UI）。 */
+  const conflictCurrentByField = useMemo(() => {
+    const map = new Map<EnrichmentChange['field'], unknown>()
+    if (!enrichment || !enrichedRecord) return map
+    for (const c of enrichment.changes) {
+      if (c.kind === 'conflict') map.set(c.field, c.current)
+    }
+    return map
+  }, [enrichment, enrichedRecord])
+  /** 建议字段 → 徽标类型（fill 常规 / conflict 警示，§10）。 */
+  const kindByField = useMemo(() => {
+    const map = new Map<EnrichmentChange['field'], EnrichmentChange['kind']>()
+    if (!enrichment || !enrichedRecord) return map
+    for (const c of enrichment.changes) {
+      if (!map.has(c.field)) map.set(c.field, c.kind)
+    }
+    return map
+  }, [enrichment, enrichedRecord])
+  const conflictCount = enrichment?.changes.filter((c) => c.kind === 'conflict').length ?? 0
+
+  // —— 书目字段（补全建议值直接入框） ——
+  const [title, setTitle] = useState(prefill?.bookPrefill.title ?? book.title)
+  const [subtitle, setSubtitle] = useState(prefill?.bookPrefill.subtitle ?? book.subtitle ?? '')
+  const [parallelTitles, setParallelTitles] = useState(
+    prefill?.bookPrefill.parallelTitles?.join('，') ?? book.parallelTitles.join('，'),
+  )
+  const [authors, setAuthors] = useState(
+    prefill?.bookPrefill.authors?.join('，') ?? book.authors.join('，'),
+  )
+  const [translators, setTranslators] = useState(
+    prefill?.bookPrefill.translators?.join('，') ?? book.translators.join('，'),
+  )
+  const [publisher, setPublisher] = useState(prefill?.bookPrefill.publisher ?? book.publisher ?? '')
   // 旧导出/夹具中 publishDate 可能被 revive 为 Date（e2e-seed DATE_KEYS）；归一为字符串（与详情页同款逻辑）。
   const publishDateRaw = book.publishDate
   const publishDateInit =
     publishDateRaw != null && typeof publishDateRaw === 'object'
       ? formatDateInTz(publishDateRaw as Date, 'UTC')
       : publishDateRaw
-  const [publishDate, setPublishDate] = useState(publishDateInit ?? '')
+  const [publishDate, setPublishDate] = useState(
+    prefill?.bookPrefill.publishDate ?? publishDateInit ?? '',
+  )
   const [edition, setEdition] = useState(book.edition ?? '')
-  const [pages, setPages] = useState(book.pages != null ? String(book.pages) : '')
-  const [priceAmount, setPriceAmount] = useState(book.price != null ? String(book.price.amount) : '')
-  const [priceCurrency, setPriceCurrency] = useState(book.price?.currency ?? '')
-  const [isbn13, setIsbn13] = useState(book.isbn13 ?? '')
-  const [isbn10, setIsbn10] = useState(book.isbn10 ?? '')
-  const [subjects, setSubjects] = useState(book.subjects.join('，'))
+  const [pages, setPages] = useState(
+    prefill?.bookPrefill.pages != null
+      ? String(prefill.bookPrefill.pages)
+      : book.pages != null
+        ? String(book.pages)
+        : '',
+  )
+  const [priceAmount, setPriceAmount] = useState(
+    prefill?.bookPrefill.price != null
+      ? String(prefill.bookPrefill.price.amount)
+      : book.price != null
+        ? String(book.price.amount)
+        : '',
+  )
+  const [priceCurrency, setPriceCurrency] = useState(
+    prefill?.bookPrefill.price?.currency ?? book.price?.currency ?? '',
+  )
+  const [isbn13, setIsbn13] = useState(prefill?.bookPrefill.isbn13 ?? book.isbn13 ?? '')
+  const [isbn10, setIsbn10] = useState(prefill?.bookPrefill.isbn10 ?? book.isbn10 ?? '')
+  const [subjects, setSubjects] = useState(
+    prefill?.bookPrefill.subjects?.join('，') ?? book.subjects.join('，'),
+  )
   const [tags, setTags] = useState(book.tags.join('，'))
-  const [description, setDescription] = useState(book.description ?? '')
-  const [coverUrl, setCoverUrl] = useState(book.coverUrl ?? '')
+  const [description, setDescription] = useState(
+    prefill?.bookPrefill.description ?? book.description ?? '',
+  )
+  const [coverUrl, setCoverUrl] = useState(prefill?.bookPrefill.coverUrl ?? book.coverUrl ?? '')
 
-  // —— 编目字段 ——
+  // —— 编目字段（补全的 recordPrefill.classifications = 现有 ∪ 建议去重） ——
   const [records, setRecords] = useState<Record<string, RecordDraft>>(() => {
     const init: Record<string, RecordDraft> = {}
     for (const cr of catalogRecords) {
@@ -184,7 +250,10 @@ export function EditForm({
         volume:
           cr.volume != null && cr.volume !== '' ? cr.volume : (parsed ?? ''),
         barcodes: cr.barcodes.join('\n'),
-        classifications: [...cr.classifications],
+        classifications:
+          enrichment?.recordId === cr.id && prefill?.recordPrefill
+            ? prefill.recordPrefill.classifications
+            : [...cr.classifications],
       }
     }
     return init
@@ -249,7 +318,22 @@ export function EditForm({
           classifications: d.classifications,
         }
       })
-      await updateBookWithRecords(db, book.id, bookDraft, recordDrafts)
+      // 补全保存：同一事务写目标编目 opacEnrichment（§7.2；Zod 失败整体回滚时状态一并回滚）。
+      await updateBookWithRecords(
+        db,
+        book.id,
+        bookDraft,
+        recordDrafts,
+        enrichment
+          ? {
+              recordId: enrichment.recordId,
+              providerId: enrichment.providerId,
+              status: 'fetched',
+              fetchedAt: new Date(),
+              sourceUrl: enrichment.sourceUrl,
+            }
+          : undefined,
+      )
       onOpenChange(false)
     } catch (err) {
       if (err instanceof IsbnConflictError) {
@@ -270,26 +354,115 @@ export function EditForm({
     if (parsed != null) setRecord(cr.id, { volume: parsed })
   }
 
+  // —— OPAC 补全对照/恢复（§5.4：保存=采纳、恢复=拒绝） ——
+
+  /** 表单同构值 → 对照/恢复字符串形态（数组顿号、价格 amount+currency）。 */
+  const displayValue = (value: unknown): string => {
+    if (value == null) return ''
+    if (Array.isArray(value)) return value.join('，')
+    if (typeof value === 'object' && 'amount' in value && 'currency' in value) {
+      const p = value as { amount: number; currency: string }
+      return `${p.amount} ${p.currency}`
+    }
+    return String(value)
+  }
+
+  /** 恢复某字段为现有值（conflict 字段；classifications 由编目行内处理）。 */
+  const restoreField = (field: EnrichmentChange['field'], current: unknown): void => {
+    const text = displayValue(current)
+    switch (field) {
+      case 'title': setTitle(text); break
+      case 'subtitle': setSubtitle(text); break
+      case 'parallelTitles': setParallelTitles(text); break
+      case 'authors': setAuthors(text); break
+      case 'translators': setTranslators(text); break
+      case 'publisher': setPublisher(text); break
+      case 'publishDate': setPublishDate(text); break
+      case 'pages': setPages(text); break
+      case 'price': {
+        const p = current as { amount: number; currency: string } | null
+        setPriceAmount(p ? String(p.amount) : '')
+        setPriceCurrency(p?.currency ?? '')
+        break
+      }
+      case 'subjects': setSubjects(text); break
+      case 'description': setDescription(text); break
+      case 'coverUrl': setCoverUrl(text); break
+      case 'isbn13': setIsbn13(text); break
+      case 'isbn10': setIsbn10(text); break
+      default: break
+    }
+  }
+
+  interface FieldDecor {
+    badge?: EnrichmentChange['kind']
+    currentText?: string | null
+    onRestore?: () => void
+  }
+
+  /** 字段装饰：徽标（建议字段）+ 现有值对照 + 恢复（conflict 字段）。 */
+  const decorOf = (field: EnrichmentChange['field']): FieldDecor => {
+    const current = conflictCurrentByField.get(field)
+    return {
+      badge: kindByField.get(field),
+      currentText: current === undefined ? undefined : displayValue(current),
+      onRestore:
+        current === undefined ? undefined : () => restoreField(field, current),
+    }
+  }
+
   const textField = (
     key: string,
     label: string,
     value: string,
     onChange: (v: string) => void,
     extra?: { mono?: boolean; hint?: string },
+    decor?: FieldDecor,
   ) => {
     const err = errors[key as keyof FieldErrors]
     return (
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">{label}</label>
-        <Input
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-            if (key in errors) setErrors((prev) => ({ ...prev, [key]: undefined }))
-          }}
-          className={extra?.mono ? 'font-mono' : undefined}
-          aria-invalid={err !== undefined}
-        />
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground">{label}</label>
+          {decor?.badge && (
+            <Badge
+              variant={decor.badge === 'conflict' ? 'destructive' : 'outline'}
+              className="rounded-none px-1.5 text-[10px] leading-4"
+            >
+              {t('badge', { ns: 'enrich' })}
+            </Badge>
+          )}
+        </div>
+        {decor?.currentText != null && (
+          <p
+            className="line-clamp-1 text-[11px] text-muted-foreground/70 line-through decoration-muted-foreground/50"
+            title={decor.currentText}
+          >
+            {t('current', { ns: 'enrich', value: decor.currentText })}
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <Input
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+              if (key in errors) setErrors((prev) => ({ ...prev, [key]: undefined }))
+            }}
+            className={cn(extra?.mono && 'font-mono', decor?.onRestore && 'min-w-0 flex-1')}
+            aria-invalid={err !== undefined}
+          />
+          {decor?.onRestore && value !== decor.currentText && (
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={decor.onRestore}
+              className="shrink-0"
+            >
+              {t('restore', { ns: 'enrich' })}
+            </Button>
+          )}
+        </div>
         {err && <p className="text-xs text-destructive">{err}</p>}
         {extra?.hint && !err && (
           <p className="text-xs text-muted-foreground">{extra.hint}</p>
@@ -298,8 +471,32 @@ export function EditForm({
     )
   }
 
+  const priceDecor = decorOf('price')
+  const priceCurrent = conflictCurrentByField.get('price') as
+    | { amount: number; currency: string }
+    | null
+    | undefined
+  const priceRestoreVisible =
+    priceDecor.onRestore != null &&
+    (priceAmount !== (priceCurrent ? String(priceCurrent.amount) : '') ||
+      priceCurrency !== (priceCurrent?.currency ?? ''))
+  const descDecor = decorOf('description')
+
   return (
     <div className="space-y-4">
+      {/* OPAC 补全摘要条（§10：全局兜底审视，逐条细节内联在字段） */}
+      {enrichment && enrichedRecord && (
+        <p className="text-xs text-muted-foreground">
+          {t('summary', {
+            ns: 'enrich',
+            filled: prefill?.applied.length ?? 0,
+            conflicts: conflictCount,
+          })}
+          {enrichment.warnings.length > 0 &&
+            ` · ${t('warnings', { ns: 'enrich', count: enrichment.warnings.length })}`}
+        </p>
+      )}
+
       {/* 待审类型徽标 */}
       {badge && (
         <div className="flex gap-2">
@@ -317,17 +514,37 @@ export function EditForm({
           <CardTitle className="text-sm">{t('section.book')}</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="md:col-span-2">{textField('title', `${t('field.title')} *`, title, setTitle)}</div>
-          {textField('subtitle', t('field.subtitle'), subtitle, setSubtitle)}
-          {textField('parallelTitles', t('field.parallelTitles'), parallelTitles, setParallelTitles)}
-          {textField('authors', t('field.authors'), authors, setAuthors)}
-          {textField('translators', t('field.translators'), translators, setTranslators)}
-          {textField('publisher', t('field.publisher'), publisher, setPublisher)}
-          {textField('publishDate', t('field.publishDate'), publishDate, setPublishDate)}
+          <div className="md:col-span-2">
+            {textField('title', `${t('field.title')} *`, title, setTitle, undefined, decorOf('title'))}
+          </div>
+          {textField('subtitle', t('field.subtitle'), subtitle, setSubtitle, undefined, decorOf('subtitle'))}
+          {textField('parallelTitles', t('field.parallelTitles'), parallelTitles, setParallelTitles, undefined, decorOf('parallelTitles'))}
+          {textField('authors', t('field.authors'), authors, setAuthors, undefined, decorOf('authors'))}
+          {textField('translators', t('field.translators'), translators, setTranslators, undefined, decorOf('translators'))}
+          {textField('publisher', t('field.publisher'), publisher, setPublisher, undefined, decorOf('publisher'))}
+          {textField('publishDate', t('field.publishDate'), publishDate, setPublishDate, undefined, decorOf('publishDate'))}
           {textField('edition', t('field.edition'), edition, setEdition)}
-          {textField('pages', t('field.pages'), pages, setPages)}
+          {textField('pages', t('field.pages'), pages, setPages, undefined, decorOf('pages'))}
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">{t('field.priceAmount')}</label>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">{t('field.priceAmount')}</label>
+              {priceDecor.badge && (
+                <Badge
+                  variant={priceDecor.badge === 'conflict' ? 'destructive' : 'outline'}
+                  className="rounded-none px-1.5 text-[10px] leading-4"
+                >
+                  {t('badge', { ns: 'enrich' })}
+                </Badge>
+              )}
+            </div>
+            {priceDecor.currentText != null && (
+              <p
+                className="line-clamp-1 text-[11px] text-muted-foreground/70 line-through decoration-muted-foreground/50"
+                title={priceDecor.currentText}
+              >
+                {t('current', { ns: 'enrich', value: priceDecor.currentText })}
+              </p>
+            )}
             <div className="flex gap-2">
               <Input
                 value={priceAmount}
@@ -350,24 +567,67 @@ export function EditForm({
                 className="w-24"
                 aria-label={t('field.priceCurrency')}
               />
+              {priceRestoreVisible && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={priceDecor.onRestore}
+                  className="shrink-0"
+                >
+                  {t('restore', { ns: 'enrich' })}
+                </Button>
+              )}
             </div>
             {errors.price && <p className="text-xs text-destructive">{errors.price}</p>}
           </div>
-          {textField('isbn13', `${t('field.isbn13')} *`, isbn13, setIsbn13, { mono: true })}
-          {textField('isbn10', t('field.isbn10'), isbn10, setIsbn10, { mono: true })}
+          {textField('isbn13', `${t('field.isbn13')} *`, isbn13, setIsbn13, { mono: true }, decorOf('isbn13'))}
+          {textField('isbn10', t('field.isbn10'), isbn10, setIsbn10, { mono: true }, decorOf('isbn10'))}
           {textField('subjects', t('field.subjects'), subjects, setSubjects, {
             hint: t('field.subjectsHint'),
-          })}
+          }, decorOf('subjects'))}
           {textField('tags', t('field.tags'), tags, setTags)}
           <div className="md:col-span-2 space-y-1">
-            <label className="text-xs text-muted-foreground">{t('field.description')}</label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">{t('field.description')}</label>
+              {descDecor.badge && (
+                <Badge
+                  variant={descDecor.badge === 'conflict' ? 'destructive' : 'outline'}
+                  className="rounded-none px-1.5 text-[10px] leading-4"
+                >
+                  {t('badge', { ns: 'enrich' })}
+                </Badge>
+              )}
+            </div>
+            {descDecor.currentText != null && (
+              <p
+                className="line-clamp-1 text-[11px] text-muted-foreground/70 line-through decoration-muted-foreground/50"
+                title={descDecor.currentText}
+              >
+                {t('current', { ns: 'enrich', value: descDecor.currentText })}
+              </p>
+            )}
+            <div className="flex items-start gap-2">
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className={cn(descDecor.onRestore && 'min-w-0 flex-1')}
+              />
+              {descDecor.onRestore && description !== descDecor.currentText && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={descDecor.onRestore}
+                  className="shrink-0"
+                >
+                  {t('restore', { ns: 'enrich' })}
+                </Button>
+              )}
+            </div>
           </div>
-          {textField('coverUrl', t('field.coverUrl'), coverUrl, setCoverUrl, { mono: true })}
+          {textField('coverUrl', t('field.coverUrl'), coverUrl, setCoverUrl, { mono: true }, decorOf('coverUrl'))}
         </CardContent>
       </Card>
 
@@ -381,6 +641,25 @@ export function EditForm({
             {catalogRecords.map((cr) => {
               const d = records[cr.id]
               const source = sourceById.get(cr.sourceId)
+              // OPAC 补全：编目侧分类（追加语义，§5.2）——现有值对照 + 恢复
+              const isEnriched = enrichment?.recordId === cr.id
+              const classChange = isEnriched
+                ? enrichment?.changes.find((c) => c.field === 'classifications')
+                : undefined
+              const classCurrent = classChange?.current as ClassificationEntry[] | undefined
+              const classCurrentText = classCurrent
+                ? classCurrent.map((e) => e.code).join('，')
+                : ''
+              // 恢复仅在有现有值可回退时出现（纯 fill 无对照无恢复）
+              const classDirty = Boolean(
+                classCurrent &&
+                  classCurrent.length > 0 &&
+                  (d.classifications.length !== classCurrent.length ||
+                    d.classifications.some(
+                      (c) =>
+                        !classCurrent.some((e) => e.system === c.system && e.code === c.code),
+                    )),
+              )
               return (
                 <div key={cr.id} className="space-y-3 rounded-none border p-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -445,9 +724,44 @@ export function EditForm({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">
-                      {t('catalog.classifications')}
-                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs text-muted-foreground">
+                        {t('catalog.classifications')}
+                      </label>
+                      {classChange && (
+                        <>
+                          <Badge
+                            variant="outline"
+                            className="rounded-none px-1.5 text-[10px] leading-4"
+                          >
+                            {t('badge', { ns: 'enrich' })}
+                          </Badge>
+                          {classCurrentText !== '' && (
+                            <span
+                              className="line-clamp-1 text-[11px] text-muted-foreground/70 line-through decoration-muted-foreground/50"
+                              title={classCurrentText}
+                            >
+                              {t('current', { ns: 'enrich', value: classCurrentText })}
+                            </span>
+                          )}
+                          {classDirty && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              className="h-6 shrink-0 px-2 text-[11px]"
+                              onClick={() =>
+                                setRecord(cr.id, {
+                                  classifications: classCurrent?.map((e) => ({ ...e })) ?? [],
+                                })
+                              }
+                            >
+                              {t('restore', { ns: 'enrich' })}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       {d.classifications.map((c, i) => (
                         <div key={i} className="flex items-center gap-2">

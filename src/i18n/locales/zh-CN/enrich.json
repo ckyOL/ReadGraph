@@ -1,0 +1,17 @@
+{
+  "fetch": "从 {{provider}} 补全",
+  "running": "补全中…",
+  "viewInOpac": "在 {{provider}} 查看",
+  "notFound": "馆内未找到该编目",
+  "failed": "补全失败（网络或跨域拦截）",
+  "placeholderHint": "占位书目，请在编辑中手动补全",
+  "badge": "OPAC",
+  "current": "现有：{{value}}",
+  "restore": "恢复现有值",
+  "summary": "OPAC 建议：已填 {{filled}} 项，{{conflicts}} 项与现有不同",
+  "warnings": "{{count}} 条格式警告",
+  "batch.running": "正在补全… {{done}}/{{total}}",
+  "batch.result": "成功 {{ok}} · 未找到 {{notFound}} · 失败 {{failed}}",
+  "batch.apply": "查看改动并应用",
+  "batch.placeholderNote": "占位记录 {{count}} 条不计入"
+}

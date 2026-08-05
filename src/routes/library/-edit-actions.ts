@@ -63,10 +63,22 @@ export interface CatalogRecordDraft {
   classifications: ClassificationEntry[]
 }
 
+/** OPAC 补全保存载荷（opac-enrichment 规格 §7.2）：同一事务写目标编目 opacEnrichment。
+ *  不参与字段合并（表单值即最终裁决）；Zod 失败整体回滚时状态一并回滚。 */
+export interface EnrichmentSavePayload {
+  recordId: string
+  providerId: string
+  status: 'fetched'
+  fetchedAt: Date
+  sourceUrl: string
+}
+
 /**
  * 统一保存（book-editing 规格 §2.1/§3.4）：单事务写 Book 全字段 + 各编目
  * metaId/volume/barcodes/classifications（metaIdKey 随 metaId 派生），成功即
  * needsReview=false、updatedAt=now。
+ * 可选 enrichment 载荷（opac-enrichment §7.2）：同一事务写目标编目 opacEnrichment
+ * （status='fetched'）；不传则行为与普通编辑完全一致。
  * 取代原 completePlaceholder（补全）与 saveSetBook（套装保存）。
  * ISBN 冲突预检：归一化后命中他书 → 抛 IsbnConflictError（整体回滚）。
  */
@@ -75,6 +87,7 @@ export async function updateBookWithRecords(
   bookId: string,
   book: BookDraft,
   records: CatalogRecordDraft[],
+  enrichment?: EnrichmentSavePayload,
 ): Promise<void> {
   await db.transaction('rw', [db.books, db.catalogRecords], async () => {
     const existing = await db.books.get(bookId)
@@ -96,13 +109,17 @@ export async function updateBookWithRecords(
 
     const crs = await db.catalogRecords.where('bookId').equals(bookId).toArray()
     const draftById = new Map(records.map((r) => [r.id, r]))
+    // enrichment 目标编目缺失 → 抛错整体回滚（防御；先于循环校验，避免误伤其它记录）。
+    if (enrichment && !crs.some((c) => c.id === enrichment.recordId)) {
+      throw new Error(`updateBookWithRecords: enrichment recordId not found: ${enrichment.recordId}`)
+    }
     const updates = crs.map((c) => {
       const d = draftById.get(c.id)
       if (!d) return c
       // metaIdKey 由 metaId 派生（String(metaId).trim()，空白 → null），与
       // catalog-record.md 归一化约定一致：索引与去重始终走 metaIdKey。
       const metaId = d.metaId == null || d.metaId.trim() === '' ? null : d.metaId.trim()
-      return validated(catalogRecordSchema, {
+      const next: z.input<typeof catalogRecordSchema> = {
         ...c,
         metaId,
         metaIdKey: metaId == null ? null : metaId,
@@ -110,7 +127,17 @@ export async function updateBookWithRecords(
         barcodes: d.barcodes,
         classifications: d.classifications,
         updatedAt: now(),
-      })
+      }
+      // enrichment 载荷不参与字段合并（表单值即最终裁决）。
+      if (enrichment && c.id === enrichment.recordId) {
+        next.opacEnrichment = {
+          providerId: enrichment.providerId,
+          status: enrichment.status,
+          fetchedAt: enrichment.fetchedAt,
+          sourceUrl: enrichment.sourceUrl,
+        }
+      }
+      return validated(catalogRecordSchema, next)
     })
     if (updates.length > 0) {
       await db.catalogRecords.bulkPut(updates)

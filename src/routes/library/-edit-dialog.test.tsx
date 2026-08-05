@@ -8,6 +8,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import i18n, { changeLanguage } from '@/i18n'
 import type { Book, CatalogRecord, RawRecord, Source } from '@/types/entities'
+import type { EnrichmentContext } from '@/enrich/enrich-service'
+import type { OpacDetail } from '@/enrich/opac-provider'
+import { mapOpacDetail } from '@/lib/opac-mapping'
 import { EditForm, validateBookFields } from './-edit-dialog'
 
 // 表单体的事件处理器引用 db 单例，SSR 渲染不触发，桩空对象即可。
@@ -82,6 +85,7 @@ function renderForm(
   book: Book,
   catalogRecords: CatalogRecord[],
   rawRecords: RawRecord[] = [],
+  enrichment?: EnrichmentContext,
 ) {
   return renderToStaticMarkup(
     createElement(EditForm, {
@@ -91,6 +95,7 @@ function renderForm(
       sources: [source],
       open: true,
       onOpenChange: () => undefined,
+      enrichment,
     }),
   )
 }
@@ -221,6 +226,124 @@ describe('EditForm — 套装候选预填与编目卡', () => {
     expect(html).toContain('添加分类')
     // metaId 为 null 的编目：馆藏号输入存在且空白（清空语义）。
     expect(html).toMatch(/aria-label="馆藏号 [^"]*" value=""/)
+  })
+})
+
+describe('EditForm — OPAC 补全上下文（opac-enrichment §5.3/§10）', () => {
+  /** §3.3 实测样本 → 统一 OpacDetail（与 opac-mapping.test.ts 同款夹具）。 */
+  const sampleDetail: OpacDetail = {
+    title: '合成绘本甲=Synthetic story',
+    author: '(日)合成作者著 　合成译者译',
+    publish: '北京:合成出版社,2023',
+    page: '198页',
+    price: 'CNY35.00',
+    subject: '漫画-连环画-日本-现代',
+    classno: 'J238.2(313)',
+    abstract: null,
+    isbn: '978-7-5217-4823-9',
+    img: 'https://www.bookcovers.cn/index.php?client=szlib&isbn=978-7-5217-4823-9/cover',
+  }
+
+  /** 经真实映射层产出建议改动上下文（来源无关链路）。 */
+  function ctxFor(book: Book, record: CatalogRecord): EnrichmentContext {
+    const { changes, warnings } = mapOpacDetail(sampleDetail, { book, record, source })
+    return {
+      recordId: record.id,
+      providerId: 'szlib',
+      sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=6092919&client_id=t1',
+      changes,
+      warnings,
+    }
+  }
+
+  it('fill 与 conflict 字段均预填建议值（建议值入框，§5.4）', () => {
+    // title 为空 → fill；isbn13/pages 非空且不同 → conflict
+    const book = mkBook({ id: 'bk-en', title: '', isbn13: '9787111111111', pages: 100 })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919', barcodes: ['BC1'] })
+    const html = renderForm(book, [cr], [], ctxFor(book, cr))
+    // fill：空字段直接呈现建议值
+    expect(html).toContain('value="合成绘本甲"')
+    expect(html).toContain('value="合成作者"')
+    expect(html).toContain('value="漫画，连环画，日本，现代"')
+    expect(html).toContain('value="35"')
+    expect(html).toContain('value="CNY"')
+    // conflict：输入框同样预填建议值（非现有值）
+    expect(html).toContain('value="9787521748239"')
+    expect(html).not.toContain('value="9787111111111"')
+    expect(html).toContain('value="198"')
+    // 建议字段徽标（12 个 change 字段 → 12 枚）+ 摘要条 1 处「OPAC 建议」
+    expect((html.match(/OPAC/g) ?? []).length).toBe(13)
+    // conflict 徽标警示色（destructive）、fill 常规（outline）
+    expect(html).toContain('data-variant="destructive"')
+    expect(html).toContain('data-variant="outline"')
+  })
+
+  it('conflict 字段渲染「现有：…」对照文字（数组顿号/价格回显）', () => {
+    const book = mkBook({
+      id: 'bk-en',
+      title: '',
+      isbn13: '9787111111111',
+      pages: 100,
+      price: { amount: 50, currency: 'USD' },
+      subjects: ['旧主题'],
+    })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919' })
+    const html = renderForm(book, [cr], [], ctxFor(book, cr))
+    expect(html).toContain('现有：9787111111111')
+    expect(html).toContain('现有：100')
+    expect(html).toContain('现有：50 USD')
+    expect(html).toContain('现有：旧主题')
+    // 恢复按钮按 conflict 字段渲染（值 ≠ 现有值时可见）
+    expect((html.match(/恢复现有值/g) ?? []).length).toBe(4)
+    // fill 字段无对照无恢复
+    expect(html).not.toContain('现有：合成绘本甲')
+  })
+
+  it('摘要条计数：已填 N 项（fill+conflict），M 项与现有不同', () => {
+    const book = mkBook({ id: 'bk-en', title: '', isbn13: '9787111111111', pages: 100 })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919' })
+    const html = renderForm(book, [cr], [], ctxFor(book, cr))
+    expect(html).toContain('OPAC 建议：已填 12 项，2 项与现有不同')
+  })
+
+  it('编目侧：recordPrefill.classifications = 现有 ∪ 建议（去重），对照现有分类', () => {
+    const book = mkBook({ id: 'bk-en', title: '' })
+    const cr = mkCr({
+      id: 'cr-en',
+      bookId: 'bk-en',
+      metaId: 6092919,
+      metaIdKey: '6092919',
+      classifications: [{ system: 'clc', code: 'I247.5' }],
+    })
+    const html = renderForm(book, [cr], [], ctxFor(book, cr))
+    // 现有 I247.5 + 建议 J238.2 并存；对照「现有：I247.5」
+    expect(html).toContain('I247.5')
+    expect(html).toContain('J238.2')
+    expect(html).toContain('现有：I247.5')
+    // 分类徽标 + 恢复按钮
+    expect(html).toContain('OPAC')
+    expect(html).toContain('恢复现有值')
+  })
+
+  it('无 enrichment → 不渲染 OPAC 徽标/对照/摘要/恢复', () => {
+    const book = mkBook({ id: 'bk-en', title: '合成绘本甲', isbn13: '9787111111111', pages: 100 })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919' })
+    const html = renderForm(book, [cr])
+    expect(html).not.toContain('OPAC')
+    expect(html).not.toContain('现有：')
+    expect(html).not.toContain('恢复现有值')
+    expect(html).not.toContain('OPAC 建议')
+  })
+
+  it('enrichment 指向不存在的编目 → 退化为普通编辑（不预填不报错）', () => {
+    const book = mkBook({ id: 'bk-en', title: '' })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en' })
+    const html = renderForm(book, [cr], [], {
+      ...ctxFor(book, cr),
+      recordId: 'cr-ghost',
+    })
+    expect(html).not.toContain('OPAC')
+    expect(html).not.toContain('现有：')
   })
 })
 

@@ -9,6 +9,8 @@ import pagesZh from './locales/zh-CN/pages.json'
 import pagesEn from './locales/en/pages.json'
 import editZh from './locales/zh-CN/edit.json'
 import editEn from './locales/en/edit.json'
+import enrichZh from './locales/zh-CN/enrich.json'
+import enrichEn from './locales/en/enrich.json'
 
 import { getStoredLocale, type Locale } from '@/lib/locale'
 
@@ -21,18 +23,20 @@ void i18n.use(initReactI18next).init({
       nav: navZh,
       pages: pagesZh,
       edit: editZh,
+      enrich: enrichZh,
     },
     en: {
       common: commonEn,
       nav: navEn,
       pages: pagesEn,
       edit: editEn,
+      enrich: enrichEn,
     },
   },
   lng: initialLocale,
   fallbackLng: 'zh-CN',
   defaultNS: 'common',
-  ns: ['common', 'nav', 'pages', 'edit'],
+  ns: ['common', 'nav', 'pages', 'edit', 'enrich'],
   interpolation: { escapeValue: false }, // React already escapes
   returnNull: false,
 })

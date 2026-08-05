@@ -3,6 +3,7 @@
 // 中排条码为副本主标识（等宽、前景色）；末排馆藏号为次级元数据（弱化）。
 // 区块间 1px 细罫线分隔（Casa BRUTUS 纸墨语言）；完全直角、无阴影。
 import { useTranslation } from 'react-i18next'
+import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ClassificationBadge } from '@/components/classification-badge'
 import type { CatalogRecord, Source } from '@/types/entities'
@@ -11,9 +12,11 @@ interface CatalogRecordCardProps {
   record: CatalogRecord
   /** 馆藏所属来源（图书馆）；缺失时省略徽标。 */
   source?: Source
+  /** 卡片底部动作区（OPAC 补全按钮/外链等，opac-enrichment §10）。 */
+  actions?: ReactNode
 }
 
-export function CatalogRecordCard({ record, source }: CatalogRecordCardProps) {
+export function CatalogRecordCard({ record, source, actions }: CatalogRecordCardProps) {
   const { t } = useTranslation('pages')
   const hasHeader = Boolean(source) || record.classifications.length > 0
   const hasItems = record.barcodes.length > 0 || record.metaId != null
@@ -77,6 +80,7 @@ export function CatalogRecordCard({ record, source }: CatalogRecordCardProps) {
           )}
         </dl>
       )}
+      {actions && <div className="mt-2.5 border-t pt-2.5">{actions}</div>}
     </div>
   )
 }
