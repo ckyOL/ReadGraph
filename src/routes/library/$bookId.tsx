@@ -330,11 +330,26 @@ function BookDetailPage() {
             <CardTitle>{t('bookDetail.metadata.title')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            {/* 封面（opac-enrichment §3.5：外部图床不受 CORS 限制，可直接 <img> 展示） */}
+            {book.coverUrl && (
+              <img
+                src={book.coverUrl}
+                alt={book.title}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="max-h-56 w-auto border object-contain"
+              />
+            )}
             {book.subtitle && (
               <p className="text-sm text-muted-foreground">{book.subtitle}</p>
             )}
+            {book.translators.length > 0 &&
+              metaField(t('bookDetail.field.translators'), book.translators.join(' / '))}
             {metaField(t('bookDetail.field.isbn'), book.isbn13 && (
               <span className="font-mono">{book.isbn13}</span>
+            ))}
+            {metaField(t('bookDetail.field.isbn10'), book.isbn10 && (
+              <span className="font-mono">{book.isbn10}</span>
             ))}
             {metaField(t('bookDetail.field.publisher'), book.publisher)}
             {metaField(t('bookDetail.field.publishDate'), publishDate)}
@@ -347,6 +362,14 @@ function BookDetailPage() {
               metaField(t('bookDetail.field.parallelTitles'), book.parallelTitles.join(' / '))}
             {book.subjects.length > 0 &&
               metaField(t('bookDetail.field.subjects'), book.subjects.join(' / '))}
+            {book.description && (
+              <div className="flex gap-2 text-sm">
+                <span className="w-20 shrink-0 text-muted-foreground">
+                  {t('bookDetail.field.description')}
+                </span>
+                <p className="min-w-0 whitespace-pre-wrap">{book.description}</p>
+              </div>
+            )}
             {book.needsReview && (
               <Badge variant="destructive">{t('library.needsReview')}</Badge>
             )}
