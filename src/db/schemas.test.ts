@@ -155,6 +155,44 @@ describe('entity schemas — reject invalid', () => {
     expect(r.success).toBe(true)
     if (r.success) expect(r.data.volume).toBeNull()
   })
+  it('catalogRecord missing opacEnrichment defaults to null (旧导出兼容)', () => {
+    const r = catalogRecordSchema.safeParse(validCatalogRecord)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.opacEnrichment).toBeNull()
+  })
+  it('catalogRecord accepts valid opacEnrichment (fetched/not_found/failed)', () => {
+    for (const status of ['fetched', 'not_found', 'failed'] as const) {
+      const r = catalogRecordSchema.safeParse({
+        ...validCatalogRecord,
+        opacEnrichment: {
+          providerId: 'szlib',
+          status,
+          fetchedAt: now(),
+          sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=6092919&client_id=t1',
+        },
+      })
+      expect(r.success).toBe(true)
+    }
+  })
+  it('catalogRecord accepts opacEnrichment null explicitly', () => {
+    expect(
+      catalogRecordSchema.safeParse({ ...validCatalogRecord, opacEnrichment: null }).success,
+    ).toBe(true)
+  })
+  it('catalogRecord rejects bad opacEnrichment status / fetchedAt', () => {
+    expect(
+      catalogRecordSchema.safeParse({
+        ...validCatalogRecord,
+        opacEnrichment: { providerId: 'szlib', status: 'pending', fetchedAt: null, sourceUrl: null },
+      }).success,
+    ).toBe(false)
+    expect(
+      catalogRecordSchema.safeParse({
+        ...validCatalogRecord,
+        opacEnrichment: { providerId: 'szlib', status: 'fetched', fetchedAt: 'not-a-date', sourceUrl: null },
+      }).success,
+    ).toBe(false)
+  })
   it('borrowCycle rejects bad status enum', () => {
     expect(borrowCycleSchema.safeParse({ ...validBorrowCycle, status: 'overdue' }).success).toBe(false)
   })

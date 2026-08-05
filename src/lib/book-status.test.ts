@@ -48,6 +48,7 @@ function mkCr(over: Partial<CatalogRecord>): CatalogRecord {
     metaIdKey: null,
     barcodes: [],
     classifications: [],
+    opacEnrichment: null,
     volume: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),

@@ -17,6 +17,19 @@ export interface ClassificationEntry {
   category?: string
 }
 
+/** OPAC 补全状态（opac-enrichment 规格 §6）：'fetched'=用户经编辑表单应用并保存；'not_found'/'failed'=抓取阶段回写。 */
+export type OpacEnrichmentStatus = 'fetched' | 'not_found' | 'failed'
+
+/** OPAC 补全审计（CatalogRecord.opacEnrichment；null=未抓取/抓取成功未保存）。 */
+export interface OpacEnrichment {
+  /** 补全来源（= Source.parserId），多 provider 场景审计与区分 */
+  providerId: string | null
+  status: OpacEnrichmentStatus
+  fetchedAt: Date | null
+  /** provider 详情页/数据 URL（溯源） */
+  sourceUrl: string | null
+}
+
 /** 书目信息元数据 */
 export interface Book {
   id: string
@@ -52,6 +65,8 @@ export interface CatalogRecord {
   metaIdKey: string | null
   barcodes: string[]
   classifications: ClassificationEntry[]
+  /** OPAC 补全审计（opac-enrichment 规格 §6）：null=未抓取/抓取成功未保存。 */
+  opacEnrichment: OpacEnrichment | null
   /** 原文卷号（如 "3"/"上"）；套装候选由用户在详情页编辑表单结构化。 */
   volume: string | null
   /** classCodes multiEntry 索引派生字段：存储前由 deriveClassCodes 补写（schema 不校验；存量缺失由启动回填）。 */

@@ -202,6 +202,7 @@ export function importPipeline(
       metaIdKey,
       barcodes: (cr.barcodes ?? []) as string[],
       classifications: (cr.classifications ?? []) as CatalogRecord['classifications'],
+      opacEnrichment: null,
       volume: null,
       createdAt: now,
       updatedAt: now,

@@ -1,0 +1,24 @@
+{
+  "title": "合成绘本甲=Synthetic story",
+  "author": "(日)合成作者著 　合成译者译",
+  "publish": "北京:合成出版社,2023",
+  "publishyear": "北京:合成出版社,2023",
+  "callno": "",
+  "series": "",
+  "page": "198页",
+  "price": "CNY35.00",
+  "subject": "漫画-连环画-日本-现代",
+  "classno": "J238.2(313)",
+  "abstract": "",
+  "abstracts": "",
+  "isPreloan": false,
+  "isbn": "978-7-5217-4823-9",
+  "img": "https://www.bookcovers.cn/index.php?client=szlib&isbn=978-7-5217-4823-9/cover",
+  "districtList": [
+    { "district": "福田区馆" },
+    { "district": "南山区馆" }
+  ],
+  "CanLoanBook": [{ "barcode": "D1200000001" }],
+  "OnlyReadBook": [],
+  "BorrowedBook": []
+}

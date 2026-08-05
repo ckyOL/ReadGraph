@@ -107,6 +107,7 @@ export function makeCatalog(
     metaIdKey: metaId === null || metaId === '' ? null : String(metaId),
     barcodes: barcode ? [barcode] : [],
     classifications,
+    opacEnrichment: null,
     volume: null,
     createdAt: NOW,
     updatedAt: NOW,

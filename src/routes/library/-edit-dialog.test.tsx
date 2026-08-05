@@ -56,6 +56,7 @@ function mkCr(over: Partial<CatalogRecord>): CatalogRecord {
     metaIdKey: null,
     barcodes: [],
     classifications: [],
+    opacEnrichment: null,
     volume: null,
     createdAt: NOW,
     updatedAt: NOW,

@@ -33,6 +33,17 @@ const classificationEntrySchema = z.object({
   category: z.string().optional(),
 })
 
+// OPAC 补全审计（opac-enrichment 规格 §6）：default(null) → 旧导出兼容，无迁移脚本。
+const opacEnrichmentSchema = z
+  .object({
+    providerId: z.union([z.null(), z.string()]),
+    status: z.enum(['fetched', 'not_found', 'failed']),
+    fetchedAt: nullableUtcDate,
+    sourceUrl: z.union([z.null(), z.string()]),
+  })
+  .nullable()
+  .default(null)
+
 const priceSchema = z.object({
   amount: z.number(),
   currency: z.string(),
@@ -71,6 +82,7 @@ export const catalogRecordSchema = z.object({
   metaIdKey: z.union([z.null(), z.string()]),
   barcodes: z.array(z.string()),
   classifications: z.array(classificationEntrySchema),
+  opacEnrichment: opacEnrichmentSchema,
   // 旧导出无此字段时默认 null 兜底（review 规格 §2：非索引字段，无需 db 版本升级）。
   volume: z.union([z.null(), z.string()]).default(null),
   createdAt: utcDate,
