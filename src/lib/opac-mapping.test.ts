@@ -327,6 +327,26 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     expect(changes.find((c) => c.field === 'publishDate')).toBeUndefined()
   })
 
+  it('publish 出版年后带括注（台版民国纪年实测形态，metaid 4473139）→ publishDate 取年份', () => {
+    const { changes, warnings } = mapOpacDetail(
+      { ...sampleDetail, publish: '台北:合成出版社,2019(民108)' },
+      { book: emptyBook(), record: emptyRecord(), source: source() },
+    )
+    expect(changes.find((c) => c.field === 'publisher')).toEqual({
+      field: 'publisher',
+      kind: 'fill',
+      current: null,
+      proposed: '合成出版社',
+    })
+    expect(changes.find((c) => c.field === 'publishDate')).toEqual({
+      field: 'publishDate',
+      kind: 'fill',
+      current: null,
+      proposed: '2019',
+    })
+    expect(warnings).toEqual([])
+  })
+
   it('publish 不可解析（冒号后为空）→ format_error warning + 无对应 change', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, publish: '北京:' },

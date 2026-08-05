@@ -98,7 +98,11 @@ function pushListChange(
   }
 }
 
-/** publish（"出版地:出版社,出版年"）→ publisher/publishDate；不可解析 → null。 */
+/**
+ * publish（"出版地:出版社,出版年"）→ publisher/publishDate；不可解析 → null。
+ * 出版年判定：末段以 4 位年份开头（后不紧跟数字）即视为出版年——台版实测形态
+ * 「2019(民108)」出版年后跟民国纪年括注，年份仍应提取（opac-enrichment §5.2）。
+ */
 function parsePublish(raw: string): { publisher: string | null; publishDate: string | null } | null {
   const colon = raw.indexOf(':')
   const rest = (colon >= 0 ? raw.slice(colon + 1) : raw).trim()
@@ -109,10 +113,10 @@ function parsePublish(raw: string): { publisher: string | null; publishDate: str
     .filter((s) => s !== '')
   if (segments.length === 0) return null
   const last = segments[segments.length - 1]!
-  const isYear = /^\d{4}$/.test(last)
-  const publisherParts = isYear ? segments.slice(0, -1) : segments
+  const year = /^(\d{4})(?!\d)/.exec(last)?.[1] ?? null
+  const publisherParts = year != null ? segments.slice(0, -1) : segments
   const publisher = publisherParts.join(',').trim()
-  return { publisher: publisher === '' ? null : publisher, publishDate: isYear ? last : null }
+  return { publisher: publisher === '' ? null : publisher, publishDate: year }
 }
 
 /**
