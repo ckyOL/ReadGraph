@@ -115,9 +115,15 @@ function parsePublish(raw: string): { publisher: string | null; publishDate: str
   return { publisher: publisher === '' ? null : publisher, publishDate: isYear ? last : null }
 }
 
-/** price（"CNY35.00"/"¥35.00"/"35.00"）→ { amount, currency }；不可解析 → null。 */
+/**
+ * price（"CNY35.00"/"¥35.00"/"35.00"）→ { amount, currency }；不可解析 → null。
+ * 台版等书价实测形态「CNY110.00(TWD350.00,HKD117.00)」：括号前为主价
+ * （馆方定价口径），括号内为原币种参考价——Book.price 只存主价
+ * （opac-enrichment §5.2 实测样本补充）；主价为空时回退整体解析。
+ */
 function parsePrice(raw: string): { amount: number; currency: string } | null {
-  const m = /^(?:([¥￥])|([A-Za-z]+))?\s*(\d+(?:\.\d+)?)$/.exec(raw.trim())
+  const primary = raw.split(/[（(]/)[0]!.trim() || raw.trim()
+  const m = /^(?:([¥￥])|([A-Za-z]+))?\s*(\d+(?:\.\d+)?)$/.exec(primary)
   if (!m) return null
   const currency = m[1] != null ? 'CNY' : (m[2] ?? '').toUpperCase() || 'CNY'
   return { amount: Number(m[3]), currency }

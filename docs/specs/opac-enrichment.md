@@ -209,7 +209,7 @@ type EnrichmentChange = {
 | `Book.isbn13` / `isbn10` | `detail.isbn` 过 [lib/isbn 清洗](import-pipeline.md)（去连字符）| `isbn13` 为空 → fill；非空相同 → 不产出；非空不同 → conflict（预填建议值；若被他书占用，保存时由既有 ISBN 唯一冲突预检兜底报错，book-editing §4.2）|
 | `Book.publisher` / `publishDate` | `detail.publish` 首个 `:` 后按 `[,，]` 拆；末段为 4 位数字年份 → `publishDate`，其余 → `publisher` | 为空 → fill；非空不同 → conflict |
 | `Book.pages` | `detail.page` 首个整数序列 | 为空 → fill；非空不同 → conflict |
-| `Book.price` | `detail.price` 货币前缀（`¥` → CNY，否则大写字母串）+ 金额；无前缀默认 CNY | 为空 → fill；非空不同 → conflict |
+| `Book.price` | `detail.price` 货币前缀（`¥` → CNY，否则大写字母串）+ 金额；无前缀默认 CNY；**台版等实测形态 `CNY110.00(TWD350.00,HKD117.00)`：括号前为主价（馆方定价口径），取主价，括号内原币种参考价丢弃** | 为空 → fill；非空不同 → conflict |
 | `Book.subjects` | `detail.subject` 按 `-` 拆分、trim、去空 | 为空 → fill；非空且集合不同 → conflict |
 | `Book.description` | `detail.abstract`（provider 已把数组拼串）| 为空 → fill；非空不同 → conflict |
 | `Book.coverUrl` | `detail.img` | 为空 → fill；非空不同 → conflict |

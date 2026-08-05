@@ -377,6 +377,38 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     })
   })
 
+  it('price 台版多币种形态「CNY110.00(TWD350.00,HKD117.00)」→ 取括号前主价（实测 metaid=4942259）', () => {
+    const { changes, warnings } = mapOpacDetail(
+      { ...sampleDetail, price: 'CNY110.00(TWD350.00,HKD117.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source() },
+    )
+    expect(changes.find((c) => c.field === 'price')).toEqual({
+      field: 'price',
+      kind: 'fill',
+      current: null,
+      proposed: { amount: 110, currency: 'CNY' },
+    })
+    expect(warnings).toEqual([])
+    // 全角括号同规则
+    const fullWidth = mapOpacDetail(
+      { ...sampleDetail, price: 'CNY110.00（TWD350.00）' },
+      { book: emptyBook(), record: emptyRecord(), source: source() },
+    )
+    expect(fullWidth.changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 110,
+      currency: 'CNY',
+    })
+    // 无主价（纯括号原价）→ 不可解析 → warning
+    const bareParen = mapOpacDetail(
+      { ...sampleDetail, price: '(TWD350.00,HKD117.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source() },
+    )
+    expect(bareParen.changes.find((c) => c.field === 'price')).toBeUndefined()
+    expect(bareParen.warnings).toEqual([
+      { type: 'format_error', message: '无法解析定价: "(TWD350.00,HKD117.00)"', recordRef: null },
+    ])
+  })
+
   it('price 不可解析 → format_error warning + 无 price change', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, price: '赠书' },
