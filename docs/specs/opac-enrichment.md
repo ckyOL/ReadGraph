@@ -10,7 +10,7 @@ szlib 流通记录 JSON 只携带 `metaid`/`metatable` 与部分书目字段：`
 本设计在统一编辑表单（[book-editing §3](book-editing.md#3-编辑表单-ui-规格详情页-dialog)）落地后演进：补全**不再自动合并写库**，而是把抓取结果填入编辑输入框。收益：
 
 1. **共用修改流程**：预填、审视、保存、校验（ISBN 唯一冲突预检、Zod 事务回滚）与普通编辑完全同构，不维护第二套写路径；保存动作天然表达「用户已确认」。
-2. **可审视改动值**：每条建议值以「现状 → 建议」呈现（fill 直接预填、conflict 待用户裁决），导入期的错误值（截断题名、错位 ISBN）可在显式确认下修正，不再被「只填空」静默保留。
+2. **可审视改动值**：建议值直接填入输入框，字段标签与输入框之间对照显示现有值（「现有：…」），用户当场决定替换或保留；导入期的错误值（截断题名、错位 ISBN）得以修正，不再被「只填空」静默保留。
 
 **多来源泛化**：不同图书馆 OPAC 接口形态各异（URL/参数/响应字段/未找到判定/部署约束均不同），未来还可能接入 OpenLibrary 等按 ISBN 补全的源（[design-decisions 未来扩展](../design-decisions.md)）。补全层以 **provider 架构**应对（§2）：来源差异全部收口在 `OpacProvider` 实现内，映射（§5.2）、预填（§5.3）、应用（§7.2）、状态机（§6）与来源无关。该模式与既有 `SourceParser` 注册表（[source.md](../metadata/source.md)、[import-pipeline §2](import-pipeline.md#2-parser-接口与注册表)）同构，一份心智模型管两条管线。
 
@@ -162,7 +162,7 @@ src/
 │  └─ opac-provider.test.ts / providers/szlib/detail.test.ts / enrich-service.test.ts
 ├─ routes/library/
 │  ├─ $bookId.tsx           # 「从 {provider.displayName} 补全」：抓取 → 打开编辑 Dialog（search.edit=true + 建议改动上下文）
-│  ├─ -edit-dialog.tsx      # 补全预填（prefillFromChanges 初始化表单）+「OPAC 建议改动」面板 + 冲突项「采用建议值」
+│  ├─ -edit-dialog.tsx      # 补全预填（prefillFromChanges 初始化表单）+ 现有值对照 +「恢复现有值」+ 摘要条
 │  └─ -edit-actions.ts      # updateBookWithRecords 扩展可选 enrichment 载荷（同事务写 opacEnrichment，§7.2）
 ```
 
@@ -191,7 +191,7 @@ type EnrichmentChange = {
   field: 'title' | 'subtitle' | 'parallelTitles' | 'authors' | 'translators'
        | 'publisher' | 'publishDate' | 'pages' | 'price' | 'subjects'
        | 'description' | 'coverUrl' | 'isbn13' | 'isbn10' | 'classifications'
-  /** fill = 现有为空（或占位）→ 表单预填建议值；conflict = 现有非空且（规范化后）与建议值不同 → 表单不动、仅面板展示 */
+  /** fill = 现有为空（或占位）→ 表单预填建议值，无对照；conflict = 现有非空且（规范化后）与建议值不同 → 表单同样预填建议值，并以「现有：…」对照 + 恢复按钮呈现（§5.3/§10） */
   kind: 'fill' | 'conflict'
   /** 现有值（表单同构形态；null = 空） */
   current: unknown
@@ -206,7 +206,7 @@ type EnrichmentChange = {
 |------|---------------|-----------|
 | `Book.title` / `subtitle` / `parallelTitles` | `detail.title` 归一化 `\s*=\s*` → `" = "` 后走 [import-pipeline §13 parseTitle](import-pipeline.md#13-书目标题结构化解析) 结构化 | 现有 title 为空/占位 → fill；非空且结构化回显串（title/subtitle/parallelTitles 组装）与建议不同 → conflict；相同 → 不产出 change |
 | `Book.authors` / `translators` | `detail.author` 归一化 `　`/` 　` → `;` 后走 parseTitle 责任区解析 | `authors` 为空 → fill；非空且不同 → conflict |
-| `Book.isbn13` / `isbn10` | `detail.isbn` 过 [lib/isbn 清洗](import-pipeline.md)（去连字符）| `isbn13` 为空 → fill；非空相同 → 不产出；非空不同 → conflict（**不预填**，避免唯一索引冲突与覆盖）|
+| `Book.isbn13` / `isbn10` | `detail.isbn` 过 [lib/isbn 清洗](import-pipeline.md)（去连字符）| `isbn13` 为空 → fill；非空相同 → 不产出；非空不同 → conflict（预填建议值；若被他书占用，保存时由既有 ISBN 唯一冲突预检兜底报错，book-editing §4.2）|
 | `Book.publisher` / `publishDate` | `detail.publish` 首个 `:` 后按 `[,，]` 拆；末段为 4 位数字年份 → `publishDate`，其余 → `publisher` | 为空 → fill；非空不同 → conflict |
 | `Book.pages` | `detail.page` 首个整数序列 | 为空 → fill；非空不同 → conflict |
 | `Book.price` | `detail.price` 货币前缀（`¥` → CNY，否则大写字母串）+ 金额；无前缀默认 CNY | 为空 → fill；非空不同 → conflict |
@@ -217,12 +217,12 @@ type EnrichmentChange = {
 
 - `classifications` 的 `system` 取 [source.library.classificationSystem](../metadata/source.md)（缺省 `'clc'`）——不同馆默认体系不同，如 DDC 馆。
 - 无对应数据的字段（`edition`/`tags`）不产出 change。
-- `warnings`：publish/page/price 不可解析等（复用 [ParseWarning 语义](import-pipeline.md#8-借还配对与错误警告模型)，type 取 `format_error`），与 changes 并列返回，UI 展示于建议面板。
+- `warnings`：publish/page/price 不可解析等（复用 [ParseWarning 语义](import-pipeline.md#8-借还配对与错误警告模型)，type 取 `format_error`），与 changes 并列返回，UI 展示于摘要条。
 - 占位书名（`isPlaceholder`，选书帮）对应 Book 不进入候选集（§7.1）。
 
 ### 5.3 `prefillFromChanges(book, record, changes): { bookPrefill, recordPrefill, applied }`
 
-纯函数：把 fill 类 change 落成表单初始预填值（conflict 一律不落表单，留给用户裁决）：
+纯函数：把有建议值的 change（fill **与** conflict）落成表单初始预填值——输入框直接呈现建议值；kind 仅供 UI 决定对照与徽标展示（conflict 渲染「现有：…」对照 + 恢复按钮，§10）：
 
 ```ts
 function prefillFromChanges(
@@ -237,16 +237,16 @@ function prefillFromChanges(
 ```
 
 - 编辑表单初始化 = `bookToDraft(book) ∪ bookPrefill`；`recordPrefill.classifications` = 现有分类 ∪ 建议分类（按 code+system 去重）后的完整数组。
-- `applied` 仅含实际发生预填的字段（conflict 不在其中），供 UI 标注「已填入」徽标。
+- `applied` = 实际发生预填的字段（fill 与 conflict 均计入），供 UI 标注「OPAC」徽标；conflict 项的现有值对照由表单结合 changes（`kind==='conflict'` 的 `current`）渲染，恢复动作回读初始 `book` 快照。
 
-### 5.4 为什么「只填空预填 + 冲突可见」而不是自动覆盖
+### 5.4 为什么「建议入框 + 现有值对照」而不是自动覆盖
 
-`Book` 字段没有字段级编辑溯源（区分「用户手改」与「导入值」），盲覆盖会破坏 [book.md 字段优先级](../metadata/book.md)：用户手动编辑 > 图书馆编目 > 自动补全 API。与旧设计（自动合并 + 只填空）相比，裁决机制从**合并规则**移到**用户决策**：
+`Book` 字段没有字段级编辑溯源（区分「用户手改」与「导入值」），盲覆盖会破坏 [book.md 字段优先级](../metadata/book.md)：用户手动编辑 > 图书馆编目 > 自动补全 API。补全以**建议入框**形态呈现，优先级由**用户决策**落实（而非合并规则）：
 
-- **预填仍只填空**：fill 类建议仅落入空字段，用户已有值默认不被改动（不降级用户数据，优先级不被破坏）。
-- **冲突显式可裁决**：conflict 不再只是 warnings 里的一条记录，而是建议面板中的「现状 → 建议」条目，用户可一键「采用建议值」——导入期的错误值（截断题名、错位 ISBN）得以在显式确认下修正，补上旧设计「不修正导入错误值」的缺口。
-- **表单即最终裁决**：保存时以用户当前输入为准（无论来自预填、采用建议值还是手改），走统一事务与校验。
-- 字段级溯源（`sourceField` 标记）仍列为后续扩展，届时预填规则可升级为按优先级覆盖。
+- **建议值入框（fill 与 conflict 一视同仁）**：抓取来的值直接填进输入框——补全的直觉就是「抓来的值出现在表单里」，保存即采纳；导入期的错误值（截断题名、错位 ISBN）由此可修正，补上旧设计「不修正导入错误值」的缺口。
+- **现有值对照 + 一键恢复**：conflict 字段的现有值以「现有：…」对照文字显示在字段标签与输入框之间（低对比/删除线样式），并提供「恢复现有值」按钮——用户已有值不被静默覆盖；拒绝采纳 = 一键回退，采纳 = 直接保存。优先级「用户手动 > 编目 > API」由此以「保存 = 采纳、恢复 = 拒绝」实现。
+- **表单即最终裁决**：保存时以用户当前输入为准（建议值、恢复后的旧值、还是手改第三值），走统一事务与校验。
+- 字段级溯源（`sourceField` 标记）仍列为后续扩展，届时可升级为按来源标记的自动优先级。
 
 ## 6. Schema 增量
 
@@ -286,7 +286,7 @@ opacEnrichment: {
 
 ### 7.2 应用阶段（编辑表单）
 
-- **单条**：详情页「从 {provider.displayName} 补全」→ 抓取成功 → `navigate({ search: { edit: true } })` 打开编辑 Dialog，经组件 props 传入该编目 changes → 表单按 §5.3 预填 + 「OPAC 建议改动」面板（§10）→ 保存走 `updateBookWithRecords`（见下）→ 成功 Dialog 关闭、`useLiveQuery` 自动刷新；**取消 → 实体与状态零改动**，可随时重新抓取。
+- **单条**：详情页「从 {provider.displayName} 补全」→ 抓取成功 → `navigate({ search: { edit: true } })` 打开编辑 Dialog，经组件 props 传入该编目 changes → 表单按 §5.3 预填（建议值入框 + 现有值对照，§10）→ 保存走 `updateBookWithRecords`（见下）→ 成功 Dialog 关闭、`useLiveQuery` 自动刷新；**取消 → 实体与状态零改动**，可随时重新抓取。
 - **保存钩子**：`updateBookWithRecords(db, bookId, bookDraft, recordDrafts, enrichment?: { recordId; providerId; status: 'fetched'; fetchedAt: Date; sourceUrl: string })`——可选载荷，**同一事务**写目标编目 `opacEnrichment`（Zod 失败整体回滚时状态一并回滚）；不传则行为与普通编辑完全一致。enrichment 载荷不参与字段合并（表单值即最终裁决）。
 - **批量**：书库列表 / 导入完成页「从 OPAC 补全 (N)」（多来源时按 provider 分组显示各自计数）→ 抓取阶段（进度条，受控整数 N/M）→ 结果面板「成功 M / 未找到 K / 失败 F」→ 成功项逐条「查看改动并应用」→ 打开该书编辑 Dialog（同单条）→ 应用后该项移出面板；面板关闭后未应用项不保留（会话内存，重新触发将重新抓取）。
 - **建议改动上下文不落 URL、不落库**（会话内存组件状态传递）。
@@ -317,25 +317,30 @@ opacEnrichment: {
   - 成功：自动打开编辑 Dialog（`search.edit=true`），传入建议改动上下文；
   - `not_found` / `failed`：toast 提示（「馆内未找到该编目」/ 失败降级文案），状态已回写，**不打开 Dialog**。
 - **编辑 Dialog（复用 [book-editing §3](book-editing.md#3-编辑表单-ui-规格详情页-dialog) 表单）**：
-  - 预填：表单初始 state = 现有值 ∪ `prefillFromChanges` 的 fill 类建议（§5.3）；已填入字段追加「OPAC」徽标（outline）。
-  - 「OPAC 建议改动」面板（Dialog 顶部折叠卡片）：逐条展示字段标签 + 「现状 → 建议」；fill 条目标识「已填入」；conflict 条目警示色 + 「采用建议值」按钮（点击把 `proposed` 写入对应字段 state，条目转为「已采用」）。
-  - 保存流程与普通编辑完全一致（book-editing §3.4：前端校验、ISBN 冲突预检、单事务保存 + enrichment 载荷）；取消不写任何状态。
+  - **建议值入框**：表单初始 state = 现有值 ∪ `prefillFromChanges` 建议（§5.3）——fill 与 conflict 字段的输入框都直接呈现建议值，用户当场审视替换或保留。
+  - **现有值对照**（conflict 字段，核心形态）：字段标签与输入框之间显示「现有：{current}」对照文字（低对比/删除线样式；长文本 `line-clamp` 截断 + 悬停 title 全文；数组字段以顿号分隔串回显）；输入框旁「恢复现有值」按钮——输入框值 ≠ 初始现有值时自动出现，点击回退初始值并隐藏。恢复后该字段等同「拒绝采纳」，其余字段不受影响。
+  - **徽标**：建议字段追加「OPAC」徽标（outline）；conflict 徽标警示色、fill 常规色，一眼区分「有旧值可对照」与「纯新增」。
+  - **摘要条**：Dialog 顶部一行「OPAC 建议：已填 N 项，M 项与现有不同」——全局兜底审视；逐条细节内联在字段，**不设独立建议面板**（同一信息只维护一处）。
+  - **空值边界**：用户清空某字段保存 = 清空该字段（与普通编辑一致，`'' → null`）；「恢复现有值」可随时还原。
+  - 保存流程与普通编辑完全一致（book-editing §3.4：前端校验、ISBN 冲突预检——conflict 预填的建议 ISBN 若被他书占用，保存时 `IsbnConflictError` 内联报错、整体回滚、状态不写；单事务保存 + enrichment 载荷）；取消不写任何状态。
+  - **交互范式依据**（优秀设计检索，2026-08）：旧值就近低对比展示 + 变更字段自动出现 revert 按钮（[UX StackExchange 108938](https://ux.stackexchange.com/questions/108938/what-is-the-best-ui-for-overwriting-previously-saved-values) 高赞共识：字段直接可编辑、不搞双列布局、变更即出现还原）；建议内联、一键接受/拒绝（Google Docs / Word 修订「建议模式」）；源文/译文逐段对照审校（CAT 编辑器逐段接受机器翻译建议）。
 - **批量入口**（书库列表 / 导入完成页）：「从 OPAC 补全 (N)」+ 抓取进度条；多来源并存时按 provider 分组显示计数；完成 → 结果面板「成功 M / 未找到 K / 失败 F」（未找到/失败计数可折叠，占位记录计数单独说明 §7.1）→ 成功项列表逐条「查看改动并应用」打开该书编辑 Dialog（同单条）；应用后该项移出面板。
 - **常驻外链**：详情页「在 {provider.displayName} 查看」新标签链接（provider `detailUrl`，降级与溯源）。
 - 文案走 `t()`（[i18n-conventions](../i18n-conventions.md)），namespace `enrich.*`（字段标签复用 `edit.*` 键）。
 
 ## 11. 用户故事与验收用例
 
-1. 导入 szlib 流水（含缺 ISBN/缺作者记录）→ 点批量补全 → 抓取成功项进入结果面板 →「查看改动并应用」打开编辑 Dialog：空字段已预填（title/authors/publisher/pages/price/subjects/coverUrl + classifications）、建议面板逐条可见 → 保存 → Book 落库、CatalogRecord 补 classifications、`opacEnrichment.status='fetched'` + `providerId='szlib'`、`sourceUrl` 正确。
+1. 导入 szlib 流水（含缺 ISBN/缺作者记录）→ 点批量补全 → 抓取成功项进入结果面板 →「查看改动并应用」打开编辑 Dialog：空字段已预填、非空差异字段预填建议值并对照显示现有值（title/authors/publisher/pages/price/subjects/coverUrl + classifications）→ 保存 → Book 落库、CatalogRecord 补 classifications、`opacEnrichment.status='fetched'` + `providerId='szlib'`、`sourceUrl` 正确。
 2. 已应用记录再次触发（单条/批量）→ 跳过（幂等，不重复请求）。
 3. metaid 无效（§3.4）→ `status='not_found'` 立即回写，实体零改动，不打开 Dialog，UI 提示「馆内未找到该编目」。
 4. 占位（选书帮）记录 → 不在候选集；UI 置灰并说明。
-5. 现有字段非空且与 OPAC 不同（如导入 ISBN 与 OPAC ISBN 不一致）→ 表单不动该字段（conflict 不预填），建议面板展示「现状 → 建议」；「采用建议值」后保存 → 以用户确认值为准。
+5. 现有字段非空且与 OPAC 不同（如导入 ISBN 与 OPAC ISBN 不一致）→ 输入框预填建议值，标签与输入框之间对照显示「现有：…」；直接保存 → 建议值覆盖（采纳）；「恢复现有值」后保存 → 旧值保留（拒绝采纳）；两种情形都写 `status='fetched'`（已审视即已确认，避免反复抓取）。
 6. 抓取成功但用户取消 Dialog → 实体与状态零改动；再次触发重新抓取。
 7. 用户在预填基础上修改任意值再保存 → 以表单当前输入为准（表单即最终裁决）。
-8. CORS 拦截环境 → 补全失败提示 + 外链降级可用；`pnpm dev` 代理环境补全成功。
-9. 无 provider 注册的来源（manual / Libby）→ 详情页与批量入口均不出现补全按钮；`getProvider` 返回 null 不报错。
-10. （扩展）接入 isbn13 型 provider（如 OpenLibrary）→ 无 metaId 但有 ISBN 的记录进入候选集，补全流程与 szlib 完全同构（同表单、同面板、同状态机）。
+8. conflict 字段用户手改第三值（非建议值、非旧值）后保存 → 以手改值为准（表单即最终裁决）；「恢复现有值」可回退后再次手改。
+9. CORS 拦截环境 → 补全失败提示 + 外链降级可用；`pnpm dev` 代理环境补全成功。
+10. 无 provider 注册的来源（manual / Libby）→ 详情页与批量入口均不出现补全按钮；`getProvider` 返回 null 不报错。
+11. （扩展）接入 isbn13 型 provider（如 OpenLibrary）→ 无 metaId 但有 ISBN 的记录进入候选集，补全流程与 szlib 完全同构（同表单、同对照、同状态机）。
 
 ## 12. 测试清单（Vitest，mock fetch，夹具脱敏自 §3.3 实测样本）
 
@@ -353,7 +358,7 @@ opacEnrichment: {
 **`src/lib/opac-mapping.test.ts`**（输入统一 `OpacDetail`，用 szlib 样本构造夹具）
 - 全空 Book → 各字段产出 `kind='fill'` change，`proposed` 与 §5.2 解析一致（`title`/`author` 分隔符归一化后 parseTitle 产出与 [import-pipeline §13](import-pipeline.md#13-书目标题结构化解析) 样本一致：`合成绘本甲=Synthetic story` → title/parallelTitles；`(日)合成作者著 　合成译者译` → authors/translators）。
 - 字段非空且值相同 → 不产出 change（isbn 归一化后相同亦不产出）。
-- 字段非空且值不同（isbn 冲突、title 差异、pages 差异、subjects 集合差异）→ `kind='conflict'`，current/proposed 正确；**isbn13 冲突不预填**。
+- 字段非空且值不同（isbn 冲突、title 差异、pages 差异、subjects 集合差异）→ `kind='conflict'`，current/proposed 正确。
 - `classno` 去 `(...)` 后缀；`classifications.system` 取来源 `classificationSystem` 缺省 `'clc'`；同 code+system 已有 → 不产出；不同 → fill（追加）。
 - `publish` 解析：`北京:合成出版社,2023` → publisher/publishDate fill；不可解析 → warning + 无对应 change。
 - `OpacDetail` 字段为 null → 对应字段不产出 change（来源无关性：缺字段的 provider 不产生建议）。
@@ -361,7 +366,7 @@ opacEnrichment: {
 - 确定性：同输入两次调用深等价。
 
 **`prefillFromChanges`（opac-mapping.test.ts 内）**
-- fill 类全部落入 bookPrefill / recordPrefill（classifications = 现有 ∪ 建议去重）；conflict 类不落入；`applied` 仅含实际预填字段。
+- fill **与 conflict** 的建议值全部落入 bookPrefill / recordPrefill（classifications = 现有 ∪ 建议去重）；`applied` 含两者；kind 由 changes 保留供 UI 对照。
 
 **`src/enrich/enrich-service.test.ts`（UI 里程碑补）**
 - 候选集过滤（provider 感知：无 provider 来源排除；metaId 空/0 排除；isbn13 键 provider 按 Book.isbn13 过滤；已 fetched 排除；占位排除）；并发上限生效；超时/网络错误 → `failed` 回写（含 providerId）且实体不变；重试退避；not_found 回写；成功项产出 changes 队列且**零实体写入、零状态写入**；幂等跳过。
@@ -370,7 +375,7 @@ opacEnrichment: {
 - `updateBookWithRecords` 带 enrichment 载荷 → 同事务写 `opacEnrichment`（providerId/status/fetchedAt/sourceUrl）；不带载荷 → 不触碰该字段；Zod 非法回滚时状态一并回滚（不残留）。
 
 **`src/routes/library/-edit-dialog.test.tsx`（增量）**
-- 带建议改动上下文打开 → 预填正确（fill 应用、conflict 不应用、applied 徽标）；建议面板渲染 fill/conflict 条目（现状 → 建议）；「采用建议值」写入对应字段 state；取消不触发保存、不写状态。
+- 带建议改动上下文打开 → fill 与 conflict 字段均预填建议值；conflict 字段渲染「现有：…」对照文字 + 警示徽标；「恢复现有值」回退初始值且按钮隐藏、再次手改后按钮复现；摘要条计数正确（N 已填 / M 冲突）；取消不触发保存、不写状态。
 
 ## 13. React 性能规则引用
 
