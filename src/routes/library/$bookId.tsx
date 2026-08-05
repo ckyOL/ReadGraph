@@ -109,8 +109,10 @@ function BookDetailPage() {
     [borrowCycles],
   )
 
+  // 关闭走 replace：以干净详情 URL 替换 ?edit=true 条目（book-editing §4.1），
+  // 之后浏览器返回直接回上一页，不重新弹出 dialog。
   const closeEdit = () =>
-    void navigate({ search: (prev) => ({ ...prev, edit: undefined }) })
+    void navigate({ search: (prev) => ({ ...prev, edit: undefined }), replace: true })
 
   const handleMarkReviewed = async () => {
     if (!book) return

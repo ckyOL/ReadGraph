@@ -39,8 +39,10 @@ src/routes/
   __root.tsx              AppShell：Sidebar + Outlet + 主题/locale/DB Provider
   index.tsx               Dashboard 概览（/）
   library/
-    index.tsx             书库列表（/library）
-    $bookId.tsx           书目详情（/library/$bookId）
+    index.tsx             书库列表（/library）；筛选/排序状态 URL 化（search: q/source/status/sort/dir，
+                          变更走 replace 不产生历史条目；返回/刷新/直达链接均保留筛选，见 §3）
+    $bookId.tsx           书目详情（/library/$bookId）；search `edit=true` 驱动编辑 Dialog
+                          （打开 push / 关闭 replace，浏览器返回不重弹，见 book-editing §4.1）
   timeline.tsx            借阅时间线脊柱（/timeline）
   import.tsx              导入（/import）：单页——来源选择 + 文件/预览 + 右侧报告
   profile.tsx             阅读画像（/profile）：图表主导（方向 B）
@@ -58,6 +60,7 @@ src/routes/
 1. **Dashboard（/）**：概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 最近导入）+ 最近借阅列表 + 快速入口（导入 / 书库）。
    - 空态：`Empty` + 首次导入引导（按钮跳 `/import`）。
 2. **书库（/library）**：`Table` 密实列表，列含书名、作者、ISBN13、来源徽标（`Badge`）、分类号芯片、借阅次数；可搜索/筛选/排序。状态徽标列：占位书「占位」（destructive）、套装 Book「套装」（outline），普通书无徽标；顶部类型筛选 Select（全部/待完善/占位/套装，派生判定）；徽标可直达详情页编辑。侧边栏「书库」入口带 `needsReview=true` 计数徽标（原「待审」入口删除）。待完善数据的发现与过滤全部由此承载（见 [book-editing §5](book-editing.md#5-书库列表承载待完善标记与过滤)）。
+   - 筛选/排序状态由 URL search 参数承载：`q`（搜索串）、`source`（来源 id）、`status`（needsReview/placeholder/set，缺省=全部）、`sort`（title/author/isbn/borrowed/borrows，缺省=title）、`dir`（asc/desc，缺省=asc）——全 optional + Zod 校验，默认值不写 URL（干净的 `/library`）。变更经 `navigate({ search, replace: true })` 回写：筛选操作不产生历史条目，返回键不会在筛选历史里翻页；进详情页再返回时历史条目自带参数，筛选原样恢复（编辑多本待审书场景）；搜索框输入防抖 ~200ms。
    - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。头部动作区「编辑」（search `edit=true` 驱动宽屏 Dialog，Book 全字段 + 编目 volume/barcodes/classifications，见 [book-editing](book-editing.md)）与「更多」菜单（待审书：标记为已确认/合并到已有书目/拆为独立 Book，破坏性操作 AlertDialog 二次确认）。
    - 空态：无 Book 时 `Empty` + 导入引导。
 3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
@@ -130,7 +133,8 @@ src/routes/
 - 空态 → 导入：空 Dashboard 点导入入口到 `/import`。
 - 导入关键路径：自动建源 → 选文件 → 预览 → 执行 → 报告 → 落库 → 书库可见（用脱敏夹具）。
 - 阅读画像：ECharts canvas 非空像素（脱敏数据下）。
-- 系统重置：导出后确认流程完成，重置后空库。
+- 书库筛选 → 详情 → 浏览器返回：筛选条件原样恢复（URL 参数保留、行数不变）。
+- 编辑 Dialog 关闭后浏览器返回：不重新弹出（关闭走 replace 回写，无 `?edit=true` 残留条目）。
 
 ## 9. React 性能规则引用
 

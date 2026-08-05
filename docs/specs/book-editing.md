@@ -112,9 +112,12 @@
 
 ### 4.1 路由与自动打开
 
-- `/library/$bookId` 路由新增 search 参数：`edit: z.boolean().optional().default(false)`（TanStack Router search 校验，对齐 $bookId 的 loader 入参校验风格）。
-- `edit=true` 进入页面时自动打开编辑 Dialog；关闭 Dialog 时 `navigate({ search: { edit: false } })` 回写，保证刷新/回退后状态一致。
-- 编辑按钮点击 → `navigate({ search: { edit: true } })`（同一 URL 状态驱动，不用组件内 useState 独享）。
+- `/library/$bookId` 路由 search 参数：`edit: z.boolean().optional()`（不设 default：默认值会使 search 对象与空 URL 不一致，触发 router 自动回写 `?edit=false`）。
+- `edit=true` 进入页面时自动打开编辑 Dialog；Dialog 开合完全由 URL 驱动（刷新/回退状态一致）。
+- **打开 push / 关闭 replace**（dialog-in-URL 经典模式，浏览器返回不重弹）：
+  - 打开：`navigate({ search: { edit: true } })`（默认 push）——dialog 打开时按浏览器返回，URL 回落为无 `edit` → dialog 自动关闭并停留在详情页。
+  - 关闭：`navigate({ search: { edit: undefined }, replace: true })` ——以干净详情 URL **替换** `?edit=true` 条目，之后按返回直接回上一页（书库），不再重新弹出 dialog。
+  - 取消 / X / ESC / 保存成功统一走关闭路径（`onOpenChange(false)` → replace 回写）。
 
 ### 4.2 ISBN 唯一冲突预检
 

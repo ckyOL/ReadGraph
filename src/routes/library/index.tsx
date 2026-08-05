@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDownIcon, ArrowUpIcon, SearchIcon } from 'lucide-react'
@@ -40,7 +41,18 @@ import {
   type ReviewTypeFilter,
 } from '@/lib/book-status'
 
+// 书库筛选/排序状态 URL 化（ui-navigation §3）：全 optional + Zod 校验，默认值不写 URL
+// （干净的 /library）；变更经 navigate replace 回写，不产生历史条目，返回/刷新/直达均保留筛选。
+const librarySearchSchema = z.object({
+  q: z.string().optional(),
+  source: z.string().optional(),
+  status: z.enum(['needsReview', 'placeholder', 'set']).optional(),
+  sort: z.enum(['title', 'author', 'isbn', 'borrowed', 'borrows']).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
+})
+
 export const Route = createFileRoute('/library/')({
+  validateSearch: librarySearchSchema,
   component: LibraryPage,
 })
 
@@ -59,6 +71,15 @@ interface LibraryRow {
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(id)
+  }, [value, delayMs])
+  return debounced
+}
+
 function LibraryPage() {
   const { t } = useTranslation('pages')
   const data = useLiveQuery(
@@ -72,11 +93,38 @@ function LibraryPage() {
     [],
   )
 
-  const [search, setSearch] = useState('')
-  const [sourceFilter, setSourceFilter] = useState('all')
-  const [reviewFilter, setReviewFilter] = useState<ReviewTypeFilter>('all')
-  const [sortKey, setSortKey] = useState<SortKey>('title')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  // 筛选/排序状态由 URL search 驱动（useState 组件卸载即丢；URL 化后返回详情页时筛选原样恢复）。
+  const searchParams = Route.useSearch()
+  const navigate = Route.useNavigate()
+
+  const sourceFilter = searchParams.source ?? 'all'
+  const reviewFilter: ReviewTypeFilter = searchParams.status ?? 'all'
+  const sortKey: SortKey = searchParams.sort ?? 'title'
+  const sortDir: SortDir = searchParams.dir ?? 'asc'
+
+  // 搜索框本地输入态：过滤即时生效（乐观更新），防抖（200ms）写 URL；
+  // 外部导航（返回/前进/直达）同步回输入框。
+  const [searchInput, setSearchInput] = useState(searchParams.q ?? '')
+  const debouncedQ = useDebouncedValue(searchInput, 200)
+
+  useEffect(() => {
+    const next = debouncedQ || undefined
+    if (next !== searchParams.q) {
+      void navigate({ search: (prev) => ({ ...prev, q: next }), replace: true })
+    }
+  }, [debouncedQ, searchParams.q, navigate])
+
+  useEffect(() => {
+    setSearchInput(searchParams.q ?? '')
+  }, [searchParams.q])
+
+  // 筛选/排序变更统一 replace 回写（不产生历史条目；值为 undefined 的键从 URL 删除）。
+  const patchSearch = (updates: {
+    source?: string
+    status?: Exclude<ReviewTypeFilter, 'all'>
+    sort?: SortKey
+    dir?: SortDir
+  }) => void navigate({ search: (prev) => ({ ...prev, ...updates }), replace: true })
 
   const loading = data === undefined
   const [books, catalogRecords, borrowCycles, sources] = data ?? [[], [], [], []]
@@ -108,7 +156,7 @@ function LibraryPage() {
   }, [books, catalogRecords, borrowCycles, sources])
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase()
+    const needle = searchInput.trim().toLowerCase()
     let out = rows
     if (needle) {
       out = out.filter(
@@ -144,14 +192,13 @@ function LibraryPage() {
           return collator.compare(a.book.title, b.book.title) * dir
       }
     })
-  }, [rows, search, sourceFilter, reviewFilter, sortKey, sortDir])
+  }, [rows, searchInput, sourceFilter, reviewFilter, sortKey, sortDir])
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      patchSearch({ dir: sortDir === 'asc' ? 'desc' : 'asc' })
     } else {
-      setSortKey(key)
-      setSortDir('asc')
+      patchSearch({ sort: key, dir: undefined })
     }
   }
 
@@ -197,8 +244,8 @@ function LibraryPage() {
             <div className="relative w-64">
               <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder={t('library.search.placeholder')}
                 className="pl-8"
                 aria-label={t('library.search.placeholder')}
@@ -208,7 +255,10 @@ function LibraryPage() {
               <span className="text-xs text-muted-foreground">
                 {t('library.filter.source')}
               </span>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <Select
+                value={sourceFilter}
+                onValueChange={(v) => patchSearch({ source: v === 'all' ? undefined : v })}
+              >
                 <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -228,7 +278,11 @@ function LibraryPage() {
               </span>
               <Select
                 value={reviewFilter}
-                onValueChange={(v) => setReviewFilter(v as ReviewTypeFilter)}
+                onValueChange={(v) =>
+                  patchSearch({
+                    status: v === 'all' ? undefined : (v as Exclude<ReviewTypeFilter, 'all'>),
+                  })
+                }
               >
                 <SelectTrigger className="h-8 w-36 text-xs">
                   <SelectValue />

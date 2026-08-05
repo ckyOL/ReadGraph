@@ -247,6 +247,44 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(page.getByText('小说A', { exact: true })).toBeVisible()
   })
 
+  test('closing edit dialog does not reopen on browser back', async ({ page }) => {
+    await page.goto('/library/book-1')
+    // 头部「Edit」按钮 → search.edit=true（push）。
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await expect(page).toHaveURL(/\/library\/book-1\?edit=true/)
+    await expect(page.getByRole('dialog')).toBeVisible()
+    // 取消关闭 → replace 回写干净 URL（底部「Cancel」按钮；头部 X 的 aria-label 同为 Cancel）。
+    await page.getByText('Cancel', { exact: true }).click()
+    await expect(page).not.toHaveURL(/edit=true/)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    // 浏览器返回：历史中无残留 ?edit=true 条目（关闭已 replace 回写），dialog 不重新弹出。
+    await page.goBack()
+    await expect(page).not.toHaveURL(/edit=true/)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
+  test('browser back from detail restores library filters', async ({ page }) => {
+    // URL 即筛选状态：直接以待完善筛选进入书库。
+    await page.goto('/library?status=needsReview')
+    await expect(page).toHaveURL(/\/library\?status=needsReview/)
+    const rows = page.locator('tbody tr')
+    await expect(rows).toHaveCount(2)
+
+    // 徽标直达编辑（push ?edit=true）。
+    await page.getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
+    await expect(page).toHaveURL(/\/library\/book-2\?edit=true/)
+    await expect(page.locator('input[value="福田图书馆读者自选图书"]')).toBeVisible()
+
+    // 浏览器返回：筛选参数与行数原样恢复。
+    await page.goBack()
+    await expect(page).toHaveURL(/\/library\?status=needsReview/)
+    await expect(rows).toHaveCount(2)
+
+    // 连续审核下一本：筛选仍在。
+    await page.getByRole('link', { name: /Set 合成书目052/ }).click()
+    await expect(page).toHaveURL(/\/library\/book-3\?edit=true/)
+  })
+
   test('/review route is gone (404)', async ({ page }) => {
     await page.goto('/review')
     // 非空库下进入未知路由：AppShell 挂载（空态/错误边界不崩壳）。
