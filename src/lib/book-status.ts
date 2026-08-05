@@ -32,6 +32,24 @@ export function isSetBook(bookId: string, catalogRecords: CatalogRecord[]): bool
 }
 
 /**
+ * 套装 Book id 集合（isSetBook 批量版；时间线题名卷号后缀预判用）。
+ * 无 id 的编目（孤儿）不产出集合项。
+ */
+export function setBookIdsOf(catalogRecords: CatalogRecord[]): Set<string> {
+  const out = new Set<string>()
+  const byBook = new Map<string, CatalogRecord[]>()
+  for (const cr of catalogRecords) {
+    const arr = byBook.get(cr.bookId)
+    if (arr) arr.push(cr)
+    else byBook.set(cr.bookId, [cr])
+  }
+  for (const [bookId, records] of byBook) {
+    if (isSetBook(bookId, records)) out.add(bookId)
+  }
+  return out
+}
+
+/**
  * 书库列表状态徽标：占位书「占位」、套装（待审套装候选或已结构化套装）「套装」、普通书 null。
  * 套装候选虽未结构化 volume，仍属套装语义（用户进详情页结构化），与已确认套装统一徽标。
  */

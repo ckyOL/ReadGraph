@@ -9,6 +9,7 @@ import {
   isSetBook,
   reviewBadgeOf,
   reviewKindOf,
+  setBookIdsOf,
 } from './book-status'
 
 function mkBook(over: Partial<Book>): Book {
@@ -84,6 +85,22 @@ describe('isSetBook — 套装判定（≥2 个 volume 非空编目）', () => {
     const legacy = mkCr({ bookId: 'bk-set' })
     delete (legacy as { volume?: unknown }).volume
     expect(isSetBook('bk-set', [legacy, legacy])).toBe(false)
+  })
+})
+
+describe('setBookIdsOf — 套装 id 批量集合', () => {
+  it('≥2 卷编目的 Book 入集合，单卷/无卷不入', () => {
+    const ids = setBookIdsOf([
+      mkCr({ id: 'cr-a', bookId: 'bk-set', volume: '3' }),
+      mkCr({ id: 'cr-b', bookId: 'bk-set', volume: '4' }),
+      mkCr({ id: 'cr-c', bookId: 'bk-single', volume: '3' }),
+      mkCr({ id: 'cr-d', bookId: 'bk-none' }),
+    ])
+    expect(ids).toEqual(new Set(['bk-set']))
+  })
+
+  it('空数组 → 空集合', () => {
+    expect(setBookIdsOf([])).toEqual(new Set())
   })
 })
 

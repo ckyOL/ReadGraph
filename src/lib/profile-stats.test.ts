@@ -401,6 +401,84 @@ describe('computeProfileStats - 甘特带', () => {
     expect(lane?.intervals[0]?.end).toBeNull()
     expect(lane?.intervals[0]?.status).toBe('borrowed')
   })
+
+  it('套装书 lane 携带卷号（catalogRecordId 直查），label 保持公共题名', () => {
+    const cr3 = makeCatalog('cr-3', 'b1', { barcodes: ['B003'], volume: '3' })
+    const cr4 = makeCatalog('cr-4', 'b1', { barcodes: ['B004'], volume: '4' })
+    const cycles = [
+      makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'), {
+        status: 'returned',
+        returnedAt: U('2023-01-08T00:00:00Z'),
+        barcode: 'B003',
+        catalogRecordId: 'cr-3',
+      }),
+    ]
+    const r = computeProfileStats(
+      { books: [makeBook('b1', { title: '大秦帝国' })], catalogRecords: [cr3, cr4], borrowCycles: cycles, sources: [] },
+      NO_OP,
+    )
+    const lane = r.gantt.find((l) => l.laneKey === 'b1:B003')!
+    expect(lane.label).toBe('大秦帝国')
+    expect(lane.volume).toBe('3')
+  })
+
+  it('套装书 lane 卷号按 barcode 兜底（catalogRecordId 失效时）', () => {
+    const cr3 = makeCatalog('cr-3', 'b1', { barcodes: ['B003'], volume: '3' })
+    const cr4 = makeCatalog('cr-4', 'b1', { barcodes: ['B004'], volume: '4' })
+    const cycles = [
+      makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'), {
+        status: 'returned',
+        returnedAt: U('2023-01-08T00:00:00Z'),
+        barcode: 'B004',
+        catalogRecordId: 'stale-id',
+      }),
+    ]
+    const r = computeProfileStats(
+      { books: [makeBook('b1', { title: '大秦帝国' })], catalogRecords: [cr3, cr4], borrowCycles: cycles, sources: [] },
+      NO_OP,
+    )
+    const lane = r.gantt.find((l) => l.laneKey === 'b1:B004')!
+    expect(lane.volume).toBe('4')
+  })
+
+  it('非套装书 lane volume 为 null（单卷编目不补卷号）', () => {
+    const cr3 = makeCatalog('cr-3', 'b1', { barcodes: ['B003'], volume: '3' })
+    const cycles = [
+      makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'), {
+        status: 'returned',
+        returnedAt: U('2023-01-08T00:00:00Z'),
+        barcode: 'B003',
+        catalogRecordId: 'cr-3',
+      }),
+    ]
+    const r = computeProfileStats(
+      { books: [makeBook('b1', { title: '单行本' })], catalogRecords: [cr3], borrowCycles: cycles, sources: [] },
+      NO_OP,
+    )
+    const lane = r.gantt.find((l) => l.laneKey === 'b1:B003')!
+    expect(lane.label).toBe('单行本')
+    expect(lane.volume).toBeNull()
+  })
+
+  it('套装书卷号解析不到（无匹配编目）→ null，label 照常', () => {
+    const cr3 = makeCatalog('cr-3', 'b1', { barcodes: ['B003'], volume: '3' })
+    const cr4 = makeCatalog('cr-4', 'b1', { barcodes: ['B004'], volume: '4' })
+    const cycles = [
+      makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'), {
+        status: 'returned',
+        returnedAt: U('2023-01-08T00:00:00Z'),
+        barcode: 'B009',
+        catalogRecordId: 'missing',
+      }),
+    ]
+    const r = computeProfileStats(
+      { books: [makeBook('b1', { title: '大秦帝国' })], catalogRecords: [cr3, cr4], borrowCycles: cycles, sources: [] },
+      NO_OP,
+    )
+    const lane = r.gantt.find((l) => l.laneKey === 'b1:B009')!
+    expect(lane.label).toBe('大秦帝国')
+    expect(lane.volume).toBeNull()
+  })
 })
 
 describe('computeProfileStats - 纯函数性', () => {

@@ -6,6 +6,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
+import { setBookIdsOf } from '@/lib/book-status'
+import { volumeOfCycle } from '@/lib/volume'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,6 +56,7 @@ function TimelinePage() {
         db.borrowCycles.toArray(),
         db.books.toArray(),
         db.sources.toArray(),
+        db.catalogRecords.toArray(),
       ]),
     [],
   )
@@ -62,11 +65,23 @@ function TimelinePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   const loading = data === undefined
-  const [borrowCycles, books, sources] = data ?? [[], [], []]
+  const [borrowCycles, books, sources, catalogRecords] = data ?? [[], [], [], []]
 
   const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
 
   const bookById = useMemo(() => new Map(books.map((b) => [b.id, b])), [books])
+
+  // 套装书（≥2 卷编目）id 集合与各借阅周期 → 卷号：题名后补卷号以区分套装各卷。
+  const setBookIds = useMemo(() => setBookIdsOf(catalogRecords), [catalogRecords])
+  const cycleVolumes = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of borrowCycles) {
+      if (!setBookIds.has(c.bookId)) continue
+      const v = volumeOfCycle(c, catalogRecords)
+      if (v !== null) m.set(c.id, v)
+    }
+    return m
+  }, [borrowCycles, setBookIds, catalogRecords])
 
   const cycles = useMemo(() => {
     let out = borrowCycles
@@ -147,6 +162,7 @@ function TimelinePage() {
               <ol className="relative space-y-4">
                 {cycles.map((c) => {
                   const book = bookById.get(c.bookId)
+                  const vol = cycleVolumes.get(c.id)
                   const borrowed = formatDateInTz(c.borrowedAt, displayTimezone)
                   const returned = c.returnedAt
                     ? formatDateInTz(c.returnedAt, displayTimezone)
@@ -178,6 +194,9 @@ function TimelinePage() {
                             className="line-clamp-2 text-sm font-medium hover:underline"
                           >
                             {book.title}
+                            {vol != null && (
+                              <span className="text-muted-foreground"> · {vol}</span>
+                            )}
                           </Link>
                         ) : (
                           <span className="line-clamp-2 text-sm text-muted-foreground">

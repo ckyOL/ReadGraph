@@ -1,7 +1,34 @@
 // review 规格 §7：卷号解析纯函数单测。
 import { describe, it, expect } from 'vitest'
 
-import { parseVolumeFromTitle, stripVolumeSuffix } from './volume'
+import type { CatalogRecord } from '@/types/entities'
+
+import {
+  parseVolumeFromTitle,
+  stripVolumeSuffix,
+  volumeOfCycle,
+} from './volume'
+
+/** 最小编目夹具（卷号解析测试用）。 */
+function makeCr(
+  id: string,
+  bookId: string,
+  volume: string | null,
+  barcodes: string[],
+): CatalogRecord {
+  return {
+    id,
+    bookId,
+    sourceId: 'src-1',
+    metaId: null,
+    metaIdKey: null,
+    barcodes,
+    classifications: [],
+    volume,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  }
+}
 
 describe('parseVolumeFromTitle — 末尾卷号段', () => {
   it('. N（阿拉伯数字）', () => {
@@ -84,5 +111,45 @@ describe('stripVolumeSuffix — 去卷号段（套装表单公共前缀建议）
     expect(stripVolumeSuffix('  合成城市笔记 : 地名故事  ')).toBe(
       '合成城市笔记 : 地名故事',
     )
+  })
+})
+
+describe('volumeOfCycle — 借阅周期卷号解析', () => {
+  it('catalogRecordId 直查命中', () => {
+    const recs = [makeCr('cr-3', 'bk', '3', ['B3']), makeCr('cr-4', 'bk', '4', ['B4'])]
+    expect(
+      volumeOfCycle({ bookId: 'bk', catalogRecordId: 'cr-3', barcode: 'B3' }, recs),
+    ).toBe('3')
+  })
+
+  it('直查未命中时按 bookId+barcode 兜底', () => {
+    const recs = [makeCr('cr-3', 'bk', '3', ['B3']), makeCr('cr-4', 'bk', '4', ['B4'])]
+    expect(
+      volumeOfCycle({ bookId: 'bk', catalogRecordId: 'stale-id', barcode: 'B4' }, recs),
+    ).toBe('4')
+  })
+
+  it('空卷号编目跳过，继续兜底', () => {
+    const recs = [
+      makeCr('cr-empty', 'bk', '', ['B3']),
+      makeCr('cr-3', 'bk', '3', ['B3']),
+    ]
+    expect(
+      volumeOfCycle({ bookId: 'bk', catalogRecordId: 'cr-empty', barcode: 'B3' }, recs),
+    ).toBe('3')
+  })
+
+  it('两者皆未命中 → null', () => {
+    const recs = [makeCr('cr-3', 'bk', '3', ['B3'])]
+    expect(
+      volumeOfCycle({ bookId: 'bk', catalogRecordId: 'missing', barcode: 'B9' }, recs),
+    ).toBeNull()
+  })
+
+  it('空卷号命中且无兜底 → null', () => {
+    const recs = [makeCr('cr-e', 'bk', '', ['B3'])]
+    expect(
+      volumeOfCycle({ bookId: 'bk', catalogRecordId: 'cr-e', barcode: 'B3' }, recs),
+    ).toBeNull()
   })
 })

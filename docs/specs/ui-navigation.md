@@ -63,7 +63,7 @@ src/routes/
    - 筛选/排序状态由 URL search 参数承载：`q`（搜索串）、`source`（来源 id）、`status`（needsReview/placeholder/set，缺省=全部）、`sort`（title/author/isbn/borrowed/borrows，缺省=title）、`dir`（asc/desc，缺省=asc）——全 optional + Zod 校验，默认值不写 URL（干净的 `/library`）。变更经 `navigate({ search, replace: true })` 回写：筛选操作不产生历史条目，返回键不会在筛选历史里翻页；进详情页再返回时历史条目自带参数，筛选原样恢复（编辑多本待审书场景）；搜索框输入防抖 ~200ms。
    - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。头部动作区「编辑」（search `edit=true` 驱动宽屏 Dialog，Book 全字段 + 编目 volume/barcodes/classifications，见 [book-editing](book-editing.md)）与「更多」菜单（待审书：标记为已确认/合并到已有书目/拆为独立 Book，破坏性操作 AlertDialog 二次确认）。
    - 空态：无 Book 时 `Empty` + 导入引导。
-3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。
+3. **时间线（/timeline）**：竖向时间轴脊柱（上→下按 `borrowedAt` 递增），排列所有 `BorrowCycle`；借中（`status='borrowed'`）以不同强调态区分。可按来源/状态筛选。套装书（≥2 卷编目）题名后补卷号后缀（「 · 3」式，编目 `volume` **原始值**经 `catalogRecordId`/barcode 解析，不格式化/不 i18n，非套装不追加）以区分各卷。
    - 空态：无周期 `Empty`。
 4. **导入（/import）**：单页完成全部流程——顶部来源选择，主体区文件选择（选后即显示前 10 条预览与字段映射说明并可直接执行），右侧栏常驻导入报告（执行中进度 / 失败信息 / 完成后统计与 `ParseWarning` 列表）。
    - 预览行先经 `SourceParser.filterRows` 行级预过滤（[szlib-parser §1](../metadata/parsers/szlib-parser.md#1-记录过滤)），剔除「自助查询」「读者续借」等无用条目；预览与导入共用同一过滤标准，**预览所见即导入所得**（`executeImport` 在预分配 `RawRecord` 壳前同样调用 `filterRows`，无用条目不落 `rawRecords`）。

@@ -111,6 +111,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
     const items: {
       value: [number, number, number]
       _label: string
+      _volume: string | null
       _start: string
       _end: string | null
       _status: BorrowStatus
@@ -123,6 +124,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
         items.push({
           value: [s, e, li],
           _label: lane.label,
+          _volume: lane.volume,
           _start: it.start,
           _end: it.end,
           _status: it.status,
@@ -130,7 +132,10 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
       }
     }
 
-    const laneLabels = lanes.map((l) => l.label)
+    // 套装书 lane 题名后补卷号原始值（区分各卷，不格式化）。
+    const laneLabels = lanes.map((l) =>
+      l.volume ? `${l.label} · ${l.volume}` : l.label,
+    )
 
     // 视口高度按 lane 数自适应；超可视上限时启用 y 轴缩放（slider 拖拽浏览，
     // 默认窗口 = 最新可视 lane 数），lane 保持可读高度不被压扁。
@@ -173,7 +178,8 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
           const d = param.data
           if (!d) return ''
           const endTxt = d._end ? new Date(d._end).toLocaleDateString(i18n.language) : t('profile.summary.inBorrow')
-          return `${d._label}<br/>${new Date(d._start).toLocaleDateString(i18n.language)} → ${endTxt}`
+          const label = d._volume ? `${d._label} · ${d._volume}` : d._label
+          return `${label}<br/>${new Date(d._start).toLocaleDateString(i18n.language)} → ${endTxt}`
         },
         backgroundColor: palette.popover,
         textStyle: { color: palette.popoverForeground },

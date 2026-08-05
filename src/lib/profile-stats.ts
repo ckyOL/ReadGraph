@@ -9,6 +9,8 @@ import type {
   Source,
 } from '@/types/entities'
 import { classificationFirstLevel } from './classification'
+import { isSetBook } from './book-status'
+import { volumeOfCycle } from './volume'
 
 export interface ProfileStatsInput {
   books: Book[]
@@ -49,6 +51,8 @@ interface GanttInterval {
 interface GanttLane {
   laneKey: string
   label: string
+  /** 套装书该 lane 的编目卷号（cycle→编目解析）；非套装/未解析 → null。 */
+  volume: string | null
   intervals: GanttInterval[]
 }
 
@@ -228,7 +232,15 @@ export function computeProfileStats(
     let lane = laneMap.get(laneKey)
     if (!lane) {
       const book = bookById.get(c.bookId)
-      lane = { laneKey, label: book?.title ?? c.bookId, intervals: [] }
+      const records = recordsByBook.get(c.bookId) ?? []
+      // 套装书（≥2 卷编目）题名后补卷号以区分各卷；非套装 lane 不携带。
+      const isSet = isSetBook(c.bookId, records)
+      lane = {
+        laneKey,
+        label: book?.title ?? c.bookId,
+        volume: isSet ? volumeOfCycle(c, records) : null,
+        intervals: [],
+      }
       laneMap.set(laneKey, lane)
     }
     lane.intervals.push({

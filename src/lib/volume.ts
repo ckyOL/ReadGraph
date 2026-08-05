@@ -3,6 +3,9 @@
 // （N 为阿拉伯或 CJK 数字）、「N卷/册/集/部」同族、汉字卷标 `上/中/下/前/后`
 // 与 `上册/中册/下册`。非尾部数字不提取（`1984` 不作卷号）；解析失败 → null
 // （人工填写）。卷号值为数字/CJK 数字/汉字卷标本身（如 `"3"`/`"上"`）。
+// 另含借阅周期 → 编目卷号解析（volumeOfCycle），供时间线/甘特带以编目
+// volume 原始值区分套装各卷。
+import type { BorrowCycle, CatalogRecord } from '@/types/entities'
 
 /** 阿拉伯（含全角）或 CJK 数字。 */
 const NUM = '[0-9０-９]+|[〇一二三四五六七八九十]+'
@@ -59,4 +62,31 @@ export function stripVolumeSuffix(title: string): string {
   const m = matchVolumeSuffix(trimmed)
   if (!m) return trimmed
   return trimmed.slice(0, trimmed.length - m.suffix.length).trim()
+}
+
+/**
+ * 借阅周期 → 编目卷号：优先 `catalogRecordId` 直查（配对合成时指向编目），
+ * 兜底按同书 `barcode` 匹配（跨导入复用编目时直查 id 可能失效/缺失）。
+ * 卷号为空/未命中 → null（调用方按套装判定决定是否展示后缀）。
+ */
+export function volumeOfCycle(
+  cycle: Pick<BorrowCycle, 'bookId' | 'catalogRecordId' | 'barcode'>,
+  catalogRecords: CatalogRecord[],
+): string | null {
+  const direct = catalogRecords.find((r) => r.id === cycle.catalogRecordId)
+  if (direct) {
+    const v = direct.volume ?? null
+    if (v !== null && v !== '') return v
+  }
+  if (cycle.barcode) {
+    const byBarcode = catalogRecords.find(
+      (r) =>
+        r.bookId === cycle.bookId &&
+        r.barcodes.includes(cycle.barcode as string) &&
+        (r.volume ?? null) !== null &&
+        r.volume !== '',
+    )
+    if (byBarcode) return byBarcode.volume as string
+  }
+  return null
 }

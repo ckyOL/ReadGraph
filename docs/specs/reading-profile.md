@@ -66,7 +66,7 @@ interface ProfileStatsResult {
   classification: { name: string; code: string; category: string | null; value: number }[]   // treemap
   borrowVolume: { bucket: string; count: number }[]                                          // 按月（或按年，按数据跨度自动切粒度）
   durationDistribution: { range: string; count: number }[]                                     // 借阅时长直方图
-  gantt: { laneKey: string; label: string; intervals: { start: string; end: string | null; status: BorrowCycle['status'] }[] }[]
+  gantt: { laneKey: string; label: string; volume: string | null; intervals: { start: string; end: string | null; status: BorrowCycle['status'] }[] }[]
 }
 
 function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions): ProfileStatsResult
@@ -83,6 +83,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 2. **借阅甘特带**（`gantt`）
    - lane = `bookId + barcode`（无 barcode 退化 `bookId + '__noBarcode__'`）；同 lane 的 `BorrowCycle` 按 `borrowedAt` 升序叠放为区间 `[borrowedAt, returnedAt]`。
    - `status='borrowed'` 的 `returnedAt=null`，区间呈现「在借」强调态；纯函数**不读 `Date.now()`**，`end` 在 dataset 层留 `null`，由图表组件在渲染时用 `useDeferredValue` 的 now 锚补齐仅作视觉，不回写聚合结果。
+   - 套装书（`isSetBook`：≥2 个 volume 非空编目）lane 携带 `volume`（该 lane 周期 → 编目卷号：`catalogRecordId` 直查、barcode 兜底，见 `src/lib/volume.ts` `volumeOfCycle`）；非套装/解析不到为 `null`。`label` 恒为公共题名，图表层按 `volume` **原始值**直接追加「 · 3」式后缀（不格式化/不 i18n，区分套装各卷，tooltip 同）。
    - 大数据退化见 §5。
 
 3. **借阅量柱图**（`borrowVolume`）
@@ -163,7 +164,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - Book 计一次：多 CatalogRecord 同 ISBN 不同分类号时 treemap 按首选体系条目计一次，不翻倍。
 - 时间桶：月/年粒度切换阈值（≤ 2 年月、> 2 年年）正确；`range` 左闭右开裁剪生效；桶归属与 displayTimezone 无关（同输入不同 tz 桶相同）。
 - duration：`status='returned'` 计入，`borrowed/unknown` 不计；分桶边界（7/14/30/60 天）正确；空样本 `avg/median` 为 `null`。
-- 甘特：lane=`bookId+barcode`；无 barcode 退化；区间升序；`borrowed` 返回 `end=null`。
+- 甘特：lane=`bookId+barcode`；无 barcode 退化；区间升序；`borrowed` 返回 `end=null`；套装书 lane 携带 `volume`（catalogRecordId 直查 / barcode 兜底 / 解析不到为 null），非套装恒 `null`。
 - 纯函数性：同输入两次调用深等价；无 `Date.now()`（代码审计/依赖检查）。
 
 **Playwright（E2E）**
