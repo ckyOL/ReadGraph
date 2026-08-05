@@ -175,8 +175,8 @@ test.describe('import critical path (G-5)', () => {
     await expect(page.getByText(/Import complete|导入完成/)).toBeVisible({ timeout: 15000 })
     await expect(page.getByText(/New books|新增书目/)).toBeVisible()
     await expect(page.getByText(/New borrow cycles|新增借阅周期/)).toBeVisible()
-    // 无效日期行产生 1 条警告。
-    await expect(page.getByText(/Warnings|警告/).first()).toBeVisible()
+    // 无效日期行产生 1 条警告（count=1 时 en 复数规则取单数 "Warning (1)"，正则须兼容两种形式）。
+    await expect(page.getByText(/Warning(s)?|警告/).first()).toBeVisible()
 
     // 落库 → 书库可见（含分类号芯片与来源徽标）。
     await page.getByRole('link', { name: /Go to library|去书库/ }).click()
