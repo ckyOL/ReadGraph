@@ -59,6 +59,3 @@ playwright/.cache/
 
 # Local sample/export data (may contain real card numbers, do not commit)
 bugfile/
-
-# Books / reference scans (copyright)
-*.pdf
