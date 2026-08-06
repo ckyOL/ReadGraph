@@ -74,6 +74,46 @@ describe('ClassificationBadgeView', () => {
     expect(html).toContain('工业技术')
   })
 
+  it('auxiliary: 主文本不变，tooltip 面包屑追加复分段（§10.6）', () => {
+    const html = renderView({
+      code: 'K02-39',
+      path: {
+        path: [
+          { code: 'K', name: '历史、地理' },
+          { code: 'K0', name: '史学理论' },
+          { code: 'K02', name: '社会发展理论' },
+        ],
+        depth: 3,
+        source: 'tree',
+        auxiliary: { code: '-39', name: '信息化建设、新技术的应用' },
+      },
+    })
+    expect(html).toContain('K02-39')
+    expect(html).toContain('社会发展理论')
+    expect(html).toContain(
+      'title="K 历史、地理 › K0 史学理论 › K02 社会发展理论 › -39 信息化建设、新技术的应用"',
+    )
+  })
+
+  it('auxiliary + tree-partial: 复分段在前，细分未收录提示保留', () => {
+    const html = renderView({
+      code: 'G898.3-64',
+      path: {
+        path: [
+          { code: 'G', name: '文化、科学、教育、体育' },
+          { code: 'G89', name: '文体活动' },
+          { code: 'G898', name: '游戏' },
+        ],
+        depth: 3,
+        source: 'tree-partial',
+        unresolvedSuffix: '.3',
+        auxiliary: { code: '-64', name: '表解、图解、图册、谱录、数据、公式、地图' },
+      },
+    })
+    expect(html).toContain('G898 游戏 › -64 表解、图解、图册、谱录、数据、公式、地图')
+    expect(html).toMatch(/G898\.3-64 (细分未收录|subdivision not covered)/)
+  })
+
   it('none: 仅 code；显式 category 仍显示', () => {
     const html = renderView({
       code: 'QA76',

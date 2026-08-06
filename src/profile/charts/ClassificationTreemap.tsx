@@ -14,9 +14,11 @@ import {
   buildClassificationChildren,
   loadClcTree,
   loadClcOverlay,
+  loadClcAuxiliary,
   type ClassificationChild,
   type ClcNode,
   type OverlayData,
+  type AuxiliaryData,
 } from '@/lib/classification-path'
 import {
   Empty,
@@ -59,12 +61,18 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
     deferredDrillPath.length > 0 ? deferredDrillPath[deferredDrillPath.length - 1] : null
 
   // CLC 树懒加载（独立 chunk，与芯片共享模块级缓存）。
-  const [treeData, setTreeData] = useState<{ tree: ClcNode[]; overlay: OverlayData } | null>(null)
+  const [treeData, setTreeData] = useState<{
+    tree: ClcNode[]
+    overlay: OverlayData
+    auxiliary: AuxiliaryData
+  } | null>(null)
   useEffect(() => {
     let cancelled = false
-    void Promise.all([loadClcTree(), loadClcOverlay()]).then(([tree, overlay]) => {
-      if (!cancelled) setTreeData({ tree, overlay })
-    })
+    void Promise.all([loadClcTree(), loadClcOverlay(), loadClcAuxiliary()]).then(
+      ([tree, overlay, auxiliary]) => {
+        if (!cancelled) setTreeData({ tree, overlay, auxiliary })
+      },
+    )
     return () => {
       cancelled = true
     }
@@ -94,6 +102,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
           Array.from(byBook.values()),
           treeData.tree,
           treeData.overlay,
+          treeData.auxiliary,
         ),
       }
     },

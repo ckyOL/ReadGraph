@@ -1,9 +1,10 @@
 // 分类法层级解析（classification-hierarchy 规格 §4）。
 //
-// - `resolveClassificationPath`：纯函数。树/overlay 由调用方传入，函数自身
+// - `resolveClassificationPath`：纯函数。树/overlay/复分表由调用方传入，函数自身
 //   不触发动态 import、不读存储/时钟，可单测（规格 §4.3）。
 //   算法：入参归一 → 前缀候选匹配 + 父指针回溯（兼容 1,265 处交错结构，
-//   「父 id 是子 id 前缀」不成立，逐层下钻会提前断链）→ 降级链
+//   「父 id 是子 id 前缀」不成立，逐层下钻会提前断链）→ 复分拆分兜底（§10：
+//   全码未完整命中且含 `-` 时拆 main + aux，复分表查名）→ 降级链
 //   overlay > tree/tree-partial > first-level > none。
 // - `loadClcTree` / `loadClcOverlay`：懒加载器，动态 import 独立 chunk
 //   （bundle-dynamic-imports），单例缓存 Promise。
@@ -38,6 +39,8 @@ export interface ClassificationPath {
   source: ClassificationSource
   /** 仅 tree-partial：code 比最深命中节点长的剩余后缀（如 'J238.2' 停在 J238 时 '.2'） */
   unresolvedSuffix?: string
+  /** 总论复分号段（规格 §10）：`K02-39` 主类解析到 K02 后挂 `{-39, 信息化建设、新技术的应用}`；未命中/表外不设 */
+  auxiliary?: ClassificationPathSegment
 }
 
 /** 缺口修正表条目（规格 §3.2）。key=code，value 记录类名与可追溯依据。 */
@@ -46,6 +49,9 @@ export interface OverlayEntry {
   source: string
 }
 export type OverlayData = Record<string, OverlayEntry>
+
+/** 总论复分表（规格 §10.4）。key=复分号原文（含 `-`，如 `"-39"`），value=5 版类名。 */
+export type AuxiliaryData = Record<string, string>
 
 /** 拍平索引：去括号 id → 节点 + 真实父链指针（一次 O(n) 构建）。 */
 interface FlatNode {
@@ -211,6 +217,42 @@ function deepestPrefixMatch(
   return null
 }
 
+/**
+ * 复分拆分兜底（§10.5）：`main-aux` 在首个 `-` 处拆分，主类重解 + 复分表查名。
+ * - 全码树内显式复分节点（`B81-09`）/overlay 键不至此（上游已完整命中返回）；
+ * - aux 查表命中 → 挂 `auxiliary` 段，主类解析契约（source/depth/unresolvedSuffix）不变；
+ * - 表外复分号 → 不造名，`-xx` 原文并入 unresolvedSuffix（first-level/none 保持契约不带）；
+ * - fallback 为全码解析结果（拆分不可用时原样返回，如 main 为空/主类未命中）。
+ */
+function resolveWithAuxiliary(
+  system: ClassificationSystem,
+  code: string,
+  tree: ClcNode[],
+  overlay: OverlayData | undefined,
+  auxiliary: AuxiliaryData | undefined,
+  fallback: ClassificationPath | null,
+): ClassificationPath {
+  const dash = code.indexOf('-')
+  if (dash <= 0) return fallback ?? { path: [], depth: 0, source: 'none' }
+  const main = code.slice(0, dash)
+  const auxRaw = code.slice(dash)
+  // 递归解析主类（main 无 `-`，不再进拆分）；overlay 对主类的补录同样生效。
+  const mainPath = resolveClassificationPath(system, main, tree, overlay)
+  if (mainPath.source === 'none') return fallback ?? mainPath
+  const auxName = auxiliary?.[auxRaw]
+  if (auxName) {
+    return { ...mainPath, auxiliary: { code: auxRaw, name: auxName } }
+  }
+  if (mainPath.source === 'tree') {
+    return { ...mainPath, source: 'tree-partial', unresolvedSuffix: auxRaw }
+  }
+  if (mainPath.source === 'tree-partial') {
+    return { ...mainPath, unresolvedSuffix: (mainPath.unresolvedSuffix ?? '') + auxRaw }
+  }
+  // first-level / overlay：保持既有契约（不带 unresolvedSuffix）。
+  return mainPath
+}
+
 /** 一级表兜底的有效形态门：首字符后仅数字/点（或空），拒绝字母嵌码。 */
 function isValidFirstLevelShape(system: ClassificationSystem, code: string): boolean {
   if (system === 'clc') return /^[A-Z](?:[0-9.].*)?$/.test(code)
@@ -287,12 +329,14 @@ function resolveWithOverlay(
  *
  * @param tree 静态分类树（clc 经 `loadClcTree()` 懒加载后传入；空数组 = 树未就绪）
  * @param overlay 缺口修正表（按体系键控，clc 经 `loadClcOverlay()` 传入；缺省跳过）
+ * @param auxiliary 总论复分表（clc 经 `loadClcAuxiliary()` 传入；缺省 = 旧行为，不拆复分号）
  */
 export function resolveClassificationPath(
   system: ClassificationSystem,
   code: string,
   tree: ClcNode[],
   overlay?: OverlayData,
+  auxiliary?: AuxiliaryData,
 ): ClassificationPath {
   const normalized = normalizeCode(code)
   if (!normalized) return { path: [], depth: 0, source: 'none' }
@@ -319,9 +363,11 @@ export function resolveClassificationPath(
     // 择优收录：剥斜杠形态（索书号后缀兜底）不超越原形态的 tree 结果
     // （K833/837 输入不被剥斜杠形态 K833 展开子级抢占）；原形态 partial 时
     // 剥斜杠完整解（I247.5/123 → I247.5）仍可胜出。
-    const consider = (path: ClassificationPath) => {
-      if (best?.source === 'tree') return
-      if (!best || betterTreeMatch(path, best)) best = path
+    // 返回式择优（不在闭包内赋值，避免 TS 对闭包赋值变量的窄化失效）。
+    const consider = (path: ClassificationPath): ClassificationPath | null => {
+      if (best?.source === 'tree') return best
+      if (!best || betterTreeMatch(path, best)) return path
+      return best
     }
     for (const form of forms) {
       const match = deepestPrefixMatch(index, form)
@@ -331,14 +377,26 @@ export function resolveClassificationPath(
         if (form === normalized && stripBrackets(match.node.id) === form) {
           return treePathFrom(index, match, form)
         }
-        consider(treePathFrom(index, match, form))
+        best = consider(treePathFrom(index, match, form))
       }
       const range = deepestRangeMatch(index, ranges, form)
       if (range) {
-        consider(treePathFrom(index, range.flat, form, range.matchedPrefix))
+        best = consider(treePathFrom(index, range.flat, form, range.matchedPrefix))
       }
     }
-    if (best) return best
+    if (best) {
+      // 复分拆分兜底（§10.5）：全码未完整命中（tree-partial / 未命中）且含 `-`
+      // → 首 `-` 处拆 main + aux，主类重解 + 复分表查名；树内显式复分节点
+      // （`B81-09` 等）与 overlay 键已完整命中，不至此。
+      if (best.source !== 'tree' && normalized.includes('-')) {
+        return resolveWithAuxiliary(system, normalized, tree, overlay, auxiliary, best)
+      }
+      return best
+    }
+    // 全码树内未命中（可能落入一级/未命中）：同样尝试复分拆分。
+    if (normalized.includes('-')) {
+      return resolveWithAuxiliary(system, normalized, tree, overlay, auxiliary, null)
+    }
   }
 
   // 3. 一级表兜底（保留为降级层；树完整时几乎不可达，加载前/空表时生效）。
@@ -377,6 +435,16 @@ export function loadClcOverlay(): Promise<OverlayData> {
   return clcOverlayPromise
 }
 
+let clcAuxiliaryPromise: Promise<AuxiliaryData> | null = null
+
+/** 懒加载 CLC 总论复分表（§10，与树同机制）。 */
+export function loadClcAuxiliary(): Promise<AuxiliaryData> {
+  clcAuxiliaryPromise ??= import('@/data/classification/clc-auxiliary.json').then(
+    (m) => m.default as unknown as AuxiliaryData,
+  )
+  return clcAuxiliaryPromise
+}
+
 /**
  * treemap 下钻数据派生（规格 §5.3，UI 层数据链）：给定下钻节点 code 与桶内
  * 书目分类号集合，解析每条 code 的路径，按下钻节点的直接子段分组计数。
@@ -393,16 +461,26 @@ export function buildClassificationChildren(
   codes: string[],
   tree: ClcNode[],
   overlay?: OverlayData,
+  auxiliary?: AuxiliaryData,
 ): ClassificationChild[] {
   const counts = new Map<string, ClassificationChild>()
   for (const raw of codes) {
-    const path = resolveClassificationPath('clc', raw, tree, overlay).path
+    const res = resolveClassificationPath('clc', raw, tree, overlay, auxiliary)
+    const path = res.path
     const idx = path.findIndex((s) => s.code === drillCode)
     const child = idx >= 0 ? path[idx + 1] : undefined
-    if (!child) continue
-    const cur = counts.get(child.code)
-    if (cur) cur.value += 1
-    else counts.set(child.code, { code: child.code, name: child.name, value: 1 })
+    if (child) {
+      const cur = counts.get(child.code)
+      if (cur) cur.value += 1
+      else counts.set(child.code, { code: child.code, name: child.name, value: 1 })
+    }
+    // 复分号段（§10.5）：下钻节点即主类路径最末段时，复分号作为其子段计数。
+    if (res.auxiliary && idx === path.length - 1) {
+      const a = res.auxiliary
+      const cur = counts.get(a.code)
+      if (cur) cur.value += 1
+      else counts.set(a.code, { code: a.code, name: a.name, value: 1 })
+    }
   }
   return Array.from(counts.values())
 }

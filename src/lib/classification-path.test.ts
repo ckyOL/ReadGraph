@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { resolveClassificationPath, buildClassificationChildren } from './classification-path'
-import type { ClcNode, OverlayData } from './classification-path'
+import type { ClcNode, OverlayData, AuxiliaryData } from './classification-path'
 
 let tree: ClcNode[]
 beforeAll(async () => {
@@ -352,5 +352,97 @@ describe('降级链（§4.3）', () => {
     // 空 code。
     expect(resolveClassificationPath('clc', '', tree).source).toBe('none')
     expect(resolveClassificationPath('clc', '  ', tree).source).toBe('none')
+  })
+})
+
+describe('复分号（总论复分表，§10）', () => {
+  let auxiliary: AuxiliaryData
+  beforeAll(async () => {
+    auxiliary = (await import('@/data/classification/clc-auxiliary.json'))
+      .default as unknown as AuxiliaryData
+  })
+
+  it('K02-39 → tree 主类 3 段 + auxiliary -39 信息化建设、新技术的应用', () => {
+    const p = resolveClassificationPath('clc', 'K02-39', tree, undefined, auxiliary)
+    expect(p.source).toBe('tree')
+    expect(p.unresolvedSuffix).toBeUndefined()
+    expect(SEG(p)).toEqual([
+      { code: 'K', name: '历史、地理' },
+      { code: 'K0', name: '史学理论' },
+      { code: 'K02', name: '社会发展理论' },
+    ])
+    expect(p.auxiliary).toEqual({ code: '-39', name: '信息化建设、新技术的应用' })
+  })
+
+  it('抽样复分号全量回归：主类全码 + auxiliary 段（§10.1 实测号）', () => {
+    const cases = [
+      ['B84-49', 'B84', '-49', '普及读物'],
+      ['G895-62', 'G895', '-62', '手册、名录、指南、一览表、年表'],
+      ['TP18-62', 'TP18', '-62', '手册、名录、指南、一览表、年表'],
+      ['C913.3-49', 'C913.3', '-49', '普及读物'],
+      ['G239.23-53', 'G239.23', '-53', '论文集'],
+    ] as const
+    for (const [input, mainCode, auxCode, auxName] of cases) {
+      const p = resolveClassificationPath('clc', input, tree, undefined, auxiliary)
+      expect(p.source).toBe('tree')
+      expect(p.path.at(-1)?.code).toBe(mainCode)
+      expect(p.auxiliary).toEqual({ code: auxCode, name: auxName })
+    }
+  })
+
+  it('树显式复分节点（B81-09）维持 tree 完整命中，auxiliary 缺省（不重复）', () => {
+    const p = resolveClassificationPath('clc', 'B81-09', tree, undefined, auxiliary)
+    expect(p.source).toBe('tree')
+    expect(p.path.at(-1)?.name).toBe('逻辑学史、逻辑思想史')
+    expect(p.auxiliary).toBeUndefined()
+  })
+
+  it('表外复分号（K02-99）：主类 K02 + unresolvedSuffix=-99，无 auxiliary，不造名', () => {
+    const p = resolveClassificationPath('clc', 'K02-99', tree, undefined, auxiliary)
+    expect(p.source).toBe('tree-partial')
+    expect(p.unresolvedSuffix).toBe('-99')
+    expect(SEG(p).at(-1)).toEqual({ code: 'K02', name: '社会发展理论' })
+    expect(p.auxiliary).toBeUndefined()
+  })
+
+  it('索书号形态 G898.3-64：主类 tree-partial 止于 G898 + auxiliary -64', () => {
+    const p = resolveClassificationPath('clc', 'G898.3-64', tree, undefined, auxiliary)
+    expect(p.source).toBe('tree-partial')
+    expect(p.unresolvedSuffix).toBe('.3')
+    expect(p.path.at(-1)?.code).toBe('G898')
+    expect(p.auxiliary).toEqual({ code: '-64', name: '表解、图解、图册、谱录、数据、公式、地图' })
+  })
+
+  it('主类部分未解析 + 复分号（J238.2-49）：各自如实', () => {
+    const p = resolveClassificationPath('clc', 'J238.2-49', tree, undefined, auxiliary)
+    expect(p.source).toBe('tree-partial')
+    expect(p.unresolvedSuffix).toBe('.2')
+    expect(p.path.at(-1)?.code).toBe('J238')
+    expect(p.auxiliary).toEqual({ code: '-49', name: '普及读物' })
+  })
+
+  it('一级兜底（树空）：B84-49 → first-level B 哲学、宗教', () => {
+    const p = resolveClassificationPath('clc', 'B84-49', [], undefined, auxiliary)
+    expect(p.source).toBe('first-level')
+    expect(SEG(p)).toEqual([{ code: 'B', name: '哲学、宗教' }])
+  })
+
+  it('不传复分表时：主类不降级（K02 + -39 后缀），仅不挂 auxiliary 名', () => {
+    // 复分拆分是解析层行为（§10.5），复分表只决定是否命名。
+    const p = resolveClassificationPath('clc', 'K02-39', tree)
+    expect(p.source).toBe('tree-partial')
+    expect(p.path.at(-1)?.code).toBe('K02')
+    expect(p.unresolvedSuffix).toBe('-39')
+    expect(p.auxiliary).toBeUndefined()
+  })
+
+  it('buildClassificationChildren：下钻主类叶时复分号作为子段计数', () => {
+    expect(
+      buildClassificationChildren('K02', ['K02-39', 'K02-39', 'K02'], tree, undefined, auxiliary),
+    ).toEqual([{ code: '-39', name: '信息化建设、新技术的应用', value: 2 }])
+    // 下钻主类路径中途（K0）：复分号不属其直接子段，不计数。
+    expect(buildClassificationChildren('K0', ['K02-39'], tree, undefined, auxiliary)).toEqual([
+      { code: 'K02', name: '社会发展理论', value: 1 },
+    ])
   })
 })

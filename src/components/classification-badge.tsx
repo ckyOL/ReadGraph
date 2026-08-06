@@ -10,10 +10,12 @@ import { Badge } from '@/components/ui/badge'
 import {
   loadClcTree,
   loadClcOverlay,
+  loadClcAuxiliary,
   resolveClassificationPath,
   type ClassificationPath,
   type ClcNode,
   type OverlayData,
+  type AuxiliaryData,
 } from '@/lib/classification-path'
 import type { ClassificationSystem } from '@/types/entities'
 
@@ -24,25 +26,31 @@ interface ClassificationBadgeProps {
   category?: string
 }
 
-/** 树/overlay 懒加载状态（clc 体系一次性拉取，缓存于模块内）。 */
+/** 树/overlay/复分表懒加载状态（clc 体系一次性拉取，缓存于模块内）。 */
 function useClassificationPath(
   system: ClassificationSystem,
   code: string,
 ): ClassificationPath {
-  const [data, setData] = useState<{ tree: ClcNode[]; overlay: OverlayData } | null>(null)
+  const [data, setData] = useState<{
+    tree: ClcNode[]
+    overlay: OverlayData
+    auxiliary: AuxiliaryData
+  } | null>(null)
   useEffect(() => {
     if (system !== 'clc') return
     let cancelled = false
-    void Promise.all([loadClcTree(), loadClcOverlay()]).then(([tree, overlay]) => {
-      if (!cancelled) setData({ tree, overlay })
-    })
+    void Promise.all([loadClcTree(), loadClcOverlay(), loadClcAuxiliary()]).then(
+      ([tree, overlay, auxiliary]) => {
+        if (!cancelled) setData({ tree, overlay, auxiliary })
+      },
+    )
     return () => {
       cancelled = true
     }
   }, [system])
   return useMemo(() => {
     if (system !== 'clc' || !data) return resolveClassificationPath(system, code, [], undefined)
-    return resolveClassificationPath(system, code, data.tree, data.overlay)
+    return resolveClassificationPath(system, code, data.tree, data.overlay, data.auxiliary)
   }, [system, code, data])
 }
 
@@ -65,13 +73,17 @@ export function ClassificationBadgeView({ code, category, path }: Classification
       const crumbs = segments
         .map((s) => `${s.code} ${s.name}`)
         .join(t('classification.breadcrumbSeparator'))
+      // 复分号段（§10.6）：主类路径后追加（如 `› -39 信息化建设、新技术的应用`）。
+      const withAux = path.auxiliary
+        ? crumbs + t('classification.breadcrumbSeparator') + `${path.auxiliary.code} ${path.auxiliary.name}`
+        : crumbs
       if (path.source === 'tree-partial') {
-        return `${crumbs}\n${t('classification.treePartialHint', { code })}`
+        return `${withAux}\n${t('classification.treePartialHint', { code })}`
       }
-      return crumbs
+      return withAux
     }
     return primary ?? t('classification.none')
-  }, [deepest, segments, path.source, primary, t, code])
+  }, [deepest, segments, path.source, path.auxiliary, primary, t, code])
 
   return (
     <Badge
