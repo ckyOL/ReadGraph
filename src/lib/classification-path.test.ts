@@ -184,6 +184,99 @@ describe('入参归一（§4.2）', () => {
     expect(p.unresolvedSuffix).toBe('.2')
   })
 
+  it('范围类目斜杠号解析到容器层级（K833/837 → K81 传记）', () => {
+    const p = resolveClassificationPath('clc', 'K833/837', tree)
+    expect(p.source).toBe('tree')
+    expect(p.depth).toBe(2)
+    expect(p.unresolvedSuffix).toBeUndefined()
+    expect(SEG(p)).toEqual([
+      { code: 'K', name: '历史、地理' },
+      { code: 'K81', name: '传记' },
+    ])
+  })
+
+  it('范围平级展开子节点命中（K834 非洲人物传记，无容器层）', () => {
+    expect(SEG(resolveClassificationPath('clc', 'K834', tree))).toEqual([
+      { code: 'K', name: '历史、地理' },
+      { code: 'K81', name: '传记' },
+      { code: 'K834', name: '非洲人物传记' },
+    ])
+  })
+
+  it('范围展开号落到洲类目（K833.135.72 → K833 亚洲人物传记）', () => {
+    const p = resolveClassificationPath('clc', 'K833.135.72', tree)
+    expect(p.source).toBe('tree-partial')
+    expect(p.unresolvedSuffix).toBe('.135.72')
+    expect(SEG(p)).toEqual([
+      { code: 'K', name: '历史、地理' },
+      { code: 'K81', name: '传记' },
+      { code: 'K833', name: '亚洲人物传记' },
+    ])
+  })
+
+  it('范围展开深层国家类目（F131.3 日本经济、D731.3 日本政治）', () => {
+    expect(SEG(resolveClassificationPath('clc', 'F131.3', tree))).toEqual([
+      { code: 'F', name: '经济' },
+      { code: 'F1', name: '世界各国经济概况、经济史、经济地理' },
+      { code: 'F13', name: '亚洲经济' },
+      { code: 'F131.3', name: '日本经济' },
+    ])
+    expect(SEG(resolveClassificationPath('clc', 'D731.3', tree))).toEqual([
+      { code: 'D', name: '政治、法律' },
+      { code: 'D73', name: '亚洲各国政治' },
+      { code: 'D731.3', name: '日本政治' },
+    ])
+  })
+
+  it('范围区间承接未展开范围类目（D221.5 → D221/227；C829.35 → C829.3/.7）', () => {
+    expect(SEG(resolveClassificationPath('clc', 'D221.5', tree)).at(-1)).toEqual({
+      code: 'D221/227',
+      name: '地方组织、会议及其文献',
+    })
+    expect(SEG(resolveClassificationPath('clc', 'C829.35', tree)).at(-1)).toEqual({
+      code: 'C829.3/.7',
+      name: '各国',
+    })
+    // 已展开的范围类目：展开子节点优先（D93.5 → D93 亚洲各国法律，而非 D93/97）。
+    expect(SEG(resolveClassificationPath('clc', 'D93.5', tree)).at(-1)).toEqual({
+      code: 'D93',
+      name: '亚洲各国法律',
+    })
+    // 区间外：D9.2 不属 D93/97（92 < 93）。
+    expect(SEG(resolveClassificationPath('clc', 'D9.2', tree)).at(-1)?.code).not.toBe('D93/97')
+    // 位宽边界：D93.5 属 D93/97 法律，不属 D093/097 政治思想史（093 ≠ 93）。
+    expect(SEG(resolveClassificationPath('clc', 'D93.5', tree)).at(-1)?.code).not.toBe('D093/097')
+  })
+
+  it('范围类目斜杠号解析到容器层级（F13/17 → F1），不被剥斜杠浅解抢占', () => {
+    const p = resolveClassificationPath('clc', 'F13/17', tree)
+    expect(p.source).toBe('tree')
+    expect(SEG(p)).toEqual([
+      { code: 'F', name: '经济' },
+      { code: 'F1', name: '世界各国经济概况、经济史、经济地理' },
+    ])
+  })
+
+  it('索书号斜杠后缀取剥斜杠完整解（I247.5/123 → I247.5）', () => {
+    const p = resolveClassificationPath('clc', 'I247.5/123', tree)
+    expect(p.source).toBe('tree')
+    expect(SEG(p).at(-1)).toEqual({ code: 'I247.5', name: '新体长篇、中篇小说' })
+  })
+
+  it('范围区间边界与点号右端（D93.5 与 C829.35 归属范围类目）', () => {
+    expect(SEG(resolveClassificationPath('clc', 'D93.5', tree)).at(-1)).toEqual({
+      code: 'D93',
+      name: '亚洲各国法律',
+    })
+    expect(SEG(resolveClassificationPath('clc', 'C829.35', tree)).at(-1)).toEqual({
+      code: 'C829.3/.7',
+      name: '各国',
+    })
+    // 区间外：D9 命中但 D93/97 不承接 D9.2（92 < 93）。
+    const out = resolveClassificationPath('clc', 'D9.2', tree)
+    expect(SEG(out).at(-1)?.code).not.toBe('D93/97')
+  })
+
   it('小写归一', () => {
     const p = resolveClassificationPath('clc', 'j238.2', tree)
     expect(p.source).toBe('tree-partial')
@@ -214,11 +307,12 @@ describe('降级链（§4.3）', () => {
     ])
   })
 
-  it('overlay 补全树缺失节点（I37，I3 缺录）并拼接树祖先链', () => {
+  it('overlay 补全树缺失节点（I37 缺录）并拼接树祖先链', () => {
     const p = resolveClassificationPath('clc', 'I37', tree, overlay)
     expect(p.source).toBe('overlay')
     expect(SEG(p)).toEqual([
       { code: 'I', name: '文学' },
+      { code: 'I3', name: '亚洲文学' },
       { code: 'I37', name: '日本文学' },
     ])
   })
