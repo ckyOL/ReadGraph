@@ -1,9 +1,9 @@
 # 分类法层级解析规格（classification-hierarchy）
 
-> **2026-08-12 重大修订：数据供给**。中图法数据（类目树/数据管线/缺口表）已整体外置至独立项目
-> `数据侧`（迁移方案与执行记录见 [clc-split-repo 任务](../tasks/clc-split-repo.md)）。本规格自本节起仅保留
+> **2026-08-12 重大修订：数据供给**。中图法数据（类目树/数据管线/缺口表）已整体外置至独立数据侧
+> （迁移方案与执行记录见 [clc-split-repo 任务](../tasks/clc-split-repo.md)）。本规格自本节起仅保留
 > ReadGraph 侧的**解析层契约**；数据侧内容（原 §2 数据源考察、§7 构建管线、§11/§12 纸本数据管线）已
-> 迁至 `数据侧/docs/`。
+> 迁至数据侧文档。
 > 关联：[app-spec](../app-spec.md)、[ui-navigation §3](../specs/ui-navigation.md#3-各功能页布局与空状态)、
 > [reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)。
 > 返回 [app-spec.md](../app-spec.md)。
@@ -19,11 +19,12 @@
 | `public/classification/clc-overlay.json` | `{code: {name, source}}` 缺口修正 | 空表 `{}` |
 | `public/classification/clc-auxiliary.json` | `{复分号: 类名}` 总论复分表 | 空表 `{}`（不拆复分号） |
 
-- **数据契约（机器可执行权威）= `数据侧/schema/*.schema.json`**；校验器 `数据侧/tools/validate.py`
-  （结构 + 内容门：顶层 22 字母类、去括号 id 唯一、desc 非空）。
+- **契约以本规格 §2 为准**（TS 接口 + 形态要点）；校验：`pnpm check:classification-data`
+  （零依赖脚本，结构 + 内容门：顶层 22 字母类、去括号 id 唯一、desc 非空，友好报错）。
 - 加载器：`loadClcTree/loadClcOverlay/loadClcAuxiliary`（`src/lib/classification-path.ts`）——fetch 单例缓存，
   404/网络失败降级缺省值；体系键控注册表 `treeLoaders` 为 ddc/lcc/udc 留扩展位。
-- 数据可获得渠道：数据侧 项目产物（release artifact）或用户自备任意来源 JSON（仅需满足契约）。
+- 数据来源：用户自备任意来源的分类数据，按 §2 契约组装为三个 JSON 放入 `public/classification/` 即可；
+  本仓库不捆绑、不提供任何分类法数据内容。
 
 ## 1. 问题与目标（保留）
 
@@ -39,7 +40,7 @@ J 艺术 › J2 绘画 › J21 绘画技法 › J218 各种画技法：按用途
 
 ## 2. 数据契约（跨仓库接口）
 
-**权威 = `数据侧/schema/*.schema.json`**。本节的 TS 接口为同契约的历史来源表述：
+本节 TS 接口为**数据契约的唯一表述**（`ClcNode` / `OverlayEntry` / `AuxiliaryData`）：
 
 ```ts
 interface ClcNode {
@@ -123,8 +124,8 @@ overlay > tree / tree-partial > first-level > none
 ## 7. 测试清单（Vitest，fixture 驱动）
 
 `src/lib/classification-path.test.ts` 基于**内联 fixture 树**（模拟契约产物：src/status/redirect 字段、
-十进制挂载、范围展开子级/保留容器、显式复分节点）；真实产物（45k+ 节点）由 `数据侧/tools/validate.py`
-校验。断言覆盖（规格 §8 语义，fixture 口径）：
+十进制挂载、范围展开子级/保留容器、显式复分节点）；用户放置的契约 JSON 由
+`pnpm check:classification-data` 校验（§0）。断言覆盖（规格 §8 语义，fixture 口径）：
 
 - `J218.2`/`J238.2` → `tree` 5 段（后者为纸本「仿J218分」注释收录形态）。
 - `K248`/`K248.1`/`K252`/`G633.52` → 十进制挂载完整链（父指针回溯）。
