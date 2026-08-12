@@ -1,9 +1,7 @@
 # 分类法层级解析规格（classification-hierarchy）
 
-> **2026-08-12 重大修订：数据供给**。中图法数据（类目树/数据管线/缺口表）已整体外置至独立数据侧
-> （迁移方案与执行记录见 [clc-split-repo 任务](../tasks/clc-split-repo.md)）。本规格自本节起仅保留
-> ReadGraph 侧的**解析层契约**；数据侧内容（原 §2 数据源考察、§7 构建管线、§11/§12 纸本数据管线）已
-> 迁至数据侧文档。
+> **数据供给**：本仓库不携带任何分类法数据内容；分类树/缺口修正表/复分表由用户按 §2 契约组装后放置于
+> `public/classification/`（见 §0），解析层契约见 §2。本规格仅描述 ReadGraph 侧的解析层行为。
 > 关联：[app-spec](../app-spec.md)、[ui-navigation §3](../specs/ui-navigation.md#3-各功能页布局与空状态)、
 > [reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)。
 > 返回 [app-spec.md](../app-spec.md)。
