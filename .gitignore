@@ -59,3 +59,7 @@ playwright/.cache/
 
 # Local sample/export data (may contain real card numbers, do not commit)
 bugfile/
+
+
+# 本地扫描件/文档不入库（隐私与体积）
+*.pdf

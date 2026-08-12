@@ -253,9 +253,12 @@ export function mapOpacDetail(detail: OpacDetail, existing: OpacMappingInput): O
   // — Book.coverUrl（detail.img） —
   if (detail.img != null) pushValueChange(changes, 'coverUrl', book.coverUrl, detail.img)
 
-  // — CatalogRecord.classifications（detail.classno 去 `(...)` 后缀；追加语义） —
+  // — CatalogRecord.classifications（detail.classno 去 `(...)`/`=…` 后缀；追加语义） —
   if (detail.classno != null) {
-    const code = detail.classno.replace(/\([^)]*\)$/, '').trim()
+    const code = detail.classno
+      .replace(/\([^)]*\)$/, '')
+      .replace(/=.+$/, '') // 时代区分号（纸本「不作实际号码」；实证 K833.135.72=6）
+      .trim()
     if (code !== '') {
       const system: ClassificationSystem = source.library?.classificationSystem ?? 'clc'
       const entry: ClassificationEntry = { system, code }
