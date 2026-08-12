@@ -6,8 +6,9 @@
 //   「父 id 是子 id 前缀」不成立，逐层下钻会提前断链）→ 复分拆分兜底（§10：
 //   全码未完整命中且含 `-` 时拆 main + aux，复分表查名）→ 降级链
 //   overlay > tree/tree-partial > first-level > none。
-// - `loadClcTree` / `loadClcOverlay`：懒加载器，动态 import 独立 chunk
-//   （bundle-dynamic-imports），单例缓存 Promise。
+// - `loadClcTree` / `loadClcOverlay` / `loadClcAuxiliary`：懒加载器，fetch 拉取
+//   `public/classification/` 下用户提供的 JSON（数据契约见 数据侧/schema/），单例缓存
+//   Promise；404/网络失败 → 降级（树=空数组 → 一级表兜底；表=空对象）。
 import type { ClassificationSystem } from '@/types/entities'
 import { classificationCategory } from './classification'
 
@@ -428,34 +429,55 @@ export function resolveClassificationPath(
   return { path: [], depth: 0, source: 'none' }
 }
 
+// ---------- 数据加载（外部契约 JSON，用户自备） ----------
+
+/** 数据文件约定：`public/classification/<file>`（Vite 原样 served，部署时与 index.html 同级）。 */
+const CLASSIFICATION_DATA_DIR = 'classification'
+
+/**
+ * fetch 拉取契约 JSON；404/网络失败 → 返回缺省值（树=[] 走一级表兜底，表={} 跳过）。
+ * 不做重试：数据文件是用户部署时放置的静态资源，失败即缺省降级。
+ */
+async function fetchClassificationData<T>(file: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${CLASSIFICATION_DATA_DIR}/${file}`)
+    if (!res.ok) return fallback
+    return (await res.json()) as T
+  } catch {
+    return fallback
+  }
+}
+
 let clcTreePromise: Promise<ClcNode[]> | null = null
 
-/** 懒加载 CLC 静态树（动态 import 独立 chunk，单例缓存）。 */
+/** 懒加载 CLC 静态树（fetch + 单例缓存；缺省空数组 → 一级表兜底）。 */
 export function loadClcTree(): Promise<ClcNode[]> {
-  clcTreePromise ??= import('@/data/classification/clc-tree.json').then(
-    (m) => m.default as unknown as ClcNode[],
-  )
+  clcTreePromise ??= fetchClassificationData<ClcNode[]>('clc-tree.json', [])
   return clcTreePromise
 }
 
 let clcOverlayPromise: Promise<OverlayData> | null = null
 
-/** 懒加载 CLC 缺口修正表（与树同机制）。 */
+/** 懒加载 CLC 缺口修正表（缺省空表）。 */
 export function loadClcOverlay(): Promise<OverlayData> {
-  clcOverlayPromise ??= import('@/data/classification/clc-overlay.json').then(
-    (m) => m.default as unknown as OverlayData,
-  )
+  clcOverlayPromise ??= fetchClassificationData<OverlayData>('clc-overlay.json', {})
   return clcOverlayPromise
 }
 
 let clcAuxiliaryPromise: Promise<AuxiliaryData> | null = null
 
-/** 懒加载 CLC 总论复分表（§10，与树同机制）。 */
+/** 懒加载 CLC 总论复分表（§10，缺省空表）。 */
 export function loadClcAuxiliary(): Promise<AuxiliaryData> {
-  clcAuxiliaryPromise ??= import('@/data/classification/clc-auxiliary.json').then(
-    (m) => m.default as unknown as AuxiliaryData,
-  )
+  clcAuxiliaryPromise ??= fetchClassificationData<AuxiliaryData>('clc-auxiliary.json', {})
   return clcAuxiliaryPromise
+}
+
+/**
+ * 体系 → 树加载器注册表（为 ddc/lcc/udc 留扩展位，规格 §2 体系键控设计）。
+ * 无树的体系（key 缺失）走既有降级链（first-level / none）。
+ */
+export const treeLoaders: Partial<Record<ClassificationSystem, () => Promise<ClcNode[]>>> = {
+  clc: loadClcTree,
 }
 
 /**

@@ -4,12 +4,34 @@ import { buildClassificationFixture } from './fixtures'
 
 /**
  * 分类法层级 E2E（classification-hierarchy §8）：
- * - 书库芯片：`J238.2` 显示已解析最深类名（不推测「漫画」），tooltip 完整面包屑
- *   + 「细分未收录」提示（tree-partial）。
+ * - 书库芯片：`J238.2` 显示完整 5 段路径（fixture 树已收录「漫画」，§11 修正 §2.4），tooltip 完整面包屑。
  * - treemap：点一级类目展开子类，面包屑回退一级。
+ * 树/表经 route 拦截提供（D-4 决策：少量真实分类号 fixture，手写固定、无 src 溯源字段；
+ * 数据契约权威 = 数据侧/schema/）。
  */
 
 const SEED_KEY = 'readgraph:e2e-seed'
+
+// 少量真实分类号 fixture（≤10 条、不带 src；覆盖 e2e 断言所需 J 类路径）。
+const clcTreeFixture = [
+  {
+    id: 'J',
+    desc: '艺术',
+    children: [
+      {
+        id: 'J2',
+        desc: '绘画',
+        children: [
+          {
+            id: 'J23',
+            desc: '各国绘画作品',
+            children: [{ id: 'J238', desc: '各种画：按用途分', children: [{ id: 'J238.2', desc: '漫画' }] }],
+          },
+        ],
+      },
+    ],
+  },
+]
 
 async function seed(page: import('@playwright/test').Page): Promise<void> {
   const payload = JSON.stringify(buildClassificationFixture())
@@ -22,36 +44,39 @@ async function seed(page: import('@playwright/test').Page): Promise<void> {
   }, [SEED_KEY, payload] as const)
 }
 
+/** 拦截分类数据请求（加载器 fetch `classification/*.json`，404 时降级一级表）。 */
+async function interceptClassification(page: import('@playwright/test').Page): Promise<void> {
+  await page.route('**/classification/clc-tree.json', (route) => route.fulfill({ json: clcTreeFixture }))
+  await page.route('**/classification/clc-overlay.json', (route) => route.fulfill({ json: {} }))
+  await page.route('**/classification/clc-auxiliary.json', (route) => route.fulfill({ json: {} }))
+}
+
 test.describe('classification hierarchy — library badge', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
+    await interceptClassification(page)
   })
 
-  test('J238.2 芯片: 最深类名 + 面包屑 tooltip + tree-partial 提示，不显示推测类名', async ({
-    page,
-  }) => {
+  test('J238.2 芯片: 完整 5 段面包屑（含漫画）+ 最深类名，无细分未收录提示', async ({ page }) => {
     await page.goto('/library')
     // 等树懒加载完成：芯片从一级类目升级为深层路径（title 含面包屑分隔符）。
     const badge = page.locator('[data-slot="badge"]', { hasText: 'J238.2' })
     await expect(badge).toHaveCount(1, { timeout: 10000 })
     await expect(badge).toHaveAttribute(
       'title',
-      /J 艺术 › J2 绘画 › J23 各国绘画作品 › J238 各种画：按用途分/,
+      /J 艺术 › J2 绘画 › J23 各国绘画作品 › J238 各种画：按用途分 › J238\.2 漫画/,
       { timeout: 20000 },
     )
-    await expect(badge).toHaveAttribute(
-      'title',
-      /J238\.2 (细分未收录|subdivision not covered)/,
-    )
-    // 主文本 = 已解析最深段类名；不显示推测类名「漫画」。
-    await expect(badge).toContainText('各种画：按用途分')
-    await expect(badge).not.toContainText('漫画')
+    await expect(badge).not.toHaveAttribute('title', /细分未收录|subdivision not covered/)
+    // 主文本 = 最深段类名「漫画」（fixture 已收录，§11 修正）。
+    await expect(badge).toContainText('漫画')
   })
 })
 
 test.describe('classification hierarchy — treemap drill-down', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
+    await interceptClassification(page)
   })
 
   test('点一级类目展开子类, 面包屑回退一级', async ({ page }) => {
