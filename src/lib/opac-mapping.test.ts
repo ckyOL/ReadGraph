@@ -152,7 +152,7 @@ describe('mapOpacDetail — 全空 Book', () => {
     expect(changes.find((c) => c.field === 'classifications')?.proposed).toEqual([
       { system: 'clc', code: 'J238.2' },
     ])
-    // 时代区分号 = 后缀剥离（纸本「不作实际号码」；实证 K833.135.72=6）
+    // 时代区分号 = 后缀剥离（分类法规则「不作实际号码」；实证 K833.135.72=6）
     const era = mapOpacDetail(
       { ...sampleDetail, classno: 'K833.135.72=6' },
       { book: emptyBook(), record: emptyRecord(), source: source() },

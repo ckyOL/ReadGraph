@@ -181,7 +181,7 @@ describe('静态树命中（tree / tree-partial）', () => {
     ])
   })
 
-  it('J238.2 → tree：纸本「仿J218分」注释有据（§11 修正 §2.4），路径 5 段含漫画', () => {
+  it('J238.2 → tree：「仿J218分」注释有据（§11 修正 §2.4），路径 5 段含漫画', () => {
     const p = resolveClassificationPath('clc', 'J238.2', tree)
     expect(p.source).toBe('tree')
     expect(p.depth).toBe(5)

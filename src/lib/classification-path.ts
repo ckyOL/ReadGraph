@@ -16,9 +16,9 @@ import { classificationCategory } from './classification'
 export interface ClcNode {
   id: string
   desc: string
-  /** 溯源（2026-08-11 起 build-tree 写入）：'p<页号>'（页源）|
-   * 'expansion:*'（范围容器展开子级）| '纸本 pNNN 显式…'（人工补录）|
-   * 'print-absent'（5 版无行保留名）| 'simulate:<宿主>'/'by-table:<宿主>'（规则派生）|
+  /** 溯源（可选，由数据侧写入）：'p<页号>'（页源）|
+   * 'expansion:*'（范围容器展开子级）| 'manual'（人工补录）|
+   * 'print-absent'（无行保留名）| 'simulate:<宿主>'/'by-table:<宿主>'（规则派生）|
    * 'rule:<宿主>:<kind>:<目标>（<注记>）'（人工定向规则派生） */
   src?: string
   /** 类目形态（2026-08-11 D2 第二部分，权威源=vision checkpoint 括号行）：
@@ -98,7 +98,7 @@ function normalizeCode(code: string): string {
   const paren = c.indexOf('(')
   if (paren !== -1) c = c.slice(0, paren)
   const era = c.indexOf('=')
-  if (era !== -1) c = c.slice(0, era) // 时代区分号（纸本「不作实际号码」，§10.2；实证 K833.135.72=6）
+  if (era !== -1) c = c.slice(0, era) // 时代区分号（分类法规则「不作实际号码」，§10.2；实证 K833.135.72=6）
   return c.replace(/[[\]]/g, '').trim()
 }
 

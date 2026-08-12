@@ -257,7 +257,7 @@ export function mapOpacDetail(detail: OpacDetail, existing: OpacMappingInput): O
   if (detail.classno != null) {
     const code = detail.classno
       .replace(/\([^)]*\)$/, '')
-      .replace(/=.+$/, '') // 时代区分号（纸本「不作实际号码」；实证 K833.135.72=6）
+      .replace(/=.+$/, '') // 时代区分号（分类法规则「不作实际号码」；实证 K833.135.72=6）
       .trim()
     if (code !== '') {
       const system: ClassificationSystem = source.library?.classificationSystem ?? 'clc'
