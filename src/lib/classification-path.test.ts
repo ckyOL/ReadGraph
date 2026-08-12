@@ -1,6 +1,6 @@
 // 分类法层级解析 — 规格 §8 测试清单（classification-hierarchy）。
 // 断言基于内联 fixture 树（模拟契约 JSON 产物：含 src/status/redirect 字段、交错挂载、
-// 范围展开子级/保留容器、显式复分节点）；真实产物（45k+ 节点）由 数据侧/tools/validate.py 校验。
+// 范围展开子级/保留容器、显式复分节点）；真实产物（45k+ 节点）由数据侧侧校验。
 import { describe, it, expect } from 'vitest'
 
 import { resolveClassificationPath, buildClassificationChildren } from './classification-path'

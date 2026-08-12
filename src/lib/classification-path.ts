@@ -7,7 +7,7 @@
 //   全码未完整命中且含 `-` 时拆 main + aux，复分表查名）→ 降级链
 //   overlay > tree/tree-partial > first-level > none。
 // - `loadClcTree` / `loadClcOverlay` / `loadClcAuxiliary`：懒加载器，fetch 拉取
-//   `public/classification/` 下用户提供的 JSON（数据契约见 数据侧/schema/），单例缓存
+//   `public/classification/` 下用户提供的 JSON（数据契约见 docs/specs/classification-hierarchy.md §2），单例缓存
 //   Promise；404/网络失败 → 降级（树=空数组 → 一级表兜底；表=空对象）。
 import type { ClassificationSystem } from '@/types/entities'
 import { classificationCategory } from './classification'

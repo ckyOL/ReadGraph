@@ -7,7 +7,7 @@ import { buildClassificationFixture } from './fixtures'
  * - 书库芯片：`J238.2` 显示完整 5 段路径（fixture 树已收录「漫画」，§11 修正 §2.4），tooltip 完整面包屑。
  * - treemap：点一级类目展开子类，面包屑回退一级。
  * 树/表经 route 拦截提供（D-4 决策：少量真实分类号 fixture，手写固定、无 src 溯源字段；
- * 数据契约权威 = 数据侧/schema/）。
+ * 数据契约见 docs/specs/classification-hierarchy.md §2）。
  */
 
 const SEED_KEY = 'readgraph:e2e-seed'
