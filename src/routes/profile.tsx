@@ -250,11 +250,15 @@ function ProfilePage() {
       ) : (
         <>
           <SummaryCards result={result} pending={isPending || computing} />
-          <MoneyCards
-            result={result}
-            rangeKey={rangeKey}
-            pending={isPending || computing}
-          />
+          {/* M7 回归：MoneyCards 渲染 formatCurrency，非法币种等数据异常不得
+              拖垮整页（图表区已有 ErrorBoundary，卡片区补齐）。 */}
+          <ErrorBoundary title={errorTitle} description={errorDesc}>
+            <MoneyCards
+              result={result}
+              rangeKey={rangeKey}
+              pending={isPending || computing}
+            />
+          </ErrorBoundary>
           {/* 图表区 Tabs：每次激活一个图谱块，独占全幅视口，互不挤压（reading-profile §4）。 */}
           <Tabs defaultValue="classification" className="mt-4 gap-3">
             <TabsList className="overflow-x-auto">

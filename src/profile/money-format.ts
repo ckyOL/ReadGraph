@@ -12,7 +12,15 @@ export function formatCurrency(
   const key = `${locale}:${currency}`
   let f = formatterCache.get(key)
   if (!f) {
-    f = new Intl.NumberFormat(locale, { style: 'currency', currency })
+    // M7 回归：非法币种码（parsePrice 正则可产出、编辑表单自由文本可输入，
+    // 如 "US"）会令 Intl.NumberFormat 抛 RangeError——MoneyCards 无
+    // ErrorBoundary 时 profile 整页崩溃。降级为纯数字格式（不带货币符号），
+    // 不抛错；合法币种缓存路径不受影响。
+    try {
+      f = new Intl.NumberFormat(locale, { style: 'currency', currency })
+    } catch {
+      f = new Intl.NumberFormat(locale, { style: 'decimal', maximumFractionDigits: 2 })
+    }
     formatterCache.set(key, f)
   }
   return f.format(amount)

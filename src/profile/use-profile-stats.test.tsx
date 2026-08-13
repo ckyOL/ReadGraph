@@ -20,6 +20,7 @@ import {
 
 import {
   useProfileStats,
+  WORKER_THRESHOLD,
   type ProfileStatsState,
   type UseProfileStatsOptions,
 } from './use-profile-stats'
@@ -168,5 +169,20 @@ describe('useProfileStats — 切换分类体系触发重算', () => {
     expect(fromDdc.result).toEqual(expectedDdc)
     // DDC 体系下夹具无匹配分类号 → 全部归入 __unclassified__，与 CLC 结果不同
     expect(fromClc.result).not.toEqual(fromDdc.result)
+  })
+})
+
+describe('useProfileStats — 大数据 Worker 路径', () => {
+  it('borrowCycles ≥ 阈值 → computing=true，结果回退同步派生（Worker 完成前不阻塞）', () => {
+    const f = fixtures()
+    const manyCycles = Array.from({ length: WORKER_THRESHOLD }, (_, i) =>
+      makeCycle(`cy-${i}`, 'b1', 'src-sz', new Date(T0.getTime() + i * 1000), 'returned', 'BC1'),
+    )
+    useLiveQueryMock.mockReturnValue([f.books, f.catalogRecords, manyCycles, f.sources])
+    const state = renderHook(OPTS_CLC)
+    expect(state.computing).toBe(true)
+    expect(state.loading).toBe(false)
+    // 计算中展示同步派生结果（非空、非过期占位）。
+    expect(state.result).not.toBeNull()
   })
 })

@@ -86,11 +86,18 @@ export function useProfileStats(opts: UseProfileStatsOptions): ProfileStatsState
   const useWorker = !!data && borrowCycles.length >= WORKER_THRESHOLD
 
   const [workerResult, setWorkerResult] = useState<ProfileStatsResult | null>(null)
+  // M7 回归：Worker 失败标记——旧版失败后 workerResult 恒 null 且无失败态，
+  // computing 永久 true（遮罩常驻）；失败降级同步结果并解除遮罩。
+  const [workerFailed, setWorkerFailed] = useState(false)
 
   // 大数据 Worker 重算：opts 或实体变化时重启；卸载时 terminate 防泄漏。
+  // 重启先清旧结果与失败态：实体变化后旧 workerResult 是过期聚合，不得展示
+  // （回退应取当前实体的 syncResult）；失败后解除 computing 遮罩。
   useEffect(() => {
     if (!useWorker) return
     let cancelled = false
+    setWorkerResult(null)
+    setWorkerFailed(false)
     const worker = new Worker(new URL('./stats-worker.ts', import.meta.url), {
       type: 'module',
     })
@@ -102,6 +109,7 @@ export function useProfileStats(opts: UseProfileStatsOptions): ProfileStatsState
       })
       .catch(() => {
         // Worker 失败降级到同步结果，不崩整页（reading-profile §5）。
+        if (!cancelled) setWorkerFailed(true)
       })
     return () => {
       cancelled = true
@@ -109,13 +117,8 @@ export function useProfileStats(opts: UseProfileStatsOptions): ProfileStatsState
     }
   }, [useWorker, books, catalogRecords, borrowCycles, sources, deferredOpts])
 
-  // opts 变化时清空旧 Worker 结果，避免展示过期聚合。
-  useEffect(() => {
-    setWorkerResult(null)
-  }, [deferredOpts])
-
   const result = useWorker ? (workerResult ?? syncResult) : syncResult
-  const computing = useWorker && workerResult === null
+  const computing = useWorker && workerResult === null && !workerFailed
 
   return { loading, computing, result }
 }
