@@ -12,6 +12,7 @@ import type { EnrichmentContext } from '@/enrich/enrich-service'
 import type { OpacDetail } from '@/enrich/opac-provider'
 import { mapOpacDetail } from '@/lib/opac-mapping'
 import { EditForm, validateBookFields } from './-edit-dialog'
+import { applyRecordPrefill, type RecordDraft } from './-edit-actions'
 
 // 表单体的事件处理器引用 db 单例，SSR 渲染不触发，桩空对象即可。
 vi.mock('@/db/db-instance', () => ({ db: {} }))
@@ -413,5 +414,41 @@ describe('validateBookFields — 前端校验', () => {
     expect(validateBookFields({ ...valid, priceCurrency: 'CNY' }, t)).toHaveProperty('price')
     expect(validateBookFields({ ...valid, priceAmount: '45', priceCurrency: 'CNY' }, t)).toEqual({})
     expect(validateBookFields({ ...valid, priceAmount: 'abc', priceCurrency: 'CNY' }, t)).toHaveProperty('price')
+  })
+})
+
+describe('applyRecordPrefill — 打开期间「重新抓取」后建议分类同步（M5 回归）', () => {
+  const draft = (over: Partial<RecordDraft>): RecordDraft => ({
+    metaId: '9001',
+    volume: '3',
+    barcodes: 'B3',
+    classifications: [{ system: 'clc', code: 'I247.5' }],
+    ...over,
+  })
+
+  it('有新建议 → 被补全编目分类替换为新建议，其余字段与其它编目不动', () => {
+    const records: Record<string, RecordDraft> = {
+      'cr-1': draft({}),
+      'cr-2': draft({ metaId: '9002', volume: '4', barcodes: 'B4', classifications: [{ system: 'clc', code: 'K82' }] }),
+    }
+    const next = applyRecordPrefill(records, 'cr-1', [{ system: 'clc', code: 'J238.2' }])!
+    // 被补全编目：仅 classifications 更新；volume/barcodes/metaId 保留。
+    expect(next['cr-1']!.classifications).toEqual([{ system: 'clc', code: 'J238.2' }])
+    expect(next['cr-1']!.volume).toBe('3')
+    expect(next['cr-1']!.barcodes).toBe('B3')
+    expect(next['cr-1']!.metaId).toBe('9001')
+    // 其它编目原样（引用不变）。
+    expect(next['cr-2']).toBe(records['cr-2'])
+  })
+
+  it('无建议（null/undefined）→ null（不动）', () => {
+    const records = { 'cr-1': draft({}) }
+    expect(applyRecordPrefill(records, 'cr-1', null)).toBeNull()
+    expect(applyRecordPrefill(records, 'cr-1', undefined)).toBeNull()
+  })
+
+  it('编目不存在 → null（不动）', () => {
+    const records = { 'cr-1': draft({}) }
+    expect(applyRecordPrefill(records, 'cr-404', [{ system: 'clc', code: 'J' }])).toBeNull()
   })
 })

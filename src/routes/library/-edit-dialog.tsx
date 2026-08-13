@@ -2,7 +2,7 @@
 // 书目全字段 + 每 CatalogRecord 的 volume/barcodes/classifications；保存走
 // updateBookWithRecords 单事务（ISBN 冲突 IsbnConflictError 内联展示）。
 // 普通书目、选书帮占位、套装候选共用；待审类型差异仅体现在徽标与卷号解析辅助。
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wand2Icon, XIcon } from 'lucide-react'
 
@@ -45,9 +45,11 @@ import type {
 } from '@/types/entities'
 import {
   IsbnConflictError,
+  applyRecordPrefill,
   updateBookWithRecords,
   type BookDraft,
   type CatalogRecordDraft,
+  type RecordDraft,
 } from './-edit-actions'
 
 export interface EditDialogProps {
@@ -82,14 +84,8 @@ const CLASSIFICATION_SYSTEMS: ClassificationSystem[] = ['clc', 'ddc', 'lcc', 'ud
 
 const PUBLISH_DATE_RE = /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/
 
-/** 编目行本地编辑态。 */
-interface RecordDraft {
-  metaId: string
-  volume: string
-  /** 条码多行文本（每行一条）。 */
-  barcodes: string
-  classifications: ClassificationEntry[]
-}
+/** 编目行本地编辑态（-edit-actions 定义，供草稿装配）。 */
+export type { RecordDraft } from './-edit-actions'
 
 interface FieldErrors {
   title?: string
@@ -265,6 +261,20 @@ export function EditForm({
     }
     return init
   })
+
+  // M5 回归：打开期间「重新抓取」→ 上下文替换 → 把新建议分类同步进被补全编目
+  // 的草稿（首挂载时与 initializer 幂等；仅改 classifications，不动用户其它编辑）。
+  useEffect(() => {
+    if (!enrichment || !prefill?.recordPrefill) return
+    setRecords((prev) => {
+      const next = applyRecordPrefill(
+        prev,
+        enrichment.recordId,
+        prefill.recordPrefill!.classifications,
+      )
+      return next ?? prev
+    })
+  }, [enrichment, prefill])
 
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saveError, setSaveError] = useState<string | null>(null)

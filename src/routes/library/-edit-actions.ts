@@ -63,6 +63,35 @@ export interface CatalogRecordDraft {
   classifications: ClassificationEntry[]
 }
 
+/**
+ * 编目行本地编辑态（编辑表单草稿）。
+ */
+export interface RecordDraft {
+  metaId: string
+  volume: string
+  /** 条码多行文本（每行一条）。 */
+  barcodes: string
+  classifications: ClassificationEntry[]
+}
+
+/**
+ * M5 回归：enrichment 上下文在对话框打开期间被「重新抓取」替换时（handleEnrich
+ * 在 edit 已 true 时只 setEnrichment、不重开对话框），records 若仅首挂载初始化，
+ * 新建议分类不会进入表单，保存却按新上下文把编目标记 fetched——建议分类静默丢弃。
+ * 把被补全编目的分类草稿同步为新建议（其余草稿字段与其它编目不动）。
+ * 返回 null = 无需变更（无建议 / 编目不存在）。
+ */
+export function applyRecordPrefill(
+  records: Record<string, RecordDraft>,
+  recordId: string,
+  prefillClassifications: ClassificationEntry[] | null | undefined,
+): Record<string, RecordDraft> | null {
+  if (!prefillClassifications) return null
+  const cur = records[recordId]
+  if (!cur) return null
+  return { ...records, [recordId]: { ...cur, classifications: prefillClassifications } }
+}
+
 /** OPAC 补全保存载荷（opac-enrichment 规格 §7.2）：同一事务写目标编目 opacEnrichment。
  *  不参与字段合并（表单值即最终裁决）；Zod 失败整体回滚时状态一并回滚。 */
 export interface EnrichmentSavePayload {
