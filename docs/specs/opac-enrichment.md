@@ -14,6 +14,20 @@ szlib 流通记录 JSON 只携带 `metaid`/`metatable` 与部分书目字段：`
 
 **多来源泛化**：不同图书馆 OPAC 接口形态各异（URL/参数/响应字段/未找到判定/部署约束均不同），未来还可能接入 OpenLibrary 等按 ISBN 补全的源（[design-decisions 未来扩展](../design-decisions.md)）。补全层以 **provider 架构**应对（§2）：来源差异全部收口在 `OpacProvider` 实现内，映射（§5.2）、预填（§5.3）、应用（§7.2）、状态机（§6）与来源无关。该模式与既有 `SourceParser` 注册表（[source.md](../metadata/source.md)、[import-pipeline §2](import-pipeline.md#2-parser-接口与注册表)）同构，一份心智模型管两条管线。
 
+**2026-08 交互重构（详情页逐本工作流，用户定案）**：批量补全初版存在两处交互缺陷——
+
+1. **来源多样就乱套**：批量入口把全库候选按 provider 分组一次抓取——多来源并存时结果互相覆盖、结果项不区分来源/编目归属，同名 Book 的多来源记录无法区分；更根本的是**一本书对应多条编目（多来源合并），列表级批量抓取在编目粒度上无从表达**——勾选校验、来源分组、目标编目识别全部为此兜复杂度。
+2. **批量后单条编辑返回丢状态**：结果面板是列表页组件 `useState`，进入 `/$bookId?edit=true` 编辑后返回，面板随组件卸载丢失，未应用项必须整批重新抓取；建议上下文经单槽 `setPendingEnrichment`/`takePendingEnrichment` 传递且**消费一次即清**——取消编辑即丢建议。
+
+**重构决策：放弃列表批量补全**。书库列表不出现任何批量补全入口；补全收敛为**详情页逐本工作流**：
+
+- 每条 CatalogRecord 卡自带其 provider 的「从 {provider.displayName} 补全」按钮——来源隔离天然成立（一个按钮 = 一个 provider = 一条编目），「多来源乱套」从入口上消灭；
+- 详情页头部加**「‹ 上一个 / 下一个 ›」翻页**（按书库列表当前筛选/排序视图顺序），逐本补全不离开详情页上下文——编辑 Dialog（`search.edit=true`）与补全按钮同页，补全 → 编辑 → 保存 → 翻下一本全程无列表往返，「批量后返回丢状态」场景不存在；
+- 单条上下文为详情页**组件态**（§7.3）：抓取成功入 state → Dialog 预填；取消保留（重开仍带建议）、「重新抓取」覆盖、刷新丢失（重抓即可）；
+- 批量编排与批量面板**整体删除**（`enrichCatalogRecords`/候选集聚合函数/`EnrichBatchPanel`/会话 store），补全能力只保留单条路径（`enrichOneRecord`）。
+
+设计依据的同类最佳实践：逐条处理编目记录（图书馆编目员工作流：一条 MARC 一条 MARC 过，相邻记录翻页）、审阅队列的「上一条/下一条」逐篇模式（邮件收件箱 / 审阅工具）。曾考虑「列表勾选驱动 + 跨来源校验阻止」（Gmail 批量条模式），因编目粒度问题放弃，见 §10 存档。
+
 ## 2. Provider 架构（泛化核心）
 
 ### 2.1 统一中间态 `OpacDetail`
@@ -46,6 +60,8 @@ interface OpacProvider {
   id: string
   /** UI 文案用显示名，如「深圳图书馆 OPAC」 */
   displayName: string
+  /** 短名（徽标用，如「深图」）；缺省回退 displayName。多来源并存时字段级徽标/会话分区用它区分来源 */
+  shortName?: string
   /** 候选键：以什么实体字段反查本来源 OPAC */
   lookupKey: 'metaId' | 'isbn13'
   /** 用户可访问的详情页外链（降级/溯源）；无 → null */
@@ -77,7 +93,7 @@ type OpacDetailResult =
 2. 实现 provider：`fetchDetail`（经传输基元）+ 纯函数响应解析（§5.1，可单测）+ `detailUrl` + `lookupKey` 声明。
 3. 单测：响应解析契约 + 注册表分发 + 候选集过滤（§12）。
 4. 评估 CORS 部署形态，更新 §8 对照表与降级文案。
-5. i18n：`enrich.*` 命名空间补 displayName 相关键；批量入口/按钮文案自动按 provider 显示。
+5. i18n：`enrich.*` 命名空间补 displayName/shortName 相关键；详情页按钮/徽标文案自动按 provider 显示。
 
 ## 3. 数据源契约：szlib（首个 provider 参考实现，已实测 2026-08-01）
 
@@ -149,6 +165,8 @@ src/
 ├─ lib/
 │  ├─ opac-mapping.ts       # mapOpacDetail(detail: OpacDetail, existing): { changes, warnings }（来源无关，纯函数）
 │  │                        # + prefillFromChanges(book, record, changes): { bookPrefill, recordPrefill, applied }（纯函数）
+│  ├─ library-view.ts       # 书库视图派生（列表页与详情页翻页共用，§10）：LibraryRow 构建 + filtered 过滤/排序
+│  │                        #   （自 routes/library/index.tsx 抽出；filterBookByReviewType/sort 逻辑唯一来源）
 │  └─ opac-mapping.test.ts
 ├─ enrich/
 │  ├─ opac-provider.ts      # OpacProvider / OpacDetail / OpacDetailResult 类型 + 注册表 getProvider(parserId)
@@ -156,15 +174,25 @@ src/
 │  ├─ providers/
 │  │  └─ szlib/
 │  │     ├─ detail.ts       # parseSzlibDetail(text): OpacDetailResult — 响应解析 + 空负载判定（纯函数）
-│  │     └─ index.ts        # szlibProvider：URL 构造 + fetchDetail（metaTable/client_id）+ detailUrl
-│  ├─ enrich-service.ts     # enrichCatalogRecords(...) 抓取编排：provider 分派、并发上限、幂等跳过、
-│  │                        #   成功项产出建议改动队列（零实体写入）；not_found/failed 仅回写状态
+│  │     └─ index.ts        # szlibProvider：URL 构造 + fetchDetail（metaTable/client_id）+ detailUrl + shortName
+│  └─ enrich-service.ts     # 仅单条路径：enrichOneRecord（超时/重试/状态回写/产出上下文）+ 候选判定
+│                           #   isEnrichmentCandidate / hasLookupKey（详情页按钮可见性用）；
+│                           #   批量编排与候选集聚合（enrichCatalogRecords/collectCandidates/
+│                           #   groupCandidatesByProvider/countPlaceholderExcluded）已删除（§1）
 │  └─ opac-provider.test.ts / providers/szlib/detail.test.ts / enrich-service.test.ts
 ├─ routes/library/
-│  ├─ $bookId.tsx           # 「从 {provider.displayName} 补全」：抓取 → 打开编辑 Dialog（search.edit=true + 建议改动上下文）
+│  ├─ index.tsx             # 无批量补全入口（§1）；行链接带当前视图 search 参数（q/source/status/sort/dir），
+│  │                        #   详情页翻页据此延续筛选/排序上下文
+│  ├─ $bookId.tsx           # 头部「‹ 上一个 / 下一个 ›」翻页（library-view 派生，§10）；
+│  │                        #   search 扩展列表视图参数；「从 {provider.displayName} 补全」抓取成功 →
+│  │                        #   context 入组件态（§7.3）→ 打开编辑 Dialog（search.edit=true）
 │  ├─ -edit-dialog.tsx      # 补全预填（prefillFromChanges 初始化表单）+ 现有值对照 +「恢复现有值」+ 摘要条
+│  │                        #   + 目标编目高亮与 provider 徽标（§10）
 │  └─ -edit-actions.ts      # updateBookWithRecords 扩展可选 enrichment 载荷（同事务写 opacEnrichment，§7.2）
+│                           #   （行为不变；无 applied 会话回调）
 ```
+
+> 已删除文件：`src/enrich/enrich-session.ts`（单槽 → 会话 store 两版均废弃，详情页组件态取代）、`src/components/enrich-batch.tsx`（批量面板）。
 
 ## 5. 纯函数契约
 
@@ -274,7 +302,7 @@ opacEnrichment: {
   2. 命中 provider 的 `lookupKey` 对应字段满足：`'metaId'` → `metaIdKey` 非空且 `metaId !== 0`；`'isbn13'` → `Book.isbn13` 非空（如未来 OpenLibrary）；
   3. `opacEnrichment.status !== 'fetched'`；
   4. 其 `Book` 非占位。
-- **抓取阶段**（`enrich-service`）：按 provider 分派（`getProvider(source.parserId)`）；整体并发上限 4、单请求超时 10s、失败指数退避重试（最多 2 次）；`not_found`/`failed` 立即回写状态（含 providerId）、**不触碰实体**；成功项产出 `{ record, changes, warnings, sourceUrl }` 队列（会话内存，不落库、不写状态）。
+- **抓取阶段**（`enrich-service.enrichOneRecord`）：按 provider 分派（`getProvider(source.parserId)`）；单请求超时 10s、失败指数退避重试（最多 2 次）；`not_found`/`failed` 立即回写状态（含 providerId）、**不触碰实体**；成功产出 `{ record, changes, warnings, sourceUrl }` 上下文（零写入；落点 = 详情页组件态，§7.3）。批量编排（`enrichCatalogRecords`/候选集聚合）已随批量入口删除（§1）。
 - **应用阶段**（编辑表单）：预填 → 审视 → 保存（§7.2）。
 - **重建/重放语义**：replay 重建（[settings §4](settings.md#4-重建模式对照)）后 `opacEnrichment` 归 `null`（重导后需重新触发补全）；snapshot 恢复保留已补全字段与状态。已应用字段视为人工值，重导后丢失（与人工编辑同一取舍，book-editing §2.3）。
 
@@ -286,11 +314,35 @@ opacEnrichment: {
 
 ### 7.2 应用阶段（编辑表单）
 
-- **单条**：详情页「从 {provider.displayName} 补全」→ 抓取成功 → `navigate({ search: { edit: true } })` 打开编辑 Dialog，经组件 props 传入该编目 changes → 表单按 §5.3 预填（建议值入框 + 现有值对照，§10）→ 保存走 `updateBookWithRecords`（见下）→ 成功 Dialog 关闭、`useLiveQuery` 自动刷新；**取消 → 实体与状态零改动**，可随时重新抓取。
+- **唯一路径 = 详情页单条**：详情页某 CatalogRecord 卡「从 {provider.displayName} 补全」→ 抓取成功 → 上下文存入详情页组件态（§7.3）并打开编辑 Dialog（`search.edit=true`）→ 表单按 §5.3 预填（建议值入框 + 现有值对照，§10）→ 保存走 `updateBookWithRecords`（见下）→ 成功 Dialog 关闭、`useLiveQuery` 自动刷新；**取消 → 实体与状态零改动，上下文保留在组件态**——重开编辑仍带建议，无需重新抓取；「重新抓取」按钮覆盖上下文。
 - **保存钩子**：`updateBookWithRecords(db, bookId, bookDraft, recordDrafts, enrichment?: { recordId; providerId; status: 'fetched'; fetchedAt: Date; sourceUrl: string })`——可选载荷，**同一事务**写目标编目 `opacEnrichment`（Zod 失败整体回滚时状态一并回滚）；不传则行为与普通编辑完全一致。enrichment 载荷不参与字段合并（表单值即最终裁决）。
-- **批量**：书库列表 / 导入完成页「从 OPAC 补全 (N)」（多来源时按 provider 分组显示各自计数）→ 抓取阶段（进度条，受控整数 N/M）→ 结果面板「成功 M / 未找到 K / 失败 F」→ 成功项逐条「查看改动并应用」→ 打开该书编辑 Dialog（同单条）→ 应用后该项移出面板；面板关闭后未应用项不保留（会话内存，重新触发将重新抓取）。
-- **建议改动上下文不落 URL、不落库**（会话内存组件状态传递）。
+- **建议改动上下文不落 URL、不落库**（§7.3：仅存于详情页组件态；无批量场景，无跨页传递需求）。
 - **needsReview 联动**：保存即 `needsReview=false`（book-editing §2.2 既有语义，保存 = 人工确认）；占位 Book 不在此流程（§7.1）。
+
+### 7.3 单条上下文生命周期（详情页组件态）
+
+> 批量方案废弃后（§1），无「批量结果面板跨页保留」需求；抓取结果只存在于**详情页组件态**。本小节定义其生命周期与取舍。
+
+**生命周期**：
+
+```
+抓取成功 ──▶ context 入组件 state（enrichment）
+              │
+              ├─ 打开编辑 Dialog（search.edit=true）── 表单初始 state = 现有值 ∪ prefillFromChanges
+              │      ├─ 保存 ──▶ 同事务写 opacEnrichment(status='fetched') → 成功关 Dialog
+              │      └─ 取消 ──▶ 实体零改动，context 保留 → 重开编辑仍带建议
+              ├─ 「重新抓取」──▶ 覆盖 context（旧建议丢弃）
+              ├─ 翻页 / 离开详情页 ──▶ context 随组件卸载丢弃
+              └─ 刷新 ──▶ context 丢失（不落 URL、不落库）
+```
+
+**约束与取舍**：
+
+- **不落 URL、不落库**：建议上下文是瞬态操作态；落 URL 会与 `?edit=true` 纠缠（刷新后自动重开 Dialog 却带陈旧建议），落 IndexedDB 进备份/重建语义。**刷新丢失 = 重新抓取一次**（成本一次请求，可接受）。
+- **组件态足够**：Dialog 是详情页内浮层（book-editing §4.1），详情页组件不因 Dialog 开合卸载——取消后 context 天然保留；「翻页/离开」卸载丢弃是显式离开该书上下文（与「点列表另一本书」行为一致），无需跨页保留。
+- **不引入模块级 store / sessionStorage**（废弃方案对比）：批量场景的「结果面板跨导航/刷新保留」随批量入口一起删除；为单条场景引入 store 是过度设计——组件态已覆盖全部需求。
+- **多编目书**：每编目卡独立抓取、独立 context；同一时间只处理一个编目的建议（Dialog 内目标编目高亮，§10），上下文互不干扰。
+- **确定性**：同 `recordId` 重复抓取 → 覆盖；重复打开 Dialog → 同一 context 预填（`prefillFromChanges` 以打开时实体为准，表单即最终裁决，§5.4）。
 
 ## 8. 部署与降级（CORS）
 
@@ -309,44 +361,66 @@ opacEnrichment: {
 
 - 仅向对应 provider 发送其 `lookupKey` 所需的最小公开标识（szlib：`metaId` + `metaTable` + 固定 `client_id`；未来 isbn13 型 provider 仅发 ISBN），**不发送**借阅记录、barcode、个人偏好或本地库内容。
 - 不持久化接口原始响应：抓取结果只以会话内建议改动存在，落库的只有**用户确认后**的实体字段与补全状态。
-- 补全为用户显式触发（导入完成后按钮 / 详情页按钮），不做静默后台洪水请求（并发上限 §7）；批量抓取仅产出建议，不静默改库。
+- 补全为用户显式触发（详情页单条按钮），不做静默后台洪水请求（单请求超时/重试 §7）；抓取仅产出建议，不静默改库。
 
 ## 10. UI 设计说明（统一 UI 里程碑；依赖 book-editing 编辑表单）
 
-- **书目详情页**：含有效 `lookupKey` 的 CatalogRecord 显示「从 {provider.displayName} 补全」Button；点击 → 按钮 loading →
-  - 成功：自动打开编辑 Dialog（`search.edit=true`），传入建议改动上下文；
+- **书目详情页（补全唯一入口）**：含有效 `lookupKey` 的 CatalogRecord 显示「从 {provider.displayName} 补全」Button；点击 → 按钮 loading →
+  - 成功：context 存入详情页组件态（§7.3）并自动打开编辑 Dialog（`search.edit=true`）；
   - `not_found` / `failed`：toast 提示（「馆内未找到该编目」/ 失败降级文案），状态已回写，**不打开 Dialog**。
+- **翻页导航（「‹ 上一个 / 下一个 ›」，逐本工作流核心）**：
+  - 详情页头部动作区（「编辑」旁）放「‹ 上一个 / 下一个 ›」按钮对（outline，编目终端气质）；边界禁用。
+  - **顺序 = 书库列表当前视图**：详情页 `search` 扩展列表视图参数（`q`/`source`/`status`/`sort`/`dir`，与 [library/index.tsx 现有 search schema](ui-navigation.md) 同构）；列表行链接**携带当前筛选/排序**（`search={{ ...视图参数 }}`），从列表点进详情页后，翻页沿同一过滤/排序管线找相邻行——「继续处理我筛选出来的这批书」。直接 URL 打开（无参数）→ 全库默认视图（title asc）。
+  - 派生逻辑抽公共模块 `src/lib/library-view.ts`（列表页与详情页共用，避免两处排序/过滤实现漂移）。
+  - 翻页导航**不带 `edit=true`**（未保存的 Dialog 编辑随翻页放弃，与「点列表另一本书」一致）；翻页即显式离开当前书上下文，context 随组件卸载丢弃（§7.3）。
 - **编辑 Dialog（复用 [book-editing §3](book-editing.md#3-编辑表单-ui-规格详情页-dialog) 表单）**：
   - **建议值入框**：表单初始 state = 现有值 ∪ `prefillFromChanges` 建议（§5.3）——fill 与 conflict 字段的输入框都直接呈现建议值，用户当场审视替换或保留。
   - **现有值对照**（conflict 字段，核心形态）：字段标签与输入框之间显示「现有：{current}」对照文字（低对比/删除线样式；长文本 `line-clamp` 截断 + 悬停 title 全文；数组字段以顿号分隔串回显）；输入框旁「恢复现有值」按钮——输入框值 ≠ 初始现有值时自动出现，点击回退初始值并隐藏。恢复后该字段等同「拒绝采纳」，其余字段不受影响。
-  - **徽标**：建议字段追加「OPAC」徽标（outline）；conflict 徽标警示色、fill 常规色，一眼区分「有旧值可对照」与「纯新增」。
-  - **摘要条**：Dialog 顶部一行「OPAC 建议：已填 N 项，M 项与现有不同」——全局兜底审视；逐条细节内联在字段，**不设独立建议面板**（同一信息只维护一处）。
+  - **目标编目高亮**（多编目书的关键形态）：上下文指向的 CatalogRecord 卡加主色边框 + 「{provider.shortName} 补全目标」徽标——明确「这次建议作用于哪条编目」，保存只写该编目 `opacEnrichment`（其余编目不受影响）；Dialog 顶部提示「保存后仅标记 {来源} 编目为已补全」。
+  - **provider 溯源徽标**：建议字段追加「{provider.shortName} OPAC」徽标（outline）；conflict 徽标警示色、fill 常规色，一眼区分「有旧值可对照」与「纯新增」——多来源建议可溯源；同书两条编目对同字段给出不同建议时按**顺序裁决**：先保存者成为后保存者的「现有：…」（对照文本即裁决现场）。
+  - **摘要条**：Dialog 顶部一行「{provider.displayName} 建议：已填 N 项，M 项与现有不同」——全局兜底审视；逐条细节内联在字段，**不设独立建议面板**（同一信息只维护一处）。
   - **空值边界**：用户清空某字段保存 = 清空该字段（与普通编辑一致，`'' → null`）；「恢复现有值」可随时还原。
-  - 保存流程与普通编辑完全一致（book-editing §3.4：前端校验、ISBN 冲突预检——conflict 预填的建议 ISBN 若被他书占用，保存时 `IsbnConflictError` 内联报错、整体回滚、状态不写；单事务保存 + enrichment 载荷）；取消不写任何状态。
-  - **交互范式依据**（优秀设计检索，2026-08）：旧值就近低对比展示 + 变更字段自动出现 revert 按钮（[UX StackExchange 108938](https://ux.stackexchange.com/questions/108938/what-is-the-best-ui-for-overwriting-previously-saved-values) 高赞共识：字段直接可编辑、不搞双列布局、变更即出现还原）；建议内联、一键接受/拒绝（Google Docs / Word 修订「建议模式」）；源文/译文逐段对照审校（CAT 编辑器逐段接受机器翻译建议）。
-- **批量入口**（书库列表 / 导入完成页）：「从 OPAC 补全 (N)」+ 抓取进度条；多来源并存时按 provider 分组显示计数；完成 → 结果面板「成功 M / 未找到 K / 失败 F」（未找到/失败计数可折叠，占位记录计数单独说明 §7.1）→ 成功项列表逐条「查看改动并应用」打开该书编辑 Dialog（同单条）；应用后该项移出面板。
+  - 保存流程与普通编辑完全一致（book-editing §3.4：前端校验、ISBN 冲突预检——conflict 预填的建议 ISBN 若被他书占用，保存时 `IsbnConflictError` 内联报错、整体回滚、状态不写；单事务保存 + enrichment 载荷）；取消不写任何状态（context 保留组件态，§7.3）。
+  - **交互范式依据**（优秀设计检索，2026-08）：旧值就近低对比展示 + 变更字段自动出现 revert 按钮（[UX StackExchange 108938](https://ux.stackexchange.com/questions/108938/what-is-the-best-ui-for-overwriting-previously-saved-values) 高赞共识：字段直接可编辑、不搞双列布局、变更即出现还原）；建议内联、一键接受/拒绝（Google Docs / Word 修订「建议模式」）；源文/译文逐段对照审校（CAT 编辑器逐段接受机器翻译建议）；相邻记录翻页逐条处理（图书馆编目员逐条 MARC 工作流、邮件收件箱「上一条/下一条」）。
+- **书库列表 / 导入完成页：无批量补全入口**（§1 定案）。列表行链接带视图参数供详情页翻页延续；「待完善」标记/筛选/徽标（book-editing §5）不变。
 - **常驻外链**：详情页「在 {provider.displayName} 查看」新标签链接（provider `detailUrl`，降级与溯源）。
 - 文案走 `t()`（[i18n-conventions](../i18n-conventions.md)），namespace `enrich.*`（字段标签复用 `edit.*` 键）。
 
+### 10.1 存档：被否决的批量方案
+
+| 方案 | 否决原因 |
+|------|---------|
+| 全量批量（按 provider 分组按钮 + 会话面板） | 结果互相覆盖、不区分来源；批量后单条编辑返回丢面板；**更根本：列表行 = Book（可含多来源多编目），批量抓取在编目粒度上无从表达**，需勾选校验/来源分组/目标编目识别整套兜复杂度 |
+| 列表勾选驱动（Gmail 批量条：勾选书目才出现「从 OPAC 补全」+ 跨来源阻止提示） | 缓解而非根治：仍需跨来源校验与编目粒度映射；勾选态为瞬态，触发后结果仍落入批量面板，面板生命周期问题依旧；「减少抓取量」收益在详情页逐本工作流下天然获得（一次只抓一本的当前编目） |
+| 会话 store + sessionStorage 持久化 | 为「批量结果面板跨页保留」服务；批量入口删除后无需求，组件态已覆盖单条场景，引入 store 是过度设计 |
+
+**定案（2026-08-13 用户）：详情页逐本工作流**——补全入口收敛到详情页单条（来源隔离天然成立），翻页按钮解决逐本处理的导航成本，编辑 Dialog 同页；复杂度整体消失。
+
 ## 11. 用户故事与验收用例
 
-1. 导入 szlib 流水（含缺 ISBN/缺作者记录）→ 点批量补全 → 抓取成功项进入结果面板 →「查看改动并应用」打开编辑 Dialog：空字段已预填、非空差异字段预填建议值并对照显示现有值（title/authors/publisher/pages/price/subjects/coverUrl + classifications）→ 保存 → Book 落库、CatalogRecord 补 classifications、`opacEnrichment.status='fetched'` + `providerId='szlib'`、`sourceUrl` 正确。
-2. 已应用记录再次触发（单条/批量）→ 跳过（幂等，不重复请求）。
+1. 详情页某编目卡「从 {provider.displayName} 补全」→ 抓取成功 → 编辑 Dialog 自动打开：空字段已预填、非空差异字段预填建议值并对照显示现有值（title/authors/publisher/pages/price/subjects/coverUrl + classifications）→ 保存 → Book 落库、CatalogRecord 补 classifications、`opacEnrichment.status='fetched'` + `providerId='szlib'`、`sourceUrl` 正确。
+2. 已应用记录再次触发（单条）→ 跳过（幂等，不重复请求；按钮隐藏）。
 3. metaid 无效（§3.4）→ `status='not_found'` 立即回写，实体零改动，不打开 Dialog，UI 提示「馆内未找到该编目」。
 4. 占位（选书帮）记录 → 不在候选集；UI 置灰并说明。
 5. 现有字段非空且与 OPAC 不同（如导入 ISBN 与 OPAC ISBN 不一致）→ 输入框预填建议值，标签与输入框之间对照显示「现有：…」；直接保存 → 建议值覆盖（采纳）；「恢复现有值」后保存 → 旧值保留（拒绝采纳）；两种情形都写 `status='fetched'`（已审视即已确认，避免反复抓取）。
-6. 抓取成功但用户取消 Dialog → 实体与状态零改动；再次触发重新抓取。
+6. 抓取成功但用户取消 Dialog → 实体与状态零改动，**context 保留在详情页组件态**——重开该书编辑仍带建议（不重新抓取）；「重新抓取」按钮覆盖建议后仍是建议值入框。
 7. 用户在预填基础上修改任意值再保存 → 以表单当前输入为准（表单即最终裁决）。
 8. conflict 字段用户手改第三值（非建议值、非旧值）后保存 → 以手改值为准（表单即最终裁决）；「恢复现有值」可回退后再次手改。
 9. CORS 拦截环境 → 补全失败提示 + 外链降级可用；`pnpm dev` 代理环境补全成功。
-10. 无 provider 注册的来源（manual / Libby）→ 详情页与批量入口均不出现补全按钮；`getProvider` 返回 null 不报错。
-11. （扩展）接入 isbn13 型 provider（如 OpenLibrary）→ 无 metaId 但有 ISBN 的记录进入候选集，补全流程与 szlib 完全同构（同表单、同对照、同状态机）。
+10. 无 provider 注册的来源（manual / Libby）→ 详情页不出现补全按钮；`getProvider` 返回 null 不报错。
+11. （扩展）接入 isbn13 型 provider（如 OpenLibrary）→ 无 metaId 但有 ISBN 的记录出现补全按钮，补全流程与 szlib 完全同构（同表单、同对照、同状态机）。
+12. **翻页逐本工作流**：书库列表按「来源=深图、最近借阅降序」筛选 → 点进某书 → 头部「下一个」→ 沿同一视图顺序到相邻书（筛选/排序上下文延续，URL 带视图参数）；首本「上一个」、末本「下一个」禁用；直接 URL 打开详情页（无视图参数）→ 全库默认排序翻页。
+13. 翻页时编辑 Dialog 打开（`edit=true`）→ 点「下一个」→ 导航不带 `edit`（Dialog 关闭，未保存编辑放弃）；新书 context 为空 → 编辑为普通表单。
+14. **书库列表无任何批量补全入口**（无按钮/无勾选）；导入完成页同样无补全入口——补全只能经详情页单条触发。
+15. **多编目书**（同书深图 + 广图两条编目）：每条编目卡各自「从 {provider.displayName} 补全」按钮，独立抓取互不干扰；从深图编目补全 → Dialog 中该编目卡主色边框高亮 + 「深图 补全目标」徽标，广图编目卡无标记；保存只写深图编目 `opacEnrichment`。
+16. 同书两条编目对同字段给出不同建议（跨来源建议冲突）→ **顺序裁决**：先保存者成为后保存者的「现有：…」对照；字段徽标带 provider 短名（`{shortName} OPAC`）可溯源。
+17. 详情页刷新 → context 丢失（组件态，不落 URL/库）→ 重新点补全即可（一次请求成本）。
 
 ## 12. 测试清单（Vitest，mock fetch，夹具脱敏自 §3.3 实测样本）
 
 **`src/enrich/opac-provider.test.ts`**
 - 注册表：`getProvider('szlib')` 命中；未注册 id（如 'libby'、'manual'）→ `null` 不抛。
-- `szlibProvider` 契约：`id='szlib'`、`lookupKey='metaId'`、`detailUrl` 含 metaid。
+- `szlibProvider` 契约：`id='szlib'`、`lookupKey='metaId'`、`detailUrl` 含 metaid、`shortName` 非空（徽标用）。
 
 **`src/enrich/providers/szlib/detail.test.ts`**
 - 实测样本 JSON → 统一 `OpacDetail` 结构化正确（title/author/publish/page/price/subject/classno/isbn/img 映射，空串 → null）。
@@ -369,16 +443,26 @@ opacEnrichment: {
 - fill **与 conflict** 的建议值全部落入 bookPrefill / recordPrefill（classifications = 现有 ∪ 建议去重）；`applied` 含两者；kind 由 changes 保留供 UI 对照。
 
 **`src/enrich/enrich-service.test.ts`（UI 里程碑补）**
-- 候选集过滤（provider 感知：无 provider 来源排除；metaId 空/0 排除；isbn13 键 provider 按 Book.isbn13 过滤；已 fetched 排除；占位排除）；并发上限生效；超时/网络错误 → `failed` 回写（含 providerId）且实体不变；重试退避；not_found 回写；成功项产出 changes 队列且**零实体写入、零状态写入**；幂等跳过。
+- 候选判定（provider 感知：无 provider 来源排除；metaId 空/0 排除；isbn13 键 provider 按 Book.isbn13 过滤；已 fetched 排除；占位排除）；单条抓取：超时/网络错误 → `failed` 回写（含 providerId）且实体不变；重试退避；not_found 回写；成功产出 context（changes/warnings/sourceUrl）且**零实体写入、零状态写入**；幂等跳过（fetched 记录不触发）。批量编排与候选集聚合函数已删除（无测试）。
+
+**`src/lib/library-view.test.ts`（新增，§10 翻页）**
+- 视图派生与列表页过滤/排序等价（同一输入同序）；翻页相邻计算：首/末边界（prev/next 为 null）；携带视图参数（q/source/status/sort/dir）与缺省（全库 title asc）顺序正确；`edit` 参数不影响相邻计算。
 
 **`src/routes/library/-edit-actions.test.ts`（增量）**
 - `updateBookWithRecords` 带 enrichment 载荷 → 同事务写 `opacEnrichment`（providerId/status/fetchedAt/sourceUrl）；不带载荷 → 不触碰该字段；Zod 非法回滚时状态一并回滚（不残留）。
 
 **`src/routes/library/-edit-dialog.test.tsx`（增量）**
-- 带建议改动上下文打开 → fill 与 conflict 字段均预填建议值；conflict 字段渲染「现有：…」对照文字 + 警示徽标；「恢复现有值」回退初始值且按钮隐藏、再次手改后按钮复现；摘要条计数正确（N 已填 / M 冲突）；取消不触发保存、不写状态。
+- 带建议改动上下文打开 → fill 与 conflict 字段均预填建议值；conflict 字段渲染「现有：…」对照文字 + 警示徽标；「恢复现有值」回退初始值且按钮隐藏、再次手改后按钮复现；摘要条计数正确（N 已填 / M 冲突）；**目标编目卡高亮 + provider 徽标（shortName）；摘要条带 provider.displayName**；取消不触发保存、不写状态。
+
+**`src/routes/library/$bookId.test.tsx`（增量）**
+- 单条抓取成功 → context 入组件态并自动打开编辑 Dialog（`edit=true`）；取消后重开编辑仍带建议（不重新抓取）；「重新抓取」覆盖 context 后仍建议值入框；刷新/翻页后 context 为空（普通编辑）；**翻页**：视图参数延续、相邻书正确、边界禁用、导航不带 `edit`。
+
+**`src/routes/library/index.test.tsx`（增量）**
+- 列表无批量补全入口（无按钮/无勾选）；行链接带当前视图 search 参数（q/source/status/sort/dir + 可选 edit）。
 
 ## 13. React 性能规则引用
 
 - 抓取为异步 I/O + 轻量纯函数映射（provider 解析 / `mapOpacDetail`），不阻塞主线程，无需 Worker（对照 [design-decisions 并发与性能](../design-decisions.md)）。
-- 批量进度用受控整数状态（N/M），不逐条触发 setState。
-- 结果面板复用书库既有列表渲染模式；`bundle-barrel-imports`：详情页组件按需 import，避免 barrel 拉体积。
+- 翻页派生复用列表页 `library-view.ts` 内存管线（books/catalogRecords/borrowCycles/sources 已全量加载），无新增查询；详情页翻页仅多一次全量派生，量级与列表页一致。
+- 无批量面板/会话 store（已删除），无跨页订阅与 storage 写入负担。
+- `bundle-barrel-imports`：详情页组件按需 import，避免 barrel 拉体积。
