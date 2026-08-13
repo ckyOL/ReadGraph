@@ -33,6 +33,8 @@ interface GanttRenderApi {
 
 interface Props {
   data: ProfileStatsResult['gantt']
+  /** tooltip 日期呈现时区（M6：旧版用浏览器时区、无视偏好）。 */
+  displayTimezone: string
   emptyTitle: string
   emptyDescription: string
 }
@@ -52,7 +54,7 @@ function statusColor(
   }
 }
 
-function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
+function BorrowGanttImpl({ data, displayTimezone, emptyTitle, emptyDescription }: Props) {
   const { t, i18n } = useTranslation('pages')
   const palette = useChartPalette()
 
@@ -169,6 +171,14 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
         : []),
     ]
 
+    // tooltip 日期格式器：UTC 存储时间 → displayTimezone 本地日期（M6）。
+    const tooltipDate = new Intl.DateTimeFormat(i18n.language, {
+      timeZone: displayTimezone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    })
+
     const opt: EChartsOption = {
       tooltip: {
         formatter: (p) => {
@@ -177,9 +187,11 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
           const param = p as { data?: (typeof items)[number] }
           const d = param.data
           if (!d) return ''
-          const endTxt = d._end ? new Date(d._end).toLocaleDateString(i18n.language) : t('profile.summary.inBorrow')
+          // M6 回归：tooltip 日期按 displayTimezone 呈现（旧版 toLocaleDateString
+          // 用浏览器时区、无视偏好）；借阅时间存 UTC，转换后显示本地日期。
+          const endTxt = d._end ? tooltipDate.format(new Date(d._end)) : t('profile.summary.inBorrow')
           const label = d._volume ? `${d._label} · ${d._volume}` : d._label
-          return `${label}<br/>${new Date(d._start).toLocaleDateString(i18n.language)} → ${endTxt}`
+          return `${label}<br/>${tooltipDate.format(new Date(d._start))} → ${endTxt}`
         },
         backgroundColor: palette.popover,
         textStyle: { color: palette.popoverForeground },
@@ -237,7 +249,7 @@ function BorrowGanttImpl({ data, emptyTitle, emptyDescription }: Props) {
       ],
     }
     return { option: opt, laneCount: lanes.length, viewport }
-  }, [data, hasData, now, palette, t, i18n.language])
+  }, [data, hasData, now, palette, t, i18n.language, displayTimezone])
 
   const ref = useECharts(option)
 

@@ -76,3 +76,29 @@ export function formatDateTimeInTz(date: Date, timezone: string): string {
 export function formatDayDuration(days: number): string {
   return String(Math.max(1, Math.ceil(days)))
 }
+
+const MONTH_BUCKET_RE = /^(\d{4})-(\d{2})$/
+
+/**
+ * 借阅量桶标签（reading-profile §4）：桶键为 UTC 日历单位（YYYY-MM / YYYY），
+ * 标签按其 UTC 名字呈现。用 displayTimezone 格式化桶起点会把 UTC− 时区的
+ * 月/年标签错显上月/上年（M6 回归：美洲/西欧时区月标签错显、年标签错显）。
+ * language 决定月份名与格式。
+ */
+export function formatBucketLabel(bucket: string, language: string): string {
+  const m = MONTH_BUCKET_RE.exec(bucket)
+  if (m) {
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, 1))
+    return new Intl.DateTimeFormat(language, {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: 'short',
+    }).format(d)
+  }
+  // 年桶：仅显示年。
+  const d = new Date(Date.UTC(+bucket, 0, 1))
+  return new Intl.DateTimeFormat(language, {
+    timeZone: 'UTC',
+    year: 'numeric',
+  }).format(d)
+}

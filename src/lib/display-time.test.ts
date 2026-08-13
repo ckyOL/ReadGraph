@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { formatDateInTz, formatDateTimeInTz, formatDayDuration } from './display-time'
+import { formatBucketLabel, formatDateInTz, formatDateTimeInTz, formatDayDuration } from './display-time'
 
 describe('formatDateInTz（UTC → displayTimezone）', () => {
   it('Asia/Shanghai：UTC 日期跨零点后按 +8 显示次日', () => {
@@ -40,5 +40,22 @@ describe('formatDayDuration', () => {
   it('不足一天按 1 天向上取整（无 0 天）', () => {
     expect(formatDayDuration(0)).toBe('1')
     expect(formatDayDuration(0.5)).toBe('1')
+  })
+})
+
+describe('formatBucketLabel（M6：UTC 桶名不受时区偏移）', () => {
+  it('月桶：UTC− 时区下仍显示桶名月份（旧版错显上月）', () => {
+    // 旧实现用 displayTimezone 格式化桶起点：America/New_York 下
+    // 2026-05-01T00:00Z 落在 4 月 → 标签错显 "Apr"；桶是 UTC 日历单位，
+    // 标签必须恒为桶名月份（May / 5月）。
+    expect(formatBucketLabel('2026-05', 'en')).toContain('May')
+    expect(formatBucketLabel('2026-05', 'en')).toContain('2026')
+    expect(formatBucketLabel('2026-05', 'zh-CN')).toContain('5月')
+  })
+
+  it('年桶：显示桶年（UTC− 下旧版错显上年）', () => {
+    // Date.UTC(2020,0,1) 在 America/New_York 下为 2019-12-31 → 旧版错显 2019。
+    expect(formatBucketLabel('2020', 'en')).toContain('2020')
+    expect(formatBucketLabel('2020', 'zh-CN')).toContain('2020')
   })
 })

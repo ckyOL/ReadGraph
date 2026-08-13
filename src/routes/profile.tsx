@@ -300,6 +300,7 @@ function ProfilePage() {
                   <Suspense fallback={<Skeleton className="h-[624px] w-full" />}>
                     <BorrowGantt
                       data={result?.gantt ?? []}
+                      displayTimezone={displayTimezone}
                       emptyTitle={partialTitle}
                       emptyDescription={partialDesc}
                     />
@@ -316,7 +317,6 @@ function ProfilePage() {
                   <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
                     <BorrowVolumeBar
                       data={result?.borrowVolume ?? []}
-                      displayTimezone={displayTimezone}
                       emptyTitle={partialTitle}
                       emptyDescription={partialDesc}
                     />

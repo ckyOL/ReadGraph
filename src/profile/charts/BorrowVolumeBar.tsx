@@ -1,11 +1,13 @@
 // 借阅量柱图（reading-profile §4，C-4）。
-// 桶归属基于 UTC（聚合层），轴标签按 displayTimezone 用 Intl.DateTimeFormat
-// 呈现（桶归属不变）。range 左闭右开裁剪在聚合层已处理。
+// 桶归属基于 UTC（聚合层）；桶键即 UTC 日历单位（YYYY-MM / YYYY），标签按
+// formatBucketLabel 以 UTC 名字呈现（displayTimezone 格式化会错显上月/上年，
+// M6 回归），语言随 locale。
 import { memo, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { EChartsOption } from 'echarts'
 
 import type { ProfileStatsResult } from '@/lib/profile-stats'
+import { formatBucketLabel } from '@/lib/display-time'
 import {
   Empty,
   EmptyHeader,
@@ -17,38 +19,12 @@ import { useECharts, useChartPalette } from './use-echarts'
 
 interface Props {
   data: ProfileStatsResult['borrowVolume']
-  displayTimezone: string
   emptyTitle: string
   emptyDescription: string
 }
 
-const MONTH_RE = /^(\d{4})-(\d{2})$/
-
-function formatBucketLabel(
-  bucket: string,
-  timezone: string,
-  language: string,
-): string {
-  const m = MONTH_RE.exec(bucket)
-  if (m) {
-    const d = new Date(Date.UTC(+m[1], +m[2] - 1, 1))
-    return new Intl.DateTimeFormat(language, {
-      timeZone: timezone,
-      year: 'numeric',
-      month: 'short',
-    }).format(d)
-  }
-  // 年桶：时区无影响，仅显示年。
-  const d = new Date(Date.UTC(+bucket, 0, 1))
-  return new Intl.DateTimeFormat(language, {
-    timeZone: timezone,
-    year: 'numeric',
-  }).format(d)
-}
-
 function BorrowVolumeBarImpl({
   data,
-  displayTimezone,
   emptyTitle,
   emptyDescription,
 }: Props) {
@@ -60,7 +36,7 @@ function BorrowVolumeBarImpl({
 
   const option = useMemo<EChartsOption | null>(() => {
     if (!hasData) return null
-    const labels = data.map((d) => formatBucketLabel(d.bucket, displayTimezone, language))
+    const labels = data.map((d) => formatBucketLabel(d.bucket, language))
     return {
       tooltip: {
         trigger: 'axis',
@@ -91,7 +67,7 @@ function BorrowVolumeBarImpl({
         },
       ],
     }
-  }, [data, hasData, displayTimezone, language, palette])
+  }, [data, hasData, language, palette])
 
   const ref = useECharts(option)
 
