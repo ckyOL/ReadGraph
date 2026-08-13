@@ -437,10 +437,14 @@ const CLASSIFICATION_DATA_DIR = 'classification'
 /**
  * fetch 拉取契约 JSON；404/网络失败 → 返回缺省值（树=[] 走一级表兜底，表={} 跳过）。
  * 不做重试：数据文件是用户部署时放置的静态资源，失败即缺省降级。
+ * URL 必须带 BASE_URL 前缀（H3 回归）：相对路径在嵌套路由（/library/$bookId）下
+ * 会解析到 /library/classification/… 而 404，仅 /profile 等顶层路由侥幸可用。
  */
 async function fetchClassificationData<T>(file: string, fallback: T): Promise<T> {
   try {
-    const res = await fetch(`${CLASSIFICATION_DATA_DIR}/${file}`)
+    const res = await fetch(
+      `${import.meta.env.BASE_URL}${CLASSIFICATION_DATA_DIR}/${file}`,
+    )
     if (!res.ok) return fallback
     return (await res.json()) as T
   } catch {
