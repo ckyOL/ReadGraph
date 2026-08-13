@@ -68,8 +68,10 @@ export function reviewBadgeOf(
 export type ReviewTypeFilter = 'all' | 'needsReview' | 'placeholder' | 'set'
 
 export function filterBookByReviewType(
-  book: Pick<Book, 'needsReview' | 'isbn13'>,
+  book: Pick<Book, 'id' | 'needsReview' | 'isbn13'>,
   filter: ReviewTypeFilter,
+  /** 已结构化套装（≥2 个 volume 非空编目，needsReview=false；书库行派生预计算）。 */
+  isSet = false,
 ): boolean {
   switch (filter) {
     case 'all':
@@ -79,7 +81,10 @@ export function filterBookByReviewType(
     case 'placeholder':
       return reviewKindOf(book) === 'placeholder'
     case 'set':
-      return reviewKindOf(book) === 'set'
+      // M4 回归：套装徽标含已结构化套装（isSetBook），筛选必须同口径——否则
+      // needsReview=false 的多卷书显示「套装」徽标但筛选搜不到（点哪消失哪）。
+      // 占位书即使有 volume 也属占位语义（徽标优先显示「占位」），不命中。
+      return reviewKindOf(book) === 'set' || (isSet && reviewKindOf(book) === null)
   }
 }
 

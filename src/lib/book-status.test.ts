@@ -144,13 +144,18 @@ describe('filterBookByReviewType — 书库类型筛选（全部/待完善/占�
     expect(filterBookByReviewType(cand, 'needsReview')).toBe(true)
     expect(filterBookByReviewType(done, 'needsReview')).toBe(false)
   })
-  it('placeholder 只取占位；set 只取套装候选（已确认书不命中）', () => {
+  it('placeholder 只取占位；set 取套装候选 + 已结构化套装（M4 与徽标同口径）', () => {
     expect(filterBookByReviewType(ph, 'placeholder')).toBe(true)
     expect(filterBookByReviewType(cand, 'placeholder')).toBe(false)
     expect(filterBookByReviewType(done, 'placeholder')).toBe(false)
     expect(filterBookByReviewType(cand, 'set')).toBe(true)
     expect(filterBookByReviewType(ph, 'set')).toBe(false)
+    // 普通书非套装 → 不命中。
     expect(filterBookByReviewType(done, 'set')).toBe(false)
+    // 已结构化套装（needsReview=false、≥2 volume）：徽标为 set，筛选必须命中
+    // （M4 回归：旧版只认 needsReview，多卷书显示徽标但筛选搜不到）。
+    expect(filterBookByReviewType(done, 'set', true)).toBe(true)
+    expect(filterBookByReviewType(ph, 'set', true)).toBe(false)
   })
 })
 

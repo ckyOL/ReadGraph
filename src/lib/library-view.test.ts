@@ -93,6 +93,22 @@ describe('filterAndSortRows（列表管线）', () => {
     expect(order({ status: 'placeholder' })).toEqual([])
   })
 
+  it('已结构化套装（needsReview=false、≥2 volume）命中 set 筛选（M4 回归）', () => {
+    // 徽标语义：≥2 个 volume 非空编目即「套装」；筛选必须同口径，否则点徽标进
+    // 筛选视图后该行消失（「点哪消失哪」）。
+    const done = makeBook('bk-set', '9780000000009', '套装书', false, ['src-a'])
+    const crV1 = makeCatalog('cr-v1', 'bk-set', 'src-a', 'BCV1', 9)
+    crV1.volume = '1'
+    const crV2 = makeCatalog('cr-v2', 'bk-set', 'src-a', 'BCV2', 9)
+    crV2.volume = '2'
+    const setRows = buildLibraryRows([bookA, done], [catalogRecords[0]!, crV1, crV2], borrowCycles, [srcA])
+    expect(filterAndSortRows(setRows, { status: 'set' }).map((r) => r.book.id)).toEqual([
+      'bk-set',
+    ])
+    // 非套装书不受影响。
+    expect(filterAndSortRows(setRows, { status: 'needsReview' })).toEqual([])
+  })
+
   it('sort=author/isbn/title 双向；isbn 空值排前（asc）', () => {
     expect(order({ sort: 'author' })).toEqual(['bk-b', 'bk-c', 'bk-a'])
     expect(order({ sort: 'author', dir: 'desc' })).toEqual(['bk-a', 'bk-c', 'bk-b'])

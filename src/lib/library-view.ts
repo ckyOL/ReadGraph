@@ -2,7 +2,7 @@
 // 列表页（/library）与详情页（/library/$bookId 翻页）共用同一过滤/排序派生，
 // 单一实现防两处漂移。纯函数、无 I/O；数据源为 useLiveQuery 全量实体。
 import type { Book, BorrowCycle, CatalogRecord, ClassificationSystem, Source } from '@/types/entities'
-import { filterBookByReviewType, type ReviewTypeFilter } from '@/lib/book-status'
+import { filterBookByReviewType, isSetBook, type ReviewTypeFilter } from '@/lib/book-status'
 
 export type SortKey = 'title' | 'author' | 'isbn' | 'borrowed' | 'borrows'
 export type SortDir = 'asc' | 'desc'
@@ -25,6 +25,8 @@ export interface LibraryRow {
   classification: { system: ClassificationSystem; code: string } | null
   borrowCount: number
   lastBorrowedAt: Date | null
+  /** 已结构化套装（≥2 个 volume 非空编目）：书库「套装」筛选/徽标同口径（M4）。 */
+  isSet: boolean
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -57,6 +59,7 @@ export function buildLibraryRows(
       classification: entry ? { system: entry.system, code: entry.code } : null,
       borrowCount: cycleCountByBook.get(book.id) ?? 0,
       lastBorrowedAt: lastBorrowedByBook.get(book.id) ?? null,
+      isSet: isSetBook(book.id, catalogRecords),
     }
   })
 }
@@ -79,7 +82,7 @@ export function filterAndSortRows(rows: LibraryRow[], params: LibraryViewParams)
   }
   const reviewFilter = params.status ?? 'all'
   if (reviewFilter !== 'all') {
-    out = out.filter((r) => filterBookByReviewType(r.book, reviewFilter))
+    out = out.filter((r) => filterBookByReviewType(r.book, reviewFilter, r.isSet))
   }
   const sortKey = params.sort ?? 'title'
   const dir = (params.dir ?? 'asc') === 'asc' ? 1 : -1
