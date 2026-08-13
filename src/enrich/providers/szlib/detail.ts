@@ -1,26 +1,30 @@
 // szlib getBookDetail 响应解析（opac-enrichment §3.2/§3.3/§3.4）。
 // 纯函数：无时钟、无 I/O；fetchDetail 仅负责网络 + 调用本函数。
+// HTML 实体解码复用 lib/encoding 的 decodeHtmlEntities（与 szlib 导入 parser 共用同一
+// 转码方法，opac-enrichment §10.13 同理）：OPAC 响应与流通记录同源，标题/责任者等
+// 可能含 `&apos;`/`&amp;`——解码后与库中已解码值一致，补全对照不误判 conflict。
 import type { OpacDetail, OpacDetailResult } from '@/enrich/opac-provider'
+import { decodeHtmlEntities } from '@/lib/encoding'
 
-/** 字符串字段：非空 string 原样，空串/缺失 → null。 */
+/** 字符串字段：非空 string 解码 HTML 实体后返回，空串/缺失 → null。 */
 function str(json: Record<string, unknown>, key: string): string | null {
   const v = json[key]
-  return typeof v === 'string' && v !== '' ? v : null
+  return typeof v === 'string' && v !== '' ? decodeHtmlEntities(v) : null
 }
 
 /**
  * abstract 落点（§3.3）：`abstracts` 可能为数组 → 按 `\n` join；
- * 其次 `abstracts`/`abstract` 非空字符串；否则 null。
+ * 其次 `abstracts`/`abstract` 非空字符串；否则 null。join 后统一解码实体。
  */
 function rawAbstract(json: Record<string, unknown>): string | null {
   const abs = json['abstracts']
   if (Array.isArray(abs)) {
     const joined = abs.filter((x): x is string => typeof x === 'string').join('\n')
-    return joined === '' ? null : joined
+    return joined === '' ? null : decodeHtmlEntities(joined)
   }
-  if (typeof abs === 'string' && abs !== '') return abs
+  if (typeof abs === 'string' && abs !== '') return decodeHtmlEntities(abs)
   const single = json['abstract']
-  return typeof single === 'string' && single !== '' ? single : null
+  return typeof single === 'string' && single !== '' ? decodeHtmlEntities(single) : null
 }
 
 /**

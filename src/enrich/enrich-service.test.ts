@@ -157,6 +157,33 @@ describe('单条抓取 enrichOneRecord', () => {
     expect(after?.barcodes).toEqual(['BC1'])
   })
 
+  it('OPAC 响应含 HTML 实体 → 解码后与库中已解码值一致，不误判 conflict', async () => {
+    // 库中标题为导入管线解码后的形态（szlib parser 已解 `&apos;`）；OPAC 响应为
+    // 未解码原文——补全路径必须复用同一 decodeHtmlEntities，否则同值误判 conflict。
+    const decodedBook = szBook({
+      title: "The Book Lovers' Miscellany",
+      isbn13: '9787521748239',
+    })
+    stubFetchText(
+      JSON.stringify({
+        ...sample,
+        title: 'The Book Lovers&apos; Miscellany',
+        author: 'Tom &amp; Jerry 著',
+      }),
+    )
+    const outcome = await enrichOneRecord(db, record, decodedBook, source, { backoffMs: 1 })
+    expect(outcome.kind).toBe('success')
+    if (outcome.kind !== 'success') return
+    // title 解码后与库中一致 → 不产出 title change（无乱套）；authors 建议值已解码
+    // （`&amp;` → `&`；parseTitle 视 `&` 为责任者分隔符拆开，属其既有语义）。
+    expect(outcome.context.changes.find((c) => c.field === 'title')).toBeUndefined()
+    const authorChange = outcome.context.changes.find((c) => c.field === 'authors')
+    expect(authorChange?.kind).toBe('conflict')
+    expect(authorChange?.proposed).toEqual(['Tom', '&', 'Jerry'])
+    expect(JSON.stringify(outcome.context)).not.toContain('&apos;')
+    expect(JSON.stringify(outcome.context)).not.toContain('&amp;')
+  })
+
   it('not_found → 回写 status=not_found（含 providerId），实体不变，不重试', async () => {
     const fn = stubFetchText(JSON.stringify(EMPTY_PAYLOAD))
     const outcome = await enrichOneRecord(db, record, book, source, { backoffMs: 1 })

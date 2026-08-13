@@ -61,6 +61,40 @@ describe('parseSzlibDetail', () => {
     if (r.ok) expect(r.detail.abstract).toBe('第一段\n第二段')
   })
 
+  it('HTML 实体解码（与导入管线共用 decodeHtmlEntities）：命名/数字实体 → 解码；URL &amp; 还原', () => {
+    const r = parseSzlibDetail(
+      JSON.stringify({
+        ...sample,
+        title: 'The Book Lovers&apos; Miscellany = 书虫杂记',
+        author: 'Tom &amp; Jerry 著',
+        subject: '漫画&#39;日本',
+        img: 'https://www.bookcovers.cn/index.php?client=szlib&amp;isbn=978-7-5217-4823-9/cover',
+      }),
+      SOURCE_URL,
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.detail.title).toBe("The Book Lovers' Miscellany = 书虫杂记")
+    expect(r.detail.author).toBe('Tom & Jerry 著')
+    expect(r.detail.subject).toBe("漫画'日本")
+    expect(r.detail.img).toBe(
+      'https://www.bookcovers.cn/index.php?client=szlib&isbn=978-7-5217-4823-9/cover',
+    )
+  })
+
+  it('abstracts 数组条目含实体 → join 后统一解码', () => {
+    const r = parseSzlibDetail(
+      JSON.stringify({
+        ...sample,
+        abstract: '',
+        abstracts: ["Tom &amp; Jerry&apos;s 历险", '第二段'],
+      }),
+      SOURCE_URL,
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.detail.abstract).toBe("Tom & Jerry's 历险\n第二段")
+  })
+
   it('abstracts 数组含非字符串元素 → 过滤后 join', () => {
     const r = parseSzlibDetail(
       JSON.stringify({ ...sample, abstract: '', abstracts: ['第一段', 42] }),

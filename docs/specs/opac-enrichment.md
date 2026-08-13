@@ -206,6 +206,7 @@ type OpacDetailResult =
 
 - `JSON.parse` 失败 → `{ ok: false, reason: 'parse_error' }`（不抛异常）。
 - 空负载判定（§3.4，provider 特有）→ `{ ok: false, reason: 'not_found' }`。
+- **HTML 实体解码（provider 解析层）**：响应文本可能含 HTML 实体（`&apos;`/`&amp;`/`&quot;` 等，与流通记录同源——szlib 导入 parser 已在 [szlib-parser §10.13](../metadata/parsers/szlib-parser.md) 对标题解码）；解析层对每个字符串字段（含 `abstracts` join 后）复用 `lib/encoding` 的 `decodeHtmlEntities` 统一解码——**与导入管线共用同一转码方法**，保证 OPAC 建议值与库中已解码值一致，`mapOpacDetail` 对照不误判 conflict。
 - 成功 → 按 §3.3 表映射为统一 `OpacDetail`；空串 → null。
 - 纯函数、无时钟、无 I/O；每个 provider 一个解析纯函数（可单测），`fetchDetail` 仅负责网络 + 调用它。
 
