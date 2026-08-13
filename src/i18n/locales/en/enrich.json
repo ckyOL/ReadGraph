@@ -5,13 +5,11 @@
   "notFound": "Catalog not found in the library",
   "failed": "Enrichment failed (network or CORS blocked)",
   "placeholderHint": "Placeholder book — fill in manually via Edit",
-  "badge": "OPAC",
+  "badge": "{{provider}} OPAC",
   "current": "Current: {{value}}",
   "restore": "Restore current",
-  "summary": "OPAC suggestions: {{filled}} filled, {{conflicts}} differ",
+  "summary": "Suggestions: {{filled}} filled, {{conflicts}} differ",
   "warnings": "{{count}} format warnings",
-  "batch.running": "Enriching… {{done}}/{{total}}",
-  "batch.result": "Success {{ok}} · Not found {{notFound}} · Failed {{failed}}",
-  "batch.apply": "Review & apply",
-  "batch.placeholderNote": "{{count}} placeholder records excluded"
+  "targetBadge": "{{provider}} target record",
+  "targetRecordOnly": "Save marks only this record as enriched"
 }

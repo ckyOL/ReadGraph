@@ -272,8 +272,8 @@ describe('EditForm — OPAC 补全上下文（opac-enrichment §5.3/§10）', ()
     expect(html).toContain('value="9787521748239"')
     expect(html).not.toContain('value="9787111111111"')
     expect(html).toContain('value="198"')
-    // 建议字段徽标（12 个 change 字段 → 12 枚）+ 摘要条 1 处「OPAC 建议」
-    expect((html.match(/OPAC/g) ?? []).length).toBe(13)
+    // 建议字段徽标（12 个 change 字段 → 12 枚「深图 OPAC」；摘要条带 provider 前缀不再含 OPAC 字样）
+    expect((html.match(/OPAC/g) ?? []).length).toBe(12)
     // conflict 徽标警示色（destructive）、fill 常规（outline）
     expect(html).toContain('data-variant="destructive"')
     expect(html).toContain('data-variant="outline"')
@@ -300,11 +300,34 @@ describe('EditForm — OPAC 补全上下文（opac-enrichment §5.3/§10）', ()
     expect(html).not.toContain('现有：合成绘本甲')
   })
 
-  it('摘要条计数：已填 N 项（fill+conflict），M 项与现有不同', () => {
+  it('摘要条计数：provider 前缀 + 已填 N 项（fill+conflict），M 项与现有不同', () => {
     const book = mkBook({ id: 'bk-en', title: '', isbn13: '9787111111111', pages: 100 })
     const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919' })
     const html = renderForm(book, [cr], [], ctxFor(book, cr))
-    expect(html).toContain('OPAC 建议：已填 12 项，2 项与现有不同')
+    // provider 前缀（独立 span）+ 摘要计数
+    expect(html).toContain('深图 · ')
+    expect(html).toContain('建议：已填 12 项，2 项与现有不同')
+  })
+
+  it('目标编目高亮 + provider 徽标：单编目书不提示「仅标记该编目」', () => {
+    const book = mkBook({ id: 'bk-en', title: '', isbn13: '9787111111111', pages: 100 })
+    const cr = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919' })
+    const html = renderForm(book, [cr], [], ctxFor(book, cr))
+    // 目标编目徽标（shortName 溯源）
+    expect(html).toContain('深图 补全目标')
+    // 单编目书无「仅标记该编目」提示
+    expect(html).not.toContain('保存后仅标记该编目为已补全')
+  })
+
+  it('多编目书：目标编目卡高亮 + 「保存后仅标记该编目为已补全」提示', () => {
+    const book = mkBook({ id: 'bk-en', title: '', isbn13: '9787111111111', pages: 100, sourceIds: ['src-sz', 'src-other'] })
+    const target = mkCr({ id: 'cr-en', bookId: 'bk-en', metaId: 6092919, metaIdKey: '6092919', barcodes: ['BC1'] })
+    const other = mkCr({ id: 'cr-other', bookId: 'bk-en', sourceId: 'src-other', metaId: 555, metaIdKey: '555', barcodes: ['BC9'] })
+    const html = renderForm(book, [target, other], [], ctxFor(book, target))
+    expect(html).toContain('保存后仅标记该编目为已补全')
+    // 目标卡带 provider 徽标；另一编目卡无补全目标徽标
+    expect(html).toContain('深图 补全目标')
+    expect((html.match(/补全目标/g) ?? []).length).toBe(1)
   })
 
   it('编目侧：recordPrefill.classifications = 现有 ∪ 建议（去重），对照现有分类', () => {

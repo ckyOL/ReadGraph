@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { MoreHorizontalIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from 'lucide-react'
 import { z } from 'zod'
 
 import { db } from '@/db/db-instance'
@@ -10,9 +10,9 @@ import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
 import { reviewKindOf } from '@/lib/book-status'
 import { parseTitle } from '@/lib/title'
+import { buildLibraryRows, filterAndSortRows, adjacentBookIds } from '@/lib/library-view'
 import { getProvider } from '@/enrich/opac-provider'
 import { enrichOneRecord, hasLookupKey, type EnrichmentContext } from '@/enrich/enrich-service'
-import { setPendingEnrichment, takePendingEnrichment } from '@/enrich/enrich-session'
 import type { CatalogRecord } from '@/types/entities'
 import { CatalogRecordCard } from '@/components/catalog-record'
 import { BorrowCyclesList } from '@/components/borrow-cycles-list'
@@ -54,24 +54,34 @@ import { MergeDialog } from './-merge-dialog'
 
 const bookIdSchema = z.string().min(1)
 
+// 编辑对话框由 search `edit=true` 驱动（book-editing 规格 §4.1），URL 状态可刷新/回退。
+// 视图参数（q/source/status/sort/dir）与书库列表同构：列表行链接携带，详情页翻页
+// 沿同一过滤/排序视图找相邻书（opac-enrichment §10）。不用 default(false)：
+// 默认值会使 search 对象与空 URL 不一致，触发 router 自动回写。
+const detailSearchSchema = z.object({
+  edit: z.boolean().optional(),
+  q: z.string().optional(),
+  source: z.string().optional(),
+  status: z.enum(['needsReview', 'placeholder', 'set']).optional(),
+  sort: z.enum(['title', 'author', 'isbn', 'borrowed', 'borrows']).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
+})
+
 export const Route = createFileRoute('/library/$bookId')({
   // $bookId 走 z.string() 校验 loader 入参（ui-navigation §2）；非法 id 路由不匹配。
   parseParams: (raw) => {
     const parsed = bookIdSchema.safeParse(raw.bookId)
     return parsed.success ? { bookId: parsed.data } : false
   },
-  // 编辑对话框由 search `edit=true` 驱动（book-editing 规格 §4.1），URL 状态可刷新/回退。
-  // 不用 default(false)：默认值会使 search 对象与空 URL 不一致，触发 router 自动回写 `?edit=false`。
-  validateSearch: z.object({
-    edit: z.boolean().optional(),
-  }),
+  validateSearch: detailSearchSchema,
   component: BookDetailPage,
 })
 
 function BookDetailPage() {
   const { t } = useTranslation('pages')
   const { bookId } = Route.useParams()
-  const { edit } = Route.useSearch()
+  const searchParams = Route.useSearch()
+  const edit = searchParams.edit ?? false
   const navigate = Route.useNavigate()
   const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
 
@@ -79,49 +89,50 @@ function BookDetailPage() {
   const [splitOpen, setSplitOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
 
-  // —— OPAC 补全单条入口（opac-enrichment §7.2/§10） ——
+  // —— OPAC 补全单条入口（opac-enrichment §7.2/§10；上下文为详情页组件态，§7.3） ——
   const { t: te } = useTranslation('enrich')
   const [enrichingId, setEnrichingId] = useState<string | null>(null)
   const [enrichMsg, setEnrichMsg] = useState<{ recordId: string; text: string } | null>(null)
   const [enrichment, setEnrichment] = useState<EnrichmentContext | null>(null)
 
-  // 建议改动上下文经会话内存跨路由传递（批量入口在书库列表页写入）；
-  // 打开编辑 Dialog 时消费一次（刷新/直达无上下文 → 普通编辑，不落 URL）。
-  // consume-once ref：dev StrictMode 双跑 effect 时第二次 take 返回 null 会覆盖
-  // 已消费的上下文——首跑消费后跳过重跑，关闭（edit=false）时复位允许下次再取。
-  const consumedEnrichmentRef = useRef(false)
+  // 翻页/直达其它书 → 组件复用时清掉上一本的补全上下文（§7.3：离开即弃）。
   useEffect(() => {
-    if (!edit) {
-      consumedEnrichmentRef.current = false
-      return
-    }
-    if (!consumedEnrichmentRef.current) {
-      consumedEnrichmentRef.current = true
-      setEnrichment(takePendingEnrichment())
-    }
-  }, [edit])
+    setEnrichment(null)
+  }, [bookId])
 
   const data = useLiveQuery(
     () =>
       Promise.all([
-        db.books.get(bookId),
-        db.catalogRecords.where('bookId').equals(bookId).toArray(),
-        db.borrowCycles.where('bookId').equals(bookId).toArray(),
+        // 翻页需全量书库视图派生（library-view 内存管线，与列表页同查询面，§13）。
+        db.books.toArray(),
+        db.catalogRecords.toArray(),
+        db.borrowCycles.toArray(),
+        db.sources.toArray(),
         // rawRecords 无 bookId 索引（data-layer §3），单书溯源用 filter。
         db.rawRecords.filter((r) => r.bookId === bookId).toArray(),
-        db.sources.toArray(),
       ]),
     [bookId],
   )
 
   const loading = data === undefined
-  const [book, catalogRecords, borrowCycles, rawRecords, sources] = data ?? [
-    undefined,
+  const [books, allCatalogRecords, allBorrowCycles, sources, rawRecords] = data ?? [
+    [],
     [],
     [],
     [],
     [],
   ]
+  const book = books.find((b) => b.id === bookId)
+
+  // 全量集合仅供翻页派生；页面本体只消费当前书的数据（过滤派生，防串书）。
+  const catalogRecords = useMemo(
+    () => allCatalogRecords.filter((cr) => cr.bookId === bookId),
+    [allCatalogRecords, bookId],
+  )
+  const borrowCycles = useMemo(
+    () => allBorrowCycles.filter((c) => c.bookId === bookId),
+    [allBorrowCycles, bookId],
+  )
 
   const sourceById = useMemo(
     () => new Map(sources.map((s) => [s.id, s])),
@@ -135,6 +146,33 @@ function BookDetailPage() {
       ),
     [borrowCycles],
   )
+
+  // —— 翻页：沿书库列表当前视图（筛选/排序）顺序找相邻书（opac-enrichment §10） ——
+  const viewRows = useMemo(
+    () =>
+      filterAndSortRows(
+        buildLibraryRows(books, allCatalogRecords, allBorrowCycles, sources),
+        {
+          q: searchParams.q,
+          source: searchParams.source,
+          status: searchParams.status,
+          sort: searchParams.sort,
+          dir: searchParams.dir,
+        },
+      ),
+    [books, allCatalogRecords, allBorrowCycles, sources, searchParams],
+  )
+  const { prevId, nextId } = useMemo(
+    () => adjacentBookIds(viewRows, bookId),
+    [viewRows, bookId],
+  )
+  const goToBook = (targetId: string) =>
+    void navigate({
+      to: '/library/$bookId',
+      params: { bookId: targetId },
+      // 保留视图参数、清 edit（翻页即放弃当前书未保存的 Dialog 编辑，§10）。
+      search: (prev) => ({ ...prev, edit: undefined }),
+    })
 
   // 关闭走 replace：以干净详情 URL 替换 ?edit=true 条目（book-editing §4.1），
   // 之后浏览器返回直接回上一页，不重新弹出 dialog。
@@ -158,7 +196,8 @@ function BookDetailPage() {
     }
   }
 
-  /** 单条抓取：成功 → 写入会话上下文并打开编辑 Dialog；not_found/failed → 内联提示（状态已回写）。 */
+  /** 单条抓取：成功 → 上下文入组件态并打开编辑 Dialog；not_found/failed → 内联提示（状态已回写）。
+   *  取消后上下文保留（重开编辑仍带建议）；「重新抓取」覆盖（§7.3）。 */
   const handleEnrich = async (cr: CatalogRecord) => {
     if (!book) return
     const src = sourceById.get(cr.sourceId)
@@ -169,10 +208,8 @@ function BookDetailPage() {
     try {
       const outcome = await enrichOneRecord(db, cr, book, src)
       if (outcome.kind === 'success') {
-        if (edit) {
-          setEnrichment(outcome.context)
-        } else {
-          setPendingEnrichment(outcome.context)
+        setEnrichment(outcome.context)
+        if (!edit) {
           void navigate({ search: (prev) => ({ ...prev, edit: true }) })
         }
       } else {
@@ -185,6 +222,9 @@ function BookDetailPage() {
       setEnrichingId(null)
     }
   }
+
+  /** 保存成功：清补全上下文（已应用即确认，重开编辑不再带陈旧建议，§7.3）。 */
+  const handleEnrichmentSaved = () => setEnrichment(null)
 
   /** 占位 Book：补全入口置灰 + 提示（§7.1），外链同样不提供。 */
   const isPlaceholderBook =
@@ -285,6 +325,25 @@ function BookDetailPage() {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* 翻页（opac-enrichment §10：沿列表视图顺序；边界禁用；导航清 edit） */}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={t('bookDetail.pager.prev')}
+            disabled={prevId == null}
+            onClick={() => prevId != null && goToBook(prevId)}
+          >
+            <ChevronLeftIcon className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={t('bookDetail.pager.next')}
+            disabled={nextId == null}
+            onClick={() => nextId != null && goToBook(nextId)}
+          >
+            <ChevronRightIcon className="size-4" />
+          </Button>
           <Button
             onClick={() =>
               void navigate({ search: (prev) => ({ ...prev, edit: true }) })
@@ -419,7 +478,7 @@ function BookDetailPage() {
         </CardContent>
       </Card>
 
-      {/* 编辑对话框：URL search.edit 驱动；enrichment 为补全建议改动上下文（会话内存） */}
+      {/* 编辑对话框：URL search.edit 驱动；enrichment 为补全建议改动上下文（详情页组件态，§7.3） */}
       {edit && (
         <EditDialog
           book={book}
@@ -428,6 +487,7 @@ function BookDetailPage() {
           sources={sources}
           open={edit}
           onOpenChange={(open) => !open && closeEdit()}
+          onSaved={handleEnrichmentSaved}
           enrichment={enrichment ?? undefined}
         />
       )}

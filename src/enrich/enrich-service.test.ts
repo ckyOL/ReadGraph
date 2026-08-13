@@ -1,19 +1,15 @@
-// 抓取编排测试（opac-enrichment 规格 §12 enrich-service.test.ts；UI 里程碑补）。
-// 候选集过滤、并发上限、超时/网络错误 → failed 回写（含 providerId）且实体不变、
-// 重试退避、not_found 回写、成功项零实体/零状态写入、幂等跳过。
+// 单条抓取测试（opac-enrichment 规格 §12 enrich-service.test.ts；UI 里程碑补）。
+// 候选判定、超时/网络错误 → failed 回写（含 providerId）且实体不变、重试退避、
+// not_found 回写、成功零实体/零状态写入、幂等跳过。批量编排已删除（§1）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ReadGraphDB } from '@/db/db'
 import { closeTestDB, createTestDB, makeBook, makeCatalog, makeSource } from '@/db/test-helpers'
 import { defaultOpacRegistry, type OpacProvider } from '@/enrich/opac-provider'
 import {
-  collectCandidates,
-  enrichCatalogRecords,
   enrichOneRecord,
-  groupCandidatesByProvider,
   isEnrichmentCandidate,
 } from '@/enrich/enrich-service'
-import { setPendingEnrichment, takePendingEnrichment } from '@/enrich/enrich-session'
 import type { Book, CatalogRecord, Source } from '@/types/entities'
 import sample from '@/tests/fixtures/opac-detail-sample.json'
 
@@ -134,23 +130,6 @@ describe('候选集过滤（§7 候选集 + §7.1 占位）', () => {
     // 书名正常但待审（套装候选等）→ 仍可补全
     expect(isEnrichmentCandidate(record, szBook({ needsReview: true }), source)).toBe(true)
   })
-
-  it('collectCandidates 跨表组装；groupCandidatesByProvider 按 provider 分组', () => {
-    const libbySource = szSource({ id: 'src-libby', parserId: 'libby', name: 'Libby' })
-    const libbyBook = szBook({ id: 'bk-2', title: '合成电子书' })
-    const libbyRecord = szRecord({ id: 'cr-2', bookId: 'bk-2', sourceId: libbySource.id })
-    const candidates = collectCandidates(
-      [book, libbyBook],
-      [record, libbyRecord],
-      [source, libbySource],
-    )
-    expect(candidates).toHaveLength(1)
-    expect(candidates[0]!.record.id).toBe('cr-1')
-    const groups = groupCandidatesByProvider(candidates)
-    expect(groups).toHaveLength(1)
-    expect(groups[0]!.provider.id).toBe('szlib')
-    expect(groups[0]!.candidates).toHaveLength(1)
-  })
 })
 
 describe('单条抓取 enrichOneRecord', () => {
@@ -241,86 +220,5 @@ describe('单条抓取 enrichOneRecord', () => {
     expect(outcome).toEqual({ kind: 'failed' })
     expect(fn).toHaveBeenCalledTimes(3)
     expect((await db.catalogRecords.get('cr-1'))?.opacEnrichment?.status).toBe('failed')
-  })
-})
-
-describe('批量编排 enrichCatalogRecords', () => {
-  it('并发上限 4 生效；成功/未找到/失败计数正确；进度回调受控递增', async () => {
-    let active = 0
-    let maxActive = 0
-    const gates: Array<{ promise: Promise<void>; resolve: () => void }> = []
-    const texts = new Map<string, string>([
-      ['1', JSON.stringify(sample)],
-      ['2', JSON.stringify(sample)],
-      ['3', JSON.stringify(sample)],
-      ['4', JSON.stringify(EMPTY_PAYLOAD)],
-    ])
-    // cr-5/cr-6 立即失败（触发退避重试）；cr-1..4 挂起直到测试释放门闩——
-    // 门闩驱动并发断言（确定性，不依赖真实时钟）。
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string) => {
-        active++
-        maxActive = Math.max(maxActive, active)
-        const id = /metaId=(\d+)/.exec(url)?.[1] ?? ''
-        if (id === '5' || id === '6') {
-          active--
-          return Promise.reject(new TypeError('Failed to fetch'))
-        }
-        const { promise, resolve } = Promise.withResolvers<void>()
-        gates.push({ promise, resolve })
-        return promise.then(() => {
-          active--
-          return { text: async () => texts.get(id) ?? JSON.stringify(sample) }
-        })
-      }),
-    )
-    const records = [1, 2, 3, 4, 5, 6].map((n) =>
-      szRecord({ id: `cr-${n}`, metaId: n, metaIdKey: String(n) }),
-    )
-    await db.catalogRecords.bulkPut(records)
-    const progress: number[] = []
-    const pending = enrichCatalogRecords(
-      db,
-      records.map((r) => ({ record: r, book, source })),
-      { backoffMs: 1, onProgress: (done, total) => progress.push(done / total) },
-    )
-    // 第一波：并发上限内恰好起 4 个请求，第 5/6 个必须排队等待。
-    await vi.waitFor(() => expect(gates.length).toBe(4))
-    expect(active).toBe(4)
-    // 释放第一波（3 成功 + 1 未找到）→ 剩余 2 个候选（失败路径）随后完成。
-    for (const g of gates.splice(0)) g.resolve()
-    const summary = await pending
-    expect(maxActive).toBeLessThanOrEqual(4)
-    expect(summary.successes).toHaveLength(3)
-    expect(summary.notFound).toHaveLength(1)
-    expect(summary.failed).toHaveLength(2)
-    expect(progress).toEqual([1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1])
-    expect((await db.catalogRecords.get('cr-4'))?.opacEnrichment?.status).toBe('not_found')
-    expect((await db.catalogRecords.get('cr-5'))?.opacEnrichment?.status).toBe('failed')
-    expect((await db.catalogRecords.get('cr-1'))?.opacEnrichment).toBeNull()
-  })
-
-  it('空候选集 → 空摘要，不发请求', async () => {
-    const fn = vi.fn()
-    vi.stubGlobal('fetch', fn)
-    const summary = await enrichCatalogRecords(db, [], { backoffMs: 1 })
-    expect(summary).toEqual({ successes: [], notFound: [], failed: [] })
-    expect(fn).not.toHaveBeenCalled()
-  })
-})
-
-describe('enrich-session 会话传递', () => {
-  it('set 后 take 读取并清空；未设置 → null', () => {
-    expect(takePendingEnrichment()).toBeNull()
-    setPendingEnrichment({
-      recordId: 'cr-1',
-      providerId: 'szlib',
-      sourceUrl: 'https://example.test/',
-      changes: [],
-      warnings: [],
-    })
-    expect(takePendingEnrichment()?.recordId).toBe('cr-1')
-    expect(takePendingEnrichment()).toBeNull()
   })
 })

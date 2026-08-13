@@ -270,9 +270,9 @@ test.describe('book editing (book-editing §7.6)', () => {
     const rows = page.locator('tbody tr')
     await expect(rows).toHaveCount(2)
 
-    // 徽标直达编辑（push ?edit=true）。
+    // 徽标直达编辑（push ?edit=true；行链接携带视图参数 status=needsReview，opac-enrichment §10）。
     await page.getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
-    await expect(page).toHaveURL(/\/library\/book-2\?edit=true/)
+    await expect(page).toHaveURL(/\/library\/book-2\?.*edit=true/)
     await expect(page.locator('input[value="福田图书馆读者自选图书"]')).toBeVisible()
 
     // 浏览器返回：筛选参数与行数原样恢复。
@@ -282,12 +282,55 @@ test.describe('book editing (book-editing §7.6)', () => {
 
     // 连续审核下一本：筛选仍在。
     await page.getByRole('link', { name: /Set 合成书目052/ }).click()
-    await expect(page).toHaveURL(/\/library\/book-3\?edit=true/)
+    await expect(page).toHaveURL(/\/library\/book-3\?.*edit=true/)
   })
 
   test('/review route is gone (404)', async ({ page }) => {
     await page.goto('/review')
     // 非空库下进入未知路由：AppShell 挂载（空态/错误边界不崩壳）。
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible()
+  })
+
+  test('detail pager walks the library view order (opac-enrichment §10)', async ({ page }) => {
+    // 视图参数：sort=isbn&dir=asc → isbn 空值排前（book-2 福田），随后 0001/0003/5740。
+    await page.goto('/library?sort=isbn&dir=asc')
+    const rows = page.locator('tbody tr')
+    await expect(rows).toHaveCount(4)
+    // 书库列表无任何批量补全入口（§1 定案：补全唯一路径是详情页单条）。
+    await expect(page.getByRole('button', { name: /Enrich/ })).toHaveCount(0)
+
+    // 首行进入详情页：URL 延续视图参数。
+    await rows.first().getByRole('link').first().click()
+    await expect(page).toHaveURL(/\/library\/book-2\?.*sort=isbn/)
+    await expect(page.getByRole('heading', { name: '福田图书馆读者自选图书' })).toBeVisible()
+
+    // 首行「上一个」禁用；「下一个」沿视图顺序到 小说A → 历史C → 合成书目052。
+    const prev = page.getByRole('button', { name: 'Previous' })
+    const next = page.getByRole('button', { name: 'Next' })
+    await expect(prev).toBeDisabled()
+    await next.click()
+    await expect(page).toHaveURL(/\/library\/book-1\?.*sort=isbn/)
+    // 单条补全入口（provider 命中 + lookupKey 有效，§7.2）：szlib 来源记录显示补全按钮。
+    await expect(
+      page.getByRole('button', { name: /Enrich from 深圳图书馆 OPAC/ }),
+    ).toBeVisible()
+    await next.click()
+    await expect(page).toHaveURL(/\/library\/book-4\?.*sort=isbn/)
+    await next.click()
+    await expect(page).toHaveURL(/\/library\/book-3\?.*sort=isbn/)
+    // 末行「下一个」禁用；返回上一本。
+    await expect(next).toBeDisabled()
+    await prev.click()
+    await expect(page).toHaveURL(/\/library\/book-4\?.*sort=isbn/)
+
+    // 编辑 Dialog 打开（覆盖层遮住头部翻页钮）→ 关闭后翻页不受影响。
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await expect(page).toHaveURL(/\/library\/book-4\?.*edit=true/)
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByText('Cancel', { exact: true }).click()
+    await expect(page).not.toHaveURL(/edit=true/)
+    await next.click()
+    await expect(page).toHaveURL(/\/library\/book-3\?.*sort=isbn/)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 })

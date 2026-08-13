@@ -41,6 +41,8 @@ export interface OpacProvider {
   id: string
   /** UI 文案用显示名，如「深圳图书馆 OPAC」 */
   displayName: string
+  /** 短名（徽标用，如「深图」）；缺省回退 displayName。多来源并存时字段级徽标/目标编目标记用它区分来源 */
+  shortName?: string
   /** 候选键：以什么实体字段反查本来源 OPAC */
   lookupKey: 'metaId' | 'isbn13'
   /** 用户可访问的详情页外链（降级/溯源）；无 → null */

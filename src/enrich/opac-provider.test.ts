@@ -71,10 +71,11 @@ describe('OpacProvider 注册表', () => {
 })
 
 describe('szlibProvider 契约', () => {
-  it('id/lookupKey/displayName 声明正确', () => {
+  it('id/lookupKey/displayName/shortName 声明正确', () => {
     expect(szlibProvider.id).toBe('szlib')
     expect(szlibProvider.lookupKey).toBe('metaId')
     expect(szlibProvider.displayName.length).toBeGreaterThan(0)
+    expect(szlibProvider.shortName?.length).toBeGreaterThan(0)
   })
 
   it('detailUrl 含 metaid 与 tablename=bibliosm（§3.1）', () => {

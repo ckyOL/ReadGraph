@@ -8,8 +8,8 @@ import { ArrowDownIcon, ArrowUpIcon, SearchIcon } from 'lucide-react'
 import { db } from '@/db/db-instance'
 import { ClassificationBadge } from '@/components/classification-badge'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -32,24 +32,19 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from '@/components/ui/empty'
-import type { Book } from '@/types/entities'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
+import { reviewBadgeOf, type ReviewTypeFilter } from '@/lib/book-status'
 import {
-  filterBookByReviewType,
-  reviewBadgeOf,
-  type ReviewTypeFilter,
-} from '@/lib/book-status'
-import {
-  collectCandidates,
-  countPlaceholderExcluded,
-  type EnrichSuccess,
-} from '@/enrich/enrich-service'
-import { setPendingEnrichment } from '@/enrich/enrich-session'
-import { EnrichBatchPanel } from '@/components/enrich-batch'
+  buildLibraryRows,
+  filterAndSortRows,
+  type SortDir,
+  type SortKey,
+} from '@/lib/library-view'
 
 // 书库筛选/排序状态 URL 化（ui-navigation §3）：全 optional + Zod 校验，默认值不写 URL
 // （干净的 /library）；变更经 navigate replace 回写，不产生历史条目，返回/刷新/直达均保留筛选。
+// 视图参数同时供详情页（/library/$bookId）翻页延续——行链接携带，见 viewSearch()。
 const librarySearchSchema = z.object({
   q: z.string().optional(),
   source: z.string().optional(),
@@ -62,21 +57,6 @@ export const Route = createFileRoute('/library/')({
   validateSearch: librarySearchSchema,
   component: LibraryPage,
 })
-
-type SortKey = 'title' | 'author' | 'isbn' | 'borrowed' | 'borrows'
-type SortDir = 'asc' | 'desc'
-
-interface LibraryRow {
-  book: Book
-  authors: string
-  isbn13: string | null
-  sourceName: string | null
-  classification: { system: 'clc' | 'ddc' | 'lcc' | 'udc' | 'other'; code: string } | null
-  borrowCount: number
-  lastBorrowedAt: Date | null
-}
-
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value)
@@ -137,88 +117,31 @@ function LibraryPage() {
   const [books, catalogRecords, borrowCycles, sources] = data ?? [[], [], [], []]
   const displayTimezone = useMemo(() => readPreferences().displayTimezone, [])
 
-  // —— OPAC 补全批量入口（opac-enrichment §7/§10） ——
-  const enrichCandidates = useMemo(
-    () => collectCandidates(books, catalogRecords, sources),
-    [books, catalogRecords, sources],
+  // 行派生 + 过滤/排序：与详情页翻页共用 library-view 单一实现（opac-enrichment §10）。
+  const rows = useMemo(
+    () => buildLibraryRows(books, catalogRecords, borrowCycles, sources),
+    [books, catalogRecords, borrowCycles, sources],
   )
-  const placeholderExcluded = useMemo(
-    () => countPlaceholderExcluded(books, catalogRecords, sources),
-    [books, catalogRecords, sources],
+  const filtered = useMemo(
+    () =>
+      filterAndSortRows(rows, {
+        q: searchInput,
+        source: sourceFilter,
+        status: reviewFilter,
+        sort: sortKey,
+        dir: sortDir,
+      }),
+    [rows, searchInput, sourceFilter, reviewFilter, sortKey, sortDir],
   )
-  // 应用成功项：建议改动上下文写入会话内存 → 该书编辑 Dialog（详情页消费，不落 URL）。
-  const applyEnrichment = (success: EnrichSuccess) => {
-    setPendingEnrichment(success.context)
-    void navigate({
-      to: '/library/$bookId',
-      params: { bookId: success.book.id },
-      search: { edit: true },
-    })
-  }
 
-  const rows = useMemo<LibraryRow[]>(() => {
-    const sourceById = new Map(sources.map((s) => [s.id, s]))
-    const cycleCountByBook = new Map<string, number>()
-    const lastBorrowedByBook = new Map<string, Date>()
-    for (const c of borrowCycles) {
-      cycleCountByBook.set(c.bookId, (cycleCountByBook.get(c.bookId) ?? 0) + 1)
-      const prev = lastBorrowedByBook.get(c.bookId)
-      if (!prev || c.borrowedAt > prev) lastBorrowedByBook.set(c.bookId, c.borrowedAt)
-    }
-    return books.map((book) => {
-      const cr = catalogRecords.find((c) => c.bookId === book.id)
-      const source = cr ? sourceById.get(cr.sourceId) : sourceById.get(book.sourceIds[0] ?? '')
-      const entry = cr?.classifications[0] ?? null
-      return {
-        book,
-        authors: book.authors.join(' / '),
-        isbn13: book.isbn13,
-        sourceName: source?.name ?? null,
-        classification: entry ? { system: entry.system, code: entry.code } : null,
-        borrowCount: cycleCountByBook.get(book.id) ?? 0,
-        lastBorrowedAt: lastBorrowedByBook.get(book.id) ?? null,
-      }
-    })
-  }, [books, catalogRecords, borrowCycles, sources])
-
-  const filtered = useMemo(() => {
-    const needle = searchInput.trim().toLowerCase()
-    let out = rows
-    if (needle) {
-      out = out.filter(
-        (r) =>
-          r.book.title.toLowerCase().includes(needle) ||
-          r.authors.toLowerCase().includes(needle) ||
-          (r.isbn13 ?? '').toLowerCase().includes(needle),
-      )
-    }
-    if (sourceFilter !== 'all') {
-      out = out.filter((r) => r.book.sourceIds.includes(sourceFilter))
-    }
-    if (reviewFilter !== 'all') {
-      out = out.filter((r) => filterBookByReviewType(r.book, reviewFilter))
-    }
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...out].sort((a, b) => {
-      switch (sortKey) {
-        case 'author':
-          return collator.compare(a.authors, b.authors) * dir
-        case 'isbn':
-          return (a.isbn13 ?? '').localeCompare(b.isbn13 ?? '') * dir
-        case 'borrowed': {
-          // 无借阅记录恒排末尾，不随排序方向翻转
-          if (!a.lastBorrowedAt && !b.lastBorrowedAt) return 0
-          if (!a.lastBorrowedAt) return 1
-          if (!b.lastBorrowedAt) return -1
-          return (a.lastBorrowedAt.getTime() - b.lastBorrowedAt.getTime()) * dir
-        }
-        case 'borrows':
-          return (a.borrowCount - b.borrowCount) * dir
-        default:
-          return collator.compare(a.book.title, b.book.title) * dir
-      }
-    })
-  }, [rows, searchInput, sourceFilter, reviewFilter, sortKey, sortDir])
+  /** 当前视图参数（非默认值才写 URL）——行链接携带，详情页翻页延续同一视图。 */
+  const viewSearch = () => ({
+    q: searchParams.q,
+    source: sourceFilter !== 'all' ? sourceFilter : undefined,
+    status: reviewFilter !== 'all' ? reviewFilter : undefined,
+    sort: sortKey !== 'title' ? sortKey : undefined,
+    dir: sortDir !== 'asc' ? sortDir : undefined,
+  })
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -327,16 +250,6 @@ function LibraryPage() {
             </div>
           </div>
 
-          {enrichCandidates.length > 0 && (
-            <div className="mt-4">
-              <EnrichBatchPanel
-                candidates={enrichCandidates}
-                placeholderExcluded={placeholderExcluded}
-                onApply={applyEnrichment}
-              />
-            </div>
-          )}
-
           <Table className="mt-4">
             <TableHeader>
               <TableRow>
@@ -371,6 +284,7 @@ function LibraryPage() {
                         <Link
                           to="/library/$bookId"
                           params={{ bookId: r.book.id }}
+                          search={viewSearch()}
                           className="min-w-0 truncate hover:underline"
                         >
                           {r.book.title}
@@ -379,7 +293,7 @@ function LibraryPage() {
                           <Link
                             to="/library/$bookId"
                             params={{ bookId: r.book.id }}
-                            search={{ edit: true }}
+                            search={{ ...viewSearch(), edit: true }}
                             aria-label={`${badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')} ${r.book.title}`}
                           >
                             <Badge

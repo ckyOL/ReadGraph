@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -12,13 +12,6 @@ import { executeImport } from '@/import/run-import'
 import { groupWarnings } from '@/import/warning-groups'
 import type { PipelineResult } from '@/parsers/pipeline'
 import type { Source } from '@/types/entities'
-import {
-  collectCandidates,
-  countPlaceholderExcluded,
-  type EnrichSuccess,
-} from '@/enrich/enrich-service'
-import { setPendingEnrichment } from '@/enrich/enrich-session'
-import { EnrichBatchPanel } from '@/components/enrich-batch'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -60,34 +53,10 @@ interface FileInfo {
  */
 function ImportPage() {
   const { t } = useTranslation('pages')
-  const navigate = Route.useNavigate()
-  // sources + books + catalogRecords 一并查询（批量补全入口需全库候选集）。
-  const data = useLiveQuery(
-    () => Promise.all([db.sources.toArray(), db.books.toArray(), db.catalogRecords.toArray()]),
-    [],
-  )
-  const sources = data?.[0]
-  const books = data?.[1] ?? []
-  const catalogRecords = data?.[2] ?? []
+  // 批量补全入口已删除（opac-enrichment §1）；导入页只需来源查询。
+  const data = useLiveQuery(() => db.sources.toArray(), [])
+  const sources = data
   const loadingSources = data === undefined
-
-  // —— OPAC 补全批量入口（opac-enrichment §10：导入完成页） ——
-  const enrichCandidates = useMemo(
-    () => collectCandidates(books, catalogRecords, sources ?? []),
-    [books, catalogRecords, sources],
-  )
-  const placeholderExcluded = useMemo(
-    () => countPlaceholderExcluded(books, catalogRecords, sources ?? []),
-    [books, catalogRecords, sources],
-  )
-  const applyEnrichment = (success: EnrichSuccess) => {
-    setPendingEnrichment(success.context)
-    void navigate({
-      to: '/library/$bookId',
-      params: { bookId: success.book.id },
-      search: { edit: true },
-    })
-  }
 
   // selectedSource 存对象而非仅 id：自动建源后立即可用，避免 useLiveQuery
   // 尚未回查导致 handleFile 拿不到刚落库的 Source。
@@ -396,15 +365,6 @@ function ImportPage() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">{t('import.report.empty')}</p>
-          )}
-          {enrichCandidates.length > 0 && (
-            <div className="border-t pt-4">
-              <EnrichBatchPanel
-                candidates={enrichCandidates}
-                placeholderExcluded={placeholderExcluded}
-                onApply={applyEnrichment}
-              />
-            </div>
           )}
         </aside>
       </div>

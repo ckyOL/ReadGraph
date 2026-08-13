@@ -56,6 +56,8 @@
   "bookDetail.cycles.title": "借阅历史",
   "bookDetail.cycles.empty": "暂无借阅记录",
   "bookDetail.edit": "编辑",
+  "bookDetail.pager.prev": "上一个",
+  "bookDetail.pager.next": "下一个",
   "bookDetail.more": "更多",
   "bookDetail.more.markReviewed": "标记为已确认",
   "bookDetail.more.merge": "合并到已有书目",

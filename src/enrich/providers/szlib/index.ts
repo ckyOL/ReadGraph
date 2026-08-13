@@ -27,6 +27,7 @@ function metaIdOf(record: CatalogRecord): string | number | null {
 export const szlibProvider: OpacProvider = {
   id: 'szlib',
   displayName: '深圳图书馆 OPAC',
+  shortName: '深图',
   lookupKey: 'metaId',
   /** §3.1 详情页 URL（Vue SPA 壳，仅供外链/溯源；程序化补全走 fetchDetail）。 */
   detailUrl(record) {

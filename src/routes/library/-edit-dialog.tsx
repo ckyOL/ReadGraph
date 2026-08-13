@@ -33,6 +33,7 @@ import { catalogTitleByRecord, reviewBadgeOf } from '@/lib/book-status'
 import { parseVolumeFromTitle } from '@/lib/volume'
 import { cn } from '@/lib/utils'
 import { prefillFromChanges, type EnrichmentChange } from '@/lib/opac-mapping'
+import { getProvider } from '@/enrich/opac-provider'
 import type { EnrichmentContext } from '@/enrich/enrich-service'
 import type {
   Book,
@@ -56,6 +57,8 @@ export interface EditDialogProps {
   sources: Source[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** 保存成功回调（opac-enrichment §7.2/§7.3：详情页清组件态补全上下文用）。 */
+  onSaved?: () => void
   /** OPAC 补全建议改动上下文（opac-enrichment §5.3/§10）：表单预填 + 现有值对照 + 恢复。 */
   enrichment?: EnrichmentContext
 }
@@ -148,6 +151,7 @@ export function EditForm({
   rawRecords,
   sources,
   onOpenChange,
+  onSaved,
   enrichment,
 }: EditDialogProps) {
   const { t } = useTranslation('edit')
@@ -161,6 +165,9 @@ export function EditForm({
   const enrichedRecord = enrichment
     ? catalogRecords.find((cr) => cr.id === enrichment.recordId)
     : undefined
+  /** 补全来源 provider（徽标/摘要条溯源；unregistered → undefined 防御）。 */
+  const enrichmentProvider = enrichment ? getProvider(enrichment.providerId) : undefined
+  const providerShort = enrichmentProvider?.shortName ?? enrichmentProvider?.displayName
   const prefill = useMemo(
     () =>
       enrichment && enrichedRecord
@@ -334,6 +341,7 @@ export function EditForm({
             }
           : undefined,
       )
+      onSaved?.()
       onOpenChange(false)
     } catch (err) {
       if (err instanceof IsbnConflictError) {
@@ -429,7 +437,7 @@ export function EditForm({
               variant={decor.badge === 'conflict' ? 'destructive' : 'outline'}
               className="rounded-none px-1.5 text-[10px] leading-4"
             >
-              {t('badge', { ns: 'enrich' })}
+              {t('badge', { ns: 'enrich', provider: providerShort })}
             </Badge>
           )}
         </div>
@@ -487,6 +495,9 @@ export function EditForm({
       {/* OPAC 补全摘要条（§10：全局兜底审视，逐条细节内联在字段） */}
       {enrichment && enrichedRecord && (
         <p className="text-xs text-muted-foreground">
+          {providerShort != null && (
+            <span className="font-medium text-foreground">{providerShort} · </span>
+          )}
           {t('summary', {
             ns: 'enrich',
             filled: prefill?.applied.length ?? 0,
@@ -494,6 +505,7 @@ export function EditForm({
           })}
           {enrichment.warnings.length > 0 &&
             ` · ${t('warnings', { ns: 'enrich', count: enrichment.warnings.length })}`}
+          {catalogRecords.length > 1 && ` · ${t('targetRecordOnly', { ns: 'enrich' })}`}
         </p>
       )}
 
@@ -533,7 +545,7 @@ export function EditForm({
                   variant={priceDecor.badge === 'conflict' ? 'destructive' : 'outline'}
                   className="rounded-none px-1.5 text-[10px] leading-4"
                 >
-                  {t('badge', { ns: 'enrich' })}
+                  {t('badge', { ns: 'enrich', provider: providerShort })}
                 </Badge>
               )}
             </div>
@@ -595,7 +607,7 @@ export function EditForm({
                   variant={descDecor.badge === 'conflict' ? 'destructive' : 'outline'}
                   className="rounded-none px-1.5 text-[10px] leading-4"
                 >
-                  {t('badge', { ns: 'enrich' })}
+                  {t('badge', { ns: 'enrich', provider: providerShort })}
                 </Badge>
               )}
             </div>
@@ -661,11 +673,22 @@ export function EditForm({
                     )),
               )
               return (
-                <div key={cr.id} className="space-y-3 rounded-none border p-3">
+                <div
+                  key={cr.id}
+                  className={cn(
+                    'space-y-3 rounded-none border p-3',
+                    isEnriched && 'border-primary ring-1 ring-primary',
+                  )}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     {source && (
                       <Badge variant="outline" className="rounded-none">
                         {source.name}
+                      </Badge>
+                    )}
+                    {isEnriched && providerShort != null && (
+                      <Badge variant="outline" className="rounded-none border-primary text-primary">
+                        {t('targetBadge', { ns: 'enrich', provider: providerShort })}
                       </Badge>
                     )}
                     <span className="text-xs text-muted-foreground">
@@ -734,7 +757,7 @@ export function EditForm({
                             variant="outline"
                             className="rounded-none px-1.5 text-[10px] leading-4"
                           >
-                            {t('badge', { ns: 'enrich' })}
+                            {t('badge', { ns: 'enrich', provider: providerShort })}
                           </Badge>
                           {classCurrentText !== '' && (
                             <span
