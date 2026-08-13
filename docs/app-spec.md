@@ -216,7 +216,7 @@ pnpm install --ignore-scripts
 | 7 | 统一编辑规格 | ✅ 已落地 | [specs/book-editing.md](./specs/book-editing.md) | 删除 /review 页，编辑统一收口到 /library/$bookId 详情页 Dialog（Book 全字段 + 编目 volume/barcodes/classifications，保存即解除待审）；书库列表承载占位/套装徽标与类型筛选；待审类型语义（选书帮占位 + 同 ISBN 套装候选的判定/卷号解析/操作语义）并入 §10；`CatalogRecord.volume`、dedupe 置标、`src/lib/volume.ts`、合并/拆书 — 已 TDD 落地（见 ui-navigation §8） |
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
-| 10 | 深图编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | szlib 编目条码前 6 位 → 归属馆（11 前缀映射，含 `F44010` 大学城）；纯函数 `src/lib/szlib-branch.ts` + 条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点）；未命中不渲染 — 已 TDD 落地（593 tests 全绿） |
+| 10 | 深图编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | szlib 编目条码前 6 位 → 归属馆（11 前缀映射，含 `F44010` 大学城；**规则表权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)**）；纯函数 `src/lib/szlib-branch.ts` + 条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点）；未命中不渲染 — 已 TDD 落地（593 tests 全绿） |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 
