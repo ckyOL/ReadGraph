@@ -145,9 +145,12 @@
 ### 6. 条码前缀 → 归属馆（Barcode Prefix → Branch Library）
 
 深图编目条码（如 `04400514707325`）的**前 6 位**为馆代码前缀，可 1:1 解析出归属馆。
-归属馆是**展示派生**，导入/存储阶段不使用、不落库；UI 呈现见
-[branch-library 规格](../../specs/branch-library.md)。本表为映射规则的**唯一文档来源**，
-代码唯一实现 `src/lib/szlib-branch.ts`（`SZ_BRANCH_PREFIXES`）。
+归属馆是**展示派生**，导入/存储阶段不使用、不落库。
+
+> 本表是 **szlib 来源**的归属馆规则（**参考实现**）。归属馆是来源无关的通用契约
+> （各来源按 parserId 注册自己的前缀表），扩展步骤见 [branch-library 规格 §2](../../specs/branch-library.md#2-来源规则注册表扩展点)；
+> UI 呈现见 [branch-library 规格](../../specs/branch-library.md)。本表为 szlib 规则的**唯一文档来源**，
+> 代码实现 `src/lib/branch-prefix.ts`（`SZ_BRANCH_PREFIXES`，经 `BRANCH_PREFIX_TABLES` 以 `parserId: 'szlib'` 注册）。
 
 | 前缀（前 6 位） | 归属馆 |
 |----------------|--------|

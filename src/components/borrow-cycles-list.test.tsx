@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import i18n, { changeLanguage } from '@/i18n'
 import { BorrowCyclesList } from './borrow-cycles-list'
+import { makeSource } from '@/db/test-helpers'
 import type { BorrowCycle } from '@/types/entities'
 
 beforeAll(async () => {
@@ -35,7 +36,11 @@ function makeCycle(id: string, over: Partial<BorrowCycle> = {}): BorrowCycle {
 
 const renderList = (cycles: BorrowCycle[]) =>
   renderToStaticMarkup(
-    createElement(BorrowCyclesList, { cycles, displayTimezone: 'UTC' }),
+    createElement(BorrowCyclesList, {
+      cycles,
+      displayTimezone: 'UTC',
+      sources: [{ ...makeSource('src-szlib'), parserId: 'szlib' }],
+    }),
   )
 
 describe('BorrowCyclesList', () => {

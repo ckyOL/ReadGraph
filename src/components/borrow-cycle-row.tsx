@@ -15,9 +15,11 @@ interface BorrowCycleRowProps {
   cycle: BorrowCycle
   /** 显示时区（IANA）；时间以 UTC 存储，此处仅做展示转换。 */
   displayTimezone: string
+  /** 周期所属来源 parserId（来源缺失/未知时不解析归属馆）。 */
+  parserId?: string | null
 }
 
-export function BorrowCycleRow({ cycle: c, displayTimezone }: BorrowCycleRowProps) {
+export function BorrowCycleRow({ cycle: c, displayTimezone, parserId }: BorrowCycleRowProps) {
   const { t } = useTranslation('pages')
 
   return (
@@ -53,7 +55,7 @@ export function BorrowCycleRow({ cycle: c, displayTimezone }: BorrowCycleRowProp
           )}
         </div>
         {c.barcode && <span className="font-mono text-xs">{c.barcode}</span>}
-        {c.barcode && <BranchBadge barcode={c.barcode} />}
+        {c.barcode && <BranchBadge barcode={c.barcode} parserId={parserId} />}
         {c.status === 'borrowed' && (
           <Badge className="rounded-none bg-success text-success-foreground">
             {t('timeline.status.borrowed')}

@@ -70,7 +70,7 @@ export function CatalogRecordCard({ record, source, actions }: CatalogRecordCard
               </dt>
               <dd className="flex items-center gap-2">
                 <span className="font-mono">{b}</span>
-                <BranchBadge barcode={b} />
+                <BranchBadge barcode={b} parserId={source?.parserId} />
               </dd>
             </div>
           ))}

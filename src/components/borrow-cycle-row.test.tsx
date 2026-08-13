@@ -43,7 +43,7 @@ function makeCycle(over: Partial<BorrowCycle> = {}): BorrowCycle {
 
 const renderRow = (cycle: BorrowCycle) =>
   renderToStaticMarkup(
-    createElement(BorrowCycleRow, { cycle, displayTimezone: 'UTC' }),
+    createElement(BorrowCycleRow, { cycle, displayTimezone: 'UTC', parserId: 'szlib' }),
   )
 
 const countArrows = (html: string) => html.match(/→/g)?.length ?? 0
@@ -116,10 +116,18 @@ describe('BorrowCycleRow', () => {
     const html = renderRow(makeCycle({ barcode: '04400515000000' }))
     expect(html).toContain('04400515000000')
     expect(html).toContain('市馆')
-    // 未命中前缀（非深图条码）→ 条码后无归属馆框。
+    // 未命中前缀（非 szlib 条码）→ 条码后无归属馆框。
     const unknown = renderRow(makeCycle({ barcode: 'BC-UNKNOWN' }))
     expect(unknown).toContain('BC-UNKNOWN')
     expect(unknown).not.toContain('市馆')
     expect(unknown).not.toContain('南山区')
+  })
+
+  it('来源未知（parserId 缺失，如来源被删）→ 不渲染归属馆框', () => {
+    const html = renderToStaticMarkup(
+      createElement(BorrowCycleRow, { cycle: makeCycle(), displayTimezone: 'UTC' }),
+    )
+    expect(html).toContain('04400611745052')
+    expect(html).not.toContain('南山区')
   })
 })

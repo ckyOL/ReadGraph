@@ -473,6 +473,7 @@ function BookDetailPage() {
             <BorrowCyclesList
               cycles={sortedCycles}
               displayTimezone={displayTimezone}
+              sources={sources}
             />
           )}
         </CardContent>
