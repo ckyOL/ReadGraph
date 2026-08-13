@@ -143,6 +143,34 @@ describe('updateBookWithRecords — 统一保存（补全/套装/普通编辑合
     expect((await db.catalogRecords.get('cr-v4'))!.volume).toBe('4')
   })
 
+  it('保存后编目保留 classCodes 派生索引字段（M1：validated 写路径不丢）', async () => {
+    const b = makeBook('bk-cls', '9780000000005', '分类书')
+    const cr = makeCatalog('cr-cls', 'bk-cls', 'src-sz', 'BC1', 6092919, [
+      { system: 'clc', code: 'TP312' },
+    ])
+    await putAll([b], [cr])
+    // 真实库中 classCodes 恒存在（索引派生字段）。旧版 updateBookWithRecords 的
+    // validated() 输出被 zod strip 掉该字段 → bulkPut 覆盖后丢失 → treemap
+    // 下钻/classCodes 索引查询漏书（M1 回归）。
+    await db.catalogRecords.put({ ...cr, classCodes: ['TP312'] })
+    await updateBookWithRecords(
+      db,
+      'bk-cls',
+      draft({ title: '分类书' }),
+      [
+        {
+          id: 'cr-cls',
+          metaId: '6092919',
+          volume: null,
+          barcodes: ['BC1'],
+          classifications: [{ system: 'clc', code: 'TP312' }],
+        },
+      ],
+    )
+    const after = (await db.catalogRecords.get('cr-cls'))!
+    expect(after.classCodes).toEqual(['TP312'])
+  })
+
   it('volume 清空（null）；未出现在表单的编目不动', async () => {
     const set = makeBook('bk-set', '9787574012745', 'x', true)
     const cr3 = makeCatalog('cr-v3', 'bk-set', 'src-sz', 'B3', 7109377)

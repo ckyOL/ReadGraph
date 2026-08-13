@@ -161,6 +161,21 @@ describe('entity schemas — reject invalid', () => {
     expect(r.success).toBe(true)
     if (r.success) expect(r.data.opacEnrichment).toBeNull()
   })
+  it('catalogRecord transform 补写 classCodes 派生字段（M1：validated 写路径不丢索引字段）', () => {
+    // classCodes multiEntry 索引派生：编辑保存/合并占位/补全回写等走 validated()
+    // 的写路径必须恒带该字段（treemap 下钻等 classCodes 索引查询依赖），且随
+    // classifications 重新派生保持一致。
+    const r = catalogRecordSchema.safeParse(validCatalogRecord)
+    expect(r.success).toBe(true)
+    if (!r.success) return
+    expect(r.data.classCodes).toEqual(['TP312'])
+    const withCls = catalogRecordSchema.safeParse({
+      ...validCatalogRecord,
+      classifications: [{ system: 'clc', code: 'J238.2' }, { system: 'ddc', code: '005.13' }],
+    })
+    expect(withCls.success).toBe(true)
+    if (withCls.success) expect(withCls.data.classCodes).toEqual(['J238.2', '005.13'])
+  })
   it('catalogRecord accepts valid opacEnrichment (fetched/not_found/failed)', () => {
     for (const status of ['fetched', 'not_found', 'failed'] as const) {
       const r = catalogRecordSchema.safeParse({

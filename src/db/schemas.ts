@@ -79,20 +79,29 @@ export const bookSchema = z.object({
   parallelTitles: z.array(z.string()).default([]),
 })
 
-export const catalogRecordSchema = z.object({
-  id: z.string(),
-  bookId: z.string(),
-  sourceId: z.string(),
-  metaId: z.union([z.null(), z.string(), z.number()]),
-  metaIdKey: z.union([z.null(), z.string()]),
-  barcodes: z.array(z.string()),
-  classifications: z.array(classificationEntrySchema),
-  opacEnrichment: opacEnrichmentSchema,
-  // 旧导出无此字段时默认 null 兜底（review 规格 §2：非索引字段，无需 db 版本升级）。
-  volume: z.union([z.null(), z.string()]).default(null),
-  createdAt: utcDate,
-  updatedAt: utcDate,
-})
+export const catalogRecordSchema = z
+  .object({
+    id: z.string(),
+    bookId: z.string(),
+    sourceId: z.string(),
+    metaId: z.union([z.null(), z.string(), z.number()]),
+    metaIdKey: z.union([z.null(), z.string()]),
+    barcodes: z.array(z.string()),
+    classifications: z.array(classificationEntrySchema),
+    opacEnrichment: opacEnrichmentSchema,
+    // 旧导出无此字段时默认 null 兜底（review 规格 §2：非索引字段，无需 db 版本升级）。
+    volume: z.union([z.null(), z.string()]).default(null),
+    createdAt: utcDate,
+    updatedAt: utcDate,
+  })
+  .transform((v) => ({
+    ...v,
+    // classCodes multiEntry 索引派生字段：validated() 输出恒补写（M1 回归——
+    // 编辑保存/合并占位/补全回写等走 validated 的写路径不再丢索引字段导致
+    // treemap 下钻漏书；run-import/export 等的 deriveClassCodes 幂等无害）。
+    // 分类变更时随 transform 重新派生，保证与 classifications 一致。
+    classCodes: v.classifications.map((c) => c.code),
+  }))
 
 const borrowStatusEnum = z.enum(['borrowed', 'returned', 'unknown'])
 

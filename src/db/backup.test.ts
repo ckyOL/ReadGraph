@@ -30,9 +30,13 @@ function sampleExportData(): ExportData {
     rawRecords: [makeRawRecord(uuid(), 'log-1', srcId)],
     books: [makeBook('b1', '9787000000001', 'T')],
     catalogRecords: [
-      makeCatalog('cr1', 'b1', srcId, 'BC1', 'K1', [
-        { system: 'clc', code: 'TP312' },
-      ]),
+      {
+        // 与真实库导出一致：classCodes 为索引派生字段，schema 校验输出恒补写。
+        ...makeCatalog('cr1', 'b1', srcId, 'BC1', 'K1', [
+          { system: 'clc', code: 'TP312' },
+        ]),
+        classCodes: ['TP312'],
+      },
     ],
     borrowCycles: [makeCycle('cyc1', 'b1', srcId, now())],
     importLogs: [makeImportLog('log-1', srcId)],
