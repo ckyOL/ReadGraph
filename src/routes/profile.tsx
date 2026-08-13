@@ -16,8 +16,10 @@ import { readPreferences } from '@/lib/preferences'
 import { formatTimeZoneDisplay } from '@/lib/timezones'
 import { useProfileStats } from '@/profile/use-profile-stats'
 import { resolveSystem } from '@/lib/profile-stats'
+import type { ProfileStatsResult } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
 import { CLASSIFICATION_SYSTEMS } from '@/lib/classification'
+import { formatCurrency } from '@/profile/money-format'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Tabs,
@@ -61,6 +63,11 @@ const BorrowVolumeBar = lazy(() =>
 const DurationDistribution = lazy(() =>
   import('@/profile/charts/DurationDistribution').then((m) => ({
     default: m.DurationDistribution,
+  })),
+)
+const PriceDistribution = lazy(() =>
+  import('@/profile/charts/PriceDistribution').then((m) => ({
+    default: m.PriceDistribution,
   })),
 )
 
@@ -243,6 +250,11 @@ function ProfilePage() {
       ) : (
         <>
           <SummaryCards result={result} pending={isPending || computing} />
+          <MoneyCards
+            result={result}
+            rangeKey={rangeKey}
+            pending={isPending || computing}
+          />
           {/* 图表区 Tabs：每次激活一个图谱块，独占全幅视口，互不挤压（reading-profile §4）。 */}
           <Tabs defaultValue="classification" className="mt-4 gap-3">
             <TabsList className="overflow-x-auto">
@@ -257,6 +269,9 @@ function ProfilePage() {
               </TabsTrigger>
               <TabsTrigger value="duration">
                 {t('profile.chart.duration.title')}
+              </TabsTrigger>
+              <TabsTrigger value="price">
+                {t('profile.chart.price.title')}
               </TabsTrigger>
             </TabsList>
 
@@ -326,6 +341,23 @@ function ProfilePage() {
                 </ErrorBoundary>
               )}
             </TabsContent>
+
+            <TabsContent value="price">
+              {isPending || computing ? (
+                <Skeleton className="h-[360px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                    <PriceDistribution
+                      data={result?.money.distribution ?? []}
+                      currency={result?.money.dominantCurrency ?? null}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
           </Tabs>
         </>
       )}
@@ -376,11 +408,90 @@ const SummaryCards = memo(function SummaryCards({
   )
 })
 
+// 价值统计卡行（reading-profile §2.5/§4）：馆藏总价值 / 借阅图书价值 /
+// 平均书价。头条取主导币种；借阅价值随 range 联动（副标签标注当前 range）；
+// 多币种时脚注列出其余币种；全库无定价 → 全部 `—`。
+const MoneyCards = memo(function MoneyCards({
+  result,
+  rangeKey,
+  pending,
+}: {
+  result: ProfileStatsResult | null
+  rangeKey: RangeKey
+  pending: boolean
+}) {
+  const { t, i18n } = useTranslation('pages')
+  const m = result?.money
+  const dominant = m?.dominantCurrency ?? null
+  const byCurrency = (arr: MoneyAmountArr) =>
+    dominant ? arr.find((a) => a.currency === dominant) : undefined
+  const fmt = (a: MoneyAmount | undefined): string =>
+    a ? formatCurrency(a.amount, a.currency, i18n.language) : '—'
+  const others =
+    m != null && m.multiCurrency && dominant
+      ? m.collectionValue.filter((a) => a.currency !== dominant)
+      : []
+  const cards = [
+    {
+      label: t('profile.money.collectionValue'),
+      sub: null as string | null,
+      value: fmt(byCurrency(m?.collectionValue ?? [])),
+    },
+    {
+      label: t('profile.money.borrowedValue'),
+      sub: t(`profile.toolbar.range.${rangeKey}`),
+      value: fmt(byCurrency(m?.borrowedValue ?? [])),
+    },
+    {
+      label: t('profile.money.avgPrice'),
+      sub: null as string | null,
+      value: fmt(byCurrency(m?.avgPrice ?? [])),
+    },
+  ]
+  return (
+    <div className="relative mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+      {pending && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+          <Progress value={50} className="w-32" />
+        </div>
+      )}
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-lg border border-border p-3">
+          <div className="text-xs text-muted-foreground">
+            {c.label}
+            {c.sub && (
+              <span className="ml-1.5 text-muted-foreground/70">{c.sub}</span>
+            )}
+          </div>
+          <div className="mt-1 font-heading text-xl tabular-nums">{c.value}</div>
+        </div>
+      ))}
+      {others.length > 0 && (
+        <div className="col-span-full text-xs text-muted-foreground">
+          {t('profile.money.otherCurrencies', {
+            list: others
+              .map((a) => formatCurrency(a.amount, a.currency, i18n.language))
+              .join(' · '),
+          })}
+        </div>
+      )}
+    </div>
+  )
+})
+
+type MoneyAmount = ProfileStatsResult['money']['collectionValue'][number]
+type MoneyAmountArr = ProfileStatsResult['money']['collectionValue']
+
 function ProfileSkeleton() {
   return (
     <div className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 w-full" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-20 w-full" />
         ))}
       </div>
