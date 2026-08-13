@@ -7,6 +7,7 @@
 // unknown=outline 弱化；在借周期归还侧时间以 muted 呈现。
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
+import { BranchBadge } from '@/components/branch-badge'
 import { formatDateInTz } from '@/lib/display-time'
 import type { BorrowCycle } from '@/types/entities'
 
@@ -52,6 +53,7 @@ export function BorrowCycleRow({ cycle: c, displayTimezone }: BorrowCycleRowProp
           )}
         </div>
         {c.barcode && <span className="font-mono text-xs">{c.barcode}</span>}
+        {c.barcode && <BranchBadge barcode={c.barcode} />}
         {c.status === 'borrowed' && (
           <Badge className="rounded-none bg-success text-success-foreground">
             {t('timeline.status.borrowed')}

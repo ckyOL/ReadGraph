@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ClassificationBadge } from '@/components/classification-badge'
+import { BranchBadge } from '@/components/branch-badge'
 import type { CatalogRecord, Source } from '@/types/entities'
 
 interface CatalogRecordCardProps {
@@ -67,7 +68,10 @@ export function CatalogRecordCard({ record, source, actions }: CatalogRecordCard
               <dt className="w-14 shrink-0 text-xs text-muted-foreground">
                 {t('bookDetail.field.barcode')}
               </dt>
-              <dd className="font-mono">{b}</dd>
+              <dd className="flex items-center gap-2">
+                <span className="font-mono">{b}</span>
+                <BranchBadge barcode={b} />
+              </dd>
             </div>
           ))}
           {record.metaId != null && (

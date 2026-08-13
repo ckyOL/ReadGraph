@@ -111,4 +111,15 @@ describe('BorrowCycleRow', () => {
     expect(html).not.toContain('bg-info')
     expect(countArrows(html)).toBe(1)
   })
+
+  it('szlib 条码后渲染归属馆框（前 6 位命中）；未知条码无框', () => {
+    const html = renderRow(makeCycle({ barcode: '04400515000000' }))
+    expect(html).toContain('04400515000000')
+    expect(html).toContain('市馆')
+    // 未命中前缀（非深图条码）→ 条码后无归属馆框。
+    const unknown = renderRow(makeCycle({ barcode: 'BC-UNKNOWN' }))
+    expect(unknown).toContain('BC-UNKNOWN')
+    expect(unknown).not.toContain('市馆')
+    expect(unknown).not.toContain('南山区')
+  })
 })
