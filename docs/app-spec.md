@@ -7,7 +7,7 @@
 
 | 主题 | 文档 |
 |------|------|
-| 数据模型 | [README](../README.md) + [docs/metadata](./metadata) |
+| 数据模型 | [docs/metadata](./metadata) + [src/db/schemas.ts](../src/db/schemas.ts) |
 | 设计决策与约束 | [design-decisions](./design-decisions.md) |
 | 供应链安全 | [npm-supply-chain-security](./npm-supply-chain-security.md)（pnpm 等价映射见 §5） |
 | AI Agent 工作流 | [ai-agent-workflow-rules](./ai-agent-workflow-rules.md) |
@@ -121,7 +121,8 @@ ReadGraph/
 ├─ tsconfig.json / tsconfig.app.json / tsconfig.node.json
 ├─ vite.config.ts
 ├─ vitest.config.ts
-└─ README.md
+├─ README.md                  # 项目说明（英文，人类向）
+├─ README-zh.md               # 项目说明（简体中文）
 ```
 
 ## 4. 构建与脚本契约

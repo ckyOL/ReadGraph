@@ -1,153 +1,92 @@
-# ReadGraph 个人阅读智能档案系统
+<div align="center">
 
-> 本文档面向 AI Coding Agent，定义了 ReadGraph 项目的核心概念、数据模型和设计约束。
->
-> AI Agent 仓库操作速查见 [AGENTS.md](AGENTS.md)。本文档为核心概念与数据模型的权威源；功能规格以 [docs/app-spec.md](docs/app-spec.md) §6 索引为准；脚本契约与安全基线以 [docs/app-spec.md](docs/app-spec.md) 与 [docs/npm-supply-chain-security.md](docs/npm-supply-chain-security.md) 为准。
+# ReadGraph
 
-## 项目概述
+**A personal reading archive & analytics dashboard for your library borrowing history.**
 
-ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个人来源（公共图书馆 OPAC 导出、Libby 等电子借阅平台）获取借阅/归还数据（JSON/CSV），导入系统后生成个性化阅读画像与可视化分析。无后端、无联网数据上传，可静态部署与离线使用。
+Import borrow/return exports from your public library or e-book platform, and turn them into a reading profile with charts — pure frontend, your data stays in the browser, works fully offline.
 
-**当前功能面（2026-08）：**
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF)
+![Tailwind CSS v4](https://img.shields.io/badge/Tailwind%20CSS%20v4-38BDF8)
+![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
+![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
 
-- **导入**：单屏导入向导；多来源 Parser（szlib 为首个实现）；编码检测、无用行过滤、警告分组报告；跨文件合并与去重（保留既有周期/编目）。
-- **书库**：列表筛选/排序、深度分类名徽标、占位与套装徽标；详情页统一编辑 Dialog（Book 全字段 + 编目卷号/条码/分类，保存即解除待审）、合并/拆书。
-- **补全**：OPAC 编目补全（szlib Provider，详情页逐本工作流 + 翻页，字段级新旧对照与恢复，`CatalogRecord.opacEnrichment` 审计）。
-- **分类**：中图分类法（CLC）路径解析与树形钻取；分类数据由用户提供 JSON 外部加载，不含捆绑内容。
-- **画像**：阅读画像统计与 ECharts 图表（含金额/价格分布）；非书设备借阅单独识别并从统计中排除。
-- **设置**：tzdb 时区城市下拉、zh-CN/en 双语、备份导出/恢复、整体重置、调试模式（`?debug=1`）。
+**English** · [简体中文](./README-zh.md)
 
-**关键约束：**
+</div>
 
-- 纯前端项目，无后端服务；所有数据存储在浏览器端（IndexedDB / localStorage）
-- 数据来源为用户手动导入的文件（JSON/CSV）
-- 支持多来源数据合并与去重（物理副本按 `sourceId + barcode`，书目按 `isbn13`，兜底 title+author，置标待审）
-- 时间统一为 UTC ISO 8601；解析时经 `source.timezone` 转本地
-- UI 文案一律经 react-i18next `t()` 本地化（zh-CN / en），杜绝 JSX 字面量
+## Features
 
-## 数据层次架构
+- **Import & dedup** — single-screen import wizard; JSON/CSV from multiple sources (Shenzhen Library OPAC first); encoding detection; cross-file merge with dedup by barcode → ISBN → title+author.
+- **Library & editing** — filter, sort, and deep classification badges in the book list; unified edit dialog on the detail page; merge / split books; set-volume handling.
+- **OPAC enrichment** — auto-fill missing book metadata (translators, ISBN-10, description, cover…) from library catalogs, with field-level old/new compare before applying.
+- **Classification** — Chinese Library Classification (CLC) hierarchy with breadcrumb drill-down; classification data is supplied by you as a JSON file, nothing bundled in the repo.
+- **Reading profile** — stats and ECharts visualizations: reading rhythm, timeline, treemap, money spent & price distribution. Device borrows (e-readers) are tracked but excluded from stats.
+- **Settings** — timezone-aware city picker (tzdb), zh-CN / English UI, backup & restore, full reset, debug mode (`?debug=1`).
 
-```
-┌─────────────────────────────────────────────────┐
-│                  导入层 (Import)                  │
-│  原始文件 → Parser → RawRecord + ImportLog        │
-│                                                   │
-│  元数据解析层 (Parse)                             │
-│  RawRecord → 实体提取 → Book + CatalogRecord      │
-│                      → BorrowCycle 合成           │
-├─────────────────────────────────────────────────┤
-│                  补全层 (Enrich)                  │
-│  OPAC Provider → OpacDetail → 字段级建议/应用     │
-│  (CatalogRecord.opacEnrichment 审计)             │
-├─────────────────────────────────────────────────┤
-│                  核心层 (Core)                    │
-│  Book (书目) ← CatalogRecord (编目) ← BorrowCycle │
-│  分类解析 (CLC 路径/树) 作用于 classifications    │
-├─────────────────────────────────────────────────┤
-│                  来源层 (Source)                  │
-│  Library (含电子借阅平台) / Manual                │
-└─────────────────────────────────────────────────┘
+## Getting Started
+
+### Prerequisites
+
+- Node.js ≥ 20
+- pnpm 11
+
+### Install & run
+
+```bash
+pnpm install --frozen-lockfile   # required — never plain install
+pnpm dev                         # dev server
 ```
 
-## 实体关系
+### Build & test
 
-```
-Source (1) ─────────< (N) ImportLog
-                              │
-ImportLog (1) ──────< (N) RawRecord
-                              │
-Source (1) ─────────< (N) CatalogRecord
-                              │
-CatalogRecord (1) ──< (N) BorrowCycle
-                              │
-Book    (1) ─────────< (N) CatalogRecord
-Book    (1) ─────────< (N) BorrowCycle (via CatalogRecord)
+```bash
+pnpm build                       # type-check + production build
+pnpm preview                     # preview the production build
+pnpm test                        # unit / integration tests (Vitest)
+pnpm test:e2e                    # end-to-end tests (Playwright)
+pnpm audit --audit-level=high    # security audit
 ```
 
-**实体字段要点**（权威定义见各元数据文档与 `src/db/schemas.ts`）：
+## Data Sources
 
-| 实体 | 要点字段 |
-|------|---------|
-| Book | `isbn13`/`isbn10`、`title`+`subtitle`+`parallelTitles`、`authors`/`translators`、`publisher`/`publishDate`/`price`、`coverUrl`/`description`、`needsReview`、`materialType`（`'book'`/`'device'`）、`sourceIds` |
-| CatalogRecord | `metaId`/`metaIdKey`（索引与去重键）、`barcodes`、`classifications`（分类法+分类号）、`opacEnrichment`（providerId/status/fetchedAt/sourceUrl）、`volume`（套装卷号）；归属馆 `owningBranch` 为**派生值**，由 `src/lib/branch-prefix.ts` 注册表按 parserId 解析，非存储字段 |
-| BorrowCycle | `borrowedAt`/`returnedAt`/`status`（borrowed/returned/unknown）、`borrowLocation`/`returnLocation`、`barcode`、`rawRecordIds`（溯源） |
-| Source | `type`（`'library'`/`'manual'`）、`parserId`、`timezone`、`library`（馆类型/城市/OPAC URL/分类法） |
-| ImportLog / RawRecord | 导入溯源：文件、编码、parser、逐行解析状态与警告 |
+- The app ships with a parser for **Shenzhen Library (深圳图书馆)** exports — `szlib_scraper/` fetches your borrowing history from the library's mobile API.
+- Any other source (public library OPAC, Libby, …) implements the `SourceParser` contract — see [contributing-parser.md](./docs/metadata/parsers/contributing-parser.md).
+- All data is imported manually from files you own; nothing is fetched at runtime by the app itself (except optional OPAC enrichment you trigger per book).
 
-## 文档索引
+## Tech Stack
 
-| 文档 | 说明 |
-|------|------|
-| [docs/app-spec.md](./docs/app-spec.md) | 应用规格骨架；§6 功能规格索引、§3 目录结构、§4 脚本契约、§5 安全基线 |
-| [docs/design-decisions.md](./docs/design-decisions.md) | 设计决策与约束（时间、去重、隐私） |
-| [docs/ai-agent-workflow-rules.md](./docs/ai-agent-workflow-rules.md) | AI Agent SDD + TDD 工作流规则 |
-| [docs/i18n-conventions.md](./docs/i18n-conventions.md) | i18n 本地化约定 |
-| [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md) | 供应链安全基线（pnpm 11 策略） |
-| [DESIGN.md](./DESIGN.md) | 视觉设计：主题、配色、排版、组件样式 |
-| [docs/metadata/book.md](./docs/metadata/book.md) | 书籍信息元数据 |
-| [docs/metadata/catalog-record.md](./docs/metadata/catalog-record.md) | 编目记录（本地馆藏映射）元数据 |
-| [docs/metadata/borrow-cycle.md](./docs/metadata/borrow-cycle.md) | 借阅周期元数据 |
-| [docs/metadata/source.md](./docs/metadata/source.md) | 数据来源元数据 |
-| [docs/metadata/import-workflow.md](./docs/metadata/import-workflow.md) | 导入流程规范（编码、生命周期） |
-| [docs/metadata/internal-schema.md](./docs/metadata/internal-schema.md) | 内部存储 Schema（IndexedDB 结构、索引） |
-| [docs/metadata/parsers/szlib-parser.md](./docs/metadata/parsers/szlib-parser.md) | 深圳图书馆 Parser 设计（含条码→归属馆规则） |
-| [docs/metadata/parsers/contributing-parser.md](./docs/metadata/parsers/contributing-parser.md) | 贡献新 Parser 指南 |
-| [docs/tasks/ui-unified-batch.md](./docs/tasks/ui-unified-batch.md) | UI 统一里程碑任务分解 |
+| Layer | Choice |
+|-------|--------|
+| Framework | React 19 + TypeScript (strict) |
+| Build | Vite 8 |
+| Routing | TanStack Router (file-based, typed) |
+| Storage | Dexie.js over IndexedDB + Zod schemas |
+| UI | Tailwind CSS v4 + shadcn/ui |
+| Charts | ECharts |
+| i18n | i18next (zh-CN / English) |
+| Testing | Vitest + Playwright |
 
-### 功能规格（[docs/specs/](./docs/specs/)）
+## Documentation
 
-各功能落地前先补规格，见 app-spec §6 索引；SDD + TDD 要求见 ai-agent-workflow-rules。
+| Doc | What it covers |
+|-----|----------------|
+| [docs/app-spec.md](./docs/app-spec.md) | App spec skeleton & feature-spec index |
+| [docs/specs/](./docs/specs/) | Feature specs: import pipeline, OPAC enrichment, classification, reading profile, editing, settings, … |
+| [docs/metadata/](./docs/metadata/) | Data model: `Book` / `CatalogRecord` / `BorrowCycle` / `Source`, internal IndexedDB schema |
+| [docs/design-decisions.md](./docs/design-decisions.md) | Design decisions & constraints (time handling, dedup, privacy) |
+| [DESIGN.md](./DESIGN.md) | Visual design system (theme, typography, components) |
+| [AGENTS.md](./AGENTS.md) | Repo conventions & commands (incl. notes for AI coding agents) |
 
-| 规格 | 说明 |
-|------|------|
-| [import-pipeline.md](./docs/specs/import-pipeline.md) | 导入管线：Parser 注册表、纯函数 pipeline、去重、时区、警告模型 |
-| [data-layer.md](./docs/specs/data-layer.md) | 数据层：Dexie schema、Repository、迁移策略、索引 |
-| [ui-navigation.md](./docs/specs/ui-navigation.md) | UI 导航：路由树、页面布局与空状态 |
-| [book-editing.md](./docs/specs/book-editing.md) | 统一编辑：详情页 Dialog、合并/拆书、卷号语义、待审类型 |
-| [opac-enrichment.md](./docs/specs/opac-enrichment.md) | OPAC 补全：Provider 架构、字段映射、两阶段执行 |
-| [classification-hierarchy.md](./docs/specs/classification-hierarchy.md) | CLC 分类：层次/路径解析、外部数据契约 |
-| [reading-profile.md](./docs/specs/reading-profile.md) | 阅读画像：聚合契约、图表主题、价值统计 |
-| [device-borrows.md](./docs/specs/device-borrows.md) | 设备借阅区分与统计排除 |
-| [branch-library.md](./docs/specs/branch-library.md) | 条码前缀 → 归属馆解析 |
-| [debug-mode.md](./docs/specs/debug-mode.md) | 调试模式与导入决策 Trace |
-| [settings.md](./docs/specs/settings.md) | 设置：偏好持久化、备份导出、整体重置 |
+## Privacy & Security
 
-## 数据流
+- **Pure frontend** — all data lives in your browser's IndexedDB; nothing is uploaded to any server.
+- **Offline-capable** — statically deployable, works without network.
+- **Supply-chain hardening** — pnpm 11 with 7-day release cooldown (`minimumReleaseAge`), frozen lockfile, strict SSL; see [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md).
+- **No real personal data in the repo** — reader card numbers / IPs must never be committed; fixtures are desensitized.
 
-```
-用户文件 (JSON/CSV)
-    │
-    ▼
-┌──────────────────┐
-│  Source Parser   │ ← 根据 Source.parserId 匹配
-│  (per-source)    │
-└──────┬───────────┘
-       │ 解析 & 标准化
-       ▼
-┌──────────────────┐
-│  Normalizer      │ ← 时区转换 (UTC)、字段映射、ISBN 清洗
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────────────────┐
-│  Entity Extractor            │ ← 提取 Book + CatalogRecord
-│  + BorrowCycle Synthesizer   │ ← 借还配对 → BorrowCycle
-└──────────┬───────────────────┘
-           │
-           ▼
-┌──────────────────┐
-│  Deduplicator    │ ← 优先 sourceId+barcode，次之 ISBN，兜底 title+authors
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────────────────┐
-│  OPAC Enrichment (可选)       │ ← Provider 抓取 → 字段级建议/应用
-│  CLC Classification          │ ← 用户 JSON 数据 → 分类路径/树钻取
-└──────┬───────────────────────┘
-       │
-       ▼
-┌──────────────────┐
-│  IndexedDB       │ ← Book + CatalogRecord + BorrowCycle
-│  (Browser)       │   + Source + RawRecord + ImportLog
-└──────────────────┘
-```
+## Contributing
+
+SDD + TDD workflow: agree on a spec (see [docs/ai-agent-workflow-rules.md](./docs/ai-agent-workflow-rules.md)), write failing tests, then implement. All new dependencies go through the supply-chain checklist. PRs reference the relevant spec and attach desensitized samples for parser work.
