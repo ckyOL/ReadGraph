@@ -126,6 +126,14 @@ describe('computeProfileStats - empty input', () => {
     expect(r.gantt).toEqual([])
     expect(r.borrowVolume).toEqual([])
     expect(r.durationDistribution).toEqual([])
+    expect(r.money).toEqual({
+      collectionValue: [],
+      borrowedValue: [],
+      avgPrice: [],
+      dominantCurrency: null,
+      distribution: [],
+      multiCurrency: false,
+    })
   })
 })
 
@@ -582,5 +590,178 @@ describe('computeProfileStats - 设备排除（device-borrows 规格 §4）', ()
     expect(r.summary.totalCycles).toBe(2)
     expect(r.summary.inBorrow).toBe(1)
     expect(r.gantt.map((l) => l.laneKey).sort()).toEqual(['b-a:BA1', 'b-b:__noBarcode__'])
+  })
+})
+
+describe('computeProfileStats - money 价值统计（reading-profile 规格 §2.5）', () => {
+  it('单币种合计与平均：整数分累计无浮点误差（9.99+0.01=10.00）', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 9.99, currency: 'CNY' } }),
+          makeBook('b2', { price: { amount: 0.01, currency: 'CNY' } }),
+          makeBook('b3', { price: { amount: 35, currency: 'CNY' } }),
+          makeBook('b4'), // 无定价不计值
+        ],
+        catalogRecords: [],
+        borrowCycles: [],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.collectionValue).toEqual([{ currency: 'CNY', amount: 45, count: 3 }])
+    expect(r.money.avgPrice).toEqual([{ currency: 'CNY', amount: 15, count: 3 }])
+    expect(r.money.dominantCurrency).toBe('CNY')
+    expect(r.money.multiCurrency).toBe(false)
+  })
+
+  it('多币种按币种分组互不串；dominantCurrency 取有定价书数最多者', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 35, currency: 'CNY' } }),
+          makeBook('b2', { price: { amount: 50, currency: 'CNY' } }),
+          makeBook('b3', { price: { amount: 12.99, currency: 'USD' } }),
+          makeBook('b4', { price: { amount: 500, currency: 'JPY' } }),
+        ],
+        catalogRecords: [],
+        borrowCycles: [],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.collectionValue).toEqual([
+      { currency: 'CNY', amount: 85, count: 2 },
+      { currency: 'USD', amount: 12.99, count: 1 },
+      { currency: 'JPY', amount: 500, count: 1 },
+    ])
+    expect(r.money.avgPrice).toEqual([
+      { currency: 'CNY', amount: 42.5, count: 2 },
+      { currency: 'USD', amount: 12.99, count: 1 },
+      { currency: 'JPY', amount: 500, count: 1 },
+    ])
+    expect(r.money.dominantCurrency).toBe('CNY')
+    expect(r.money.multiCurrency).toBe(true)
+  })
+
+  it('借阅价值：独立 Book 去重，同书多次借阅只计一次', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 30, currency: 'CNY' } }),
+          makeBook('b2', { price: { amount: 40, currency: 'CNY' } }),
+          makeBook('b3', { price: { amount: 50, currency: 'CNY' } }), // 无借阅不计入借阅价值
+        ],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-22T00:00:00Z'),
+          }),
+          makeCycle('c2', 'b1', U('2023-03-01T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-03-08T00:00:00Z'),
+          }),
+          makeCycle('c3', 'b2', U('2023-05-01T00:00:00Z'), { status: 'borrowed' }),
+        ],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.borrowedValue).toEqual([{ currency: 'CNY', amount: 70, count: 2 }])
+  })
+
+  it('借阅价值 range 裁剪：borrowedAt 恰为 from 计入、恰为 to 不计；全量口径不受 range 影响', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 10, currency: 'CNY' } }),
+          makeBook('b2', { price: { amount: 20, currency: 'CNY' } }),
+          makeBook('b3', { price: { amount: 30, currency: 'CNY' } }),
+        ],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-06-15T00:00:00Z'), { status: 'borrowed' }), // = from 计入
+          makeCycle('c2', 'b2', U('2023-12-31T00:00:00Z'), { status: 'borrowed' }),
+          makeCycle('c3', 'b3', U('2024-01-01T00:00:00Z'), { status: 'borrowed' }), // = to 不计
+        ],
+        sources: [],
+      },
+      {
+        classificationSystem: null,
+        range: { from: U('2023-06-15T00:00:00Z'), to: U('2024-01-01T00:00:00Z') },
+        displayTimezone: 'UTC',
+      },
+    )
+    expect(r.money.borrowedValue).toEqual([{ currency: 'CNY', amount: 30, count: 2 }])
+    expect(r.money.collectionValue).toEqual([{ currency: 'CNY', amount: 60, count: 3 }])
+  })
+
+  it('排除：设备书不计值；无定价书不计值；零定价书计 count', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 30, currency: 'CNY' } }),
+          makeBook('b-dev', { price: { amount: 99, currency: 'CNY' }, materialType: 'device' }),
+          makeBook('b-free', { price: { amount: 0, currency: 'CNY' } }),
+          makeBook('b-noprice', { price: null }),
+        ],
+        catalogRecords: [],
+        borrowCycles: [],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.collectionValue).toEqual([{ currency: 'CNY', amount: 30, count: 2 }])
+    expect(r.money.avgPrice).toEqual([{ currency: 'CNY', amount: 15, count: 2 }])
+  })
+
+  it('分布：仅主导币种；分桶边界（20/50/100/200）与桶标签正确', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1', { price: { amount: 15, currency: 'CNY' } }), // <20
+          makeBook('b2', { price: { amount: 20, currency: 'CNY' } }), // 20–50
+          makeBook('b3', { price: { amount: 50, currency: 'CNY' } }), // 50–100
+          makeBook('b4', { price: { amount: 100, currency: 'CNY' } }), // 100–200
+          makeBook('b5', { price: { amount: 200, currency: 'CNY' } }), // >200
+          makeBook('b6', { price: { amount: 49.99, currency: 'CNY' } }), // 20–50
+          makeBook('b7', { price: { amount: 25, currency: 'USD' } }), // 非主导币种不入图
+        ],
+        catalogRecords: [],
+        borrowCycles: [],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.distribution).toEqual([
+      { range: '<20', count: 1 },
+      { range: '20–50', count: 2 },
+      { range: '50–100', count: 1 },
+      { range: '100–200', count: 1 },
+      { range: '>200', count: 1 },
+    ])
+    expect(r.money.dominantCurrency).toBe('CNY')
+    expect(r.money.multiCurrency).toBe(true)
+  })
+
+  it('无定价：全部空结构、dominantCurrency=null、multiCurrency=false', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1'), makeBook('b2')],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), { status: 'borrowed' }),
+        ],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.money.collectionValue).toEqual([])
+    expect(r.money.borrowedValue).toEqual([])
+    expect(r.money.avgPrice).toEqual([])
+    expect(r.money.dominantCurrency).toBeNull()
+    expect(r.money.distribution).toEqual([])
+    expect(r.money.multiCurrency).toBe(false)
   })
 })

@@ -68,6 +68,29 @@ export interface ProfileStatsResult {
   borrowVolume: BorrowVolumePoint[]
   durationDistribution: DurationBucket[]
   gantt: GanttLane[]
+  money: MoneyStats
+}
+
+/** 单币种金额聚合：整数「分」累计避免浮点误差；amount 为元，展示层格式化 */
+interface MoneyAmount {
+  currency: string
+  amount: number
+  count: number
+}
+
+interface MoneyStats {
+  /** 馆藏总价值：全量非设备、有定价 Book 按币种合计；与 time range 无关 */
+  collectionValue: MoneyAmount[]
+  /** 借阅价值：range 内有 ≥1 个 BorrowCycle 的独立 Book（去重）按币种合计 */
+  borrowedValue: MoneyAmount[]
+  /** 平均书价：按币种（cents/count/100） */
+  avgPrice: MoneyAmount[]
+  /** 主导币种：有定价 Book 数最多的币种；无定价 → null */
+  dominantCurrency: string | null
+  /** 价格分布直方图（仅主导币种 Book） */
+  distribution: { range: string; count: number }[]
+  /** 有定价 Book 中是否出现 ≥2 种币种 */
+  multiCurrency: boolean
 }
 
 const MS_PER_DAY = 86_400_000
@@ -80,6 +103,15 @@ const DURATION_BUCKETS: { range: string; max: number }[] = [
   { range: '15–30', max: 30 },
   { range: '31–60', max: 60 },
   { range: '>60', max: Number.POSITIVE_INFINITY },
+]
+
+// 价格分布分桶（主导币种单位）：[min, nextMin) 左闭右开；<20 桶 min=-∞
+const PRICE_BUCKETS: { range: string; min: number }[] = [
+  { range: '<20', min: Number.NEGATIVE_INFINITY },
+  { range: '20–50', min: 20 },
+  { range: '50–100', min: 50 },
+  { range: '100–200', min: 100 },
+  { range: '>200', min: 200 },
 ]
 
 export function resolveSystem(
@@ -274,6 +306,83 @@ export function computeProfileStats(
     if (c.status === 'borrowed') inBorrow += 1
   }
 
+  // --- 价值统计（reading-profile 规格 §2.5） ---
+  // 有定价的非设备 Book（零定价 amount=0 仍计 count）
+  const pricedBooks: { id: string; amount: number; currency: string }[] = []
+  for (const book of books) {
+    if (deviceBookIds.has(book.id) || book.price == null) continue
+    pricedBooks.push({
+      id: book.id,
+      amount: book.price.amount,
+      currency: book.price.currency,
+    })
+  }
+  // 借阅价值口径：range 内有 ≥1 个周期（非设备）的独立 Book，去重
+  const borrowedBookIds = new Set<string>()
+  for (const c of borrowCycles) {
+    if (isDeviceCycle(c)) continue
+    if (inRange(c.borrowedAt, opts.range)) borrowedBookIds.add(c.bookId)
+  }
+  // 单遍累计：币种 → 整数分 / count
+  const colMap = new Map<string, { cents: number; count: number }>()
+  const borMap = new Map<string, { cents: number; count: number }>()
+  for (const p of pricedBooks) {
+    const cents = Math.round(p.amount * 100)
+    let e = colMap.get(p.currency)
+    if (!e) {
+      e = { cents: 0, count: 0 }
+      colMap.set(p.currency, e)
+    }
+    e.cents += cents
+    e.count += 1
+    if (borrowedBookIds.has(p.id)) {
+      let be = borMap.get(p.currency)
+      if (!be) {
+        be = { cents: 0, count: 0 }
+        borMap.set(p.currency, be)
+      }
+      be.cents += cents
+      be.count += 1
+    }
+  }
+  const collectionValue: MoneyAmount[] = [...colMap.entries()].map(
+    ([currency, v]) => ({ currency, amount: v.cents / 100, count: v.count }),
+  )
+  const borrowedValue: MoneyAmount[] = [...borMap.entries()].map(
+    ([currency, v]) => ({ currency, amount: v.cents / 100, count: v.count }),
+  )
+  const avgPrice: MoneyAmount[] = [...colMap.entries()].map(([currency, v]) => ({
+    currency,
+    amount: v.cents / v.count / 100,
+    count: v.count,
+  }))
+  let dominantCurrency: string | null = null
+  let dominantCount = -1
+  for (const [currency, v] of colMap) {
+    if (v.count > dominantCount) {
+      dominantCount = v.count
+      dominantCurrency = currency
+    }
+  }
+  let distribution: { range: string; count: number }[] = []
+  if (dominantCurrency != null) {
+    const distCounts = new Array<number>(PRICE_BUCKETS.length).fill(0)
+    for (const p of pricedBooks) {
+      if (p.currency !== dominantCurrency) continue
+      // 从后往前找第一个 min ≤ amount 的桶（[min, nextMin) 左闭右开语义）
+      for (let i = PRICE_BUCKETS.length - 1; i >= 0; i--) {
+        if (p.amount >= PRICE_BUCKETS[i].min) {
+          distCounts[i] += 1
+          break
+        }
+      }
+    }
+    distribution = PRICE_BUCKETS.map((b, i) => ({
+      range: b.range,
+      count: distCounts[i],
+    }))
+  }
+
   return {
     summary: {
       totalBooks: books.length - deviceBookIds.size,
@@ -283,8 +392,16 @@ export function computeProfileStats(
       medianDurationDays,
     },
     classification,
-   borrowVolume,
-   durationDistribution,
+    borrowVolume,
+    durationDistribution,
     gantt,
+    money: {
+      collectionValue,
+      borrowedValue,
+      avgPrice,
+      dominantCurrency,
+      distribution,
+      multiCurrency: colMap.size > 1,
+    },
   }
 }
