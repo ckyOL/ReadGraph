@@ -119,6 +119,10 @@ describe('dedupeCatalogsAndBooks', () => {
       szlibParser,
     )
     expect(r.bookIdByBarcode.get('BX')).toBe('bk-fuzzy')
+    // H2 回归：模糊合并必须置待审（design-decisions §4）——候选 reviewFlags 与
+    // 目标 Book 均置标；旧版只记警告不置标，待完善筛选搜不到被合并的书。
+    expect(r.reviewFlags).toEqual([true])
+    expect(r.state.books.find((b) => b.id === 'bk-fuzzy')!.needsReview).toBe(true)
     expect(r.warnings.some((w) => w.type === 'duplicate')).toBe(true)
   })
 
@@ -299,6 +303,35 @@ describe('dedupeCatalogsAndBooks', () => {
         { partial: { sourceId: 'szlib', barcodes: ['C2'], metaIdKey: '9001' }, bookPartial: { isbn13: '9780000000001', title: '甲书', authors: ['甲著'] }, isPlaceholder: false },
       ],
       ['C1', 'C2'],
+      { books: [], catalogRecords: [], borrowCycles: [] },
+      szlibParser,
+    )
+    expect(r.reviewFlags).toEqual([false, false])
+    expect(r.warnings).toEqual([])
+  })
+
+  it('批内同题同著者（无 ISBN）异 metaid → 模糊合并置待审（H2）', () => {
+    const r = dedupeCatalogsAndBooks(
+      [
+        { partial: { sourceId: 'szlib', barcodes: ['F1'], metaIdKey: '31' }, bookPartial: { isbn13: null, title: '合成无码书', authors: ['合成著者X'] }, isPlaceholder: false },
+        { partial: { sourceId: 'szlib', barcodes: ['F2'], metaIdKey: '32' }, bookPartial: { isbn13: null, title: '合成无码书', authors: ['合成著者X'] }, isPlaceholder: false },
+      ],
+      ['F1', 'F2'],
+      { books: [], catalogRecords: [], borrowCycles: [] },
+      szlibParser,
+    )
+    expect(r.bookIds).toEqual(['new:noisbn:合成无码书|合成著者x', 'new:noisbn:合成无码书|合成著者x'])
+    // 置标传播到组首候选（pipeline 在组首建 Book 时置 needsReview）。
+    expect(r.reviewFlags).toEqual([true, true])
+  })
+
+  it('批内同题同著者（无 ISBN）同 metaid → 同编目复本不置标（internal-schema）', () => {
+    const r = dedupeCatalogsAndBooks(
+      [
+        { partial: { sourceId: 'szlib', barcodes: ['F1'], metaIdKey: '31' }, bookPartial: { isbn13: null, title: '合成无码书', authors: ['合成著者X'] }, isPlaceholder: false },
+        { partial: { sourceId: 'szlib', barcodes: ['F2'], metaIdKey: '31' }, bookPartial: { isbn13: null, title: '合成无码书', authors: ['合成著者X'] }, isPlaceholder: false },
+      ],
+      ['F1', 'F2'],
       { books: [], catalogRecords: [], borrowCycles: [] },
       szlibParser,
     )

@@ -266,6 +266,44 @@ describe('importPipeline — 同 metaid 多副本（一书多册）编目合并�
   })
 })
 
+describe('importPipeline — 无 ISBN 模糊合并置标（H2 回归）', () => {
+  it('批内同题同著者异 metaid → 单 Book 置 needsReview、双编目', () => {
+    const rows = [
+      mkRow({ date: '20260501', time: '10:00:00', optype: '读者借出', metaid: 9001, title: '合成无码书/ 合成著者X', barcode: 'F1', ISBN: '' }),
+      mkRow({ date: '20260510', time: '10:00:00', optype: '读者还回文献', metaid: 9001, title: '合成无码书/ 合成著者X', barcode: 'F1', ISBN: '' }),
+      mkRow({ date: '20260520', time: '10:00:00', optype: '读者借出', metaid: 9002, title: '合成无码书/ 合成著者X', barcode: 'F2', ISBN: '' }),
+      mkRow({ date: '20260525', time: '10:00:00', optype: '读者还回文献', metaid: 9002, title: '合成无码书/ 合成著者X', barcode: 'F2', ISBN: '' }),
+    ]
+    const r = importPipeline(
+      rows.map((d, i) => ({
+        id: `raw-${i + 1}`,
+        importLogId: meta.id,
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      empty,
+      meta,
+    )
+    // 无 ISBN 同题同著者合并为单 Book，且置待审（design-decisions §4：模糊匹配需标记待确认）。
+    expect(r.books).toHaveLength(1)
+    expect(r.books[0]!.needsReview).toBe(true)
+    // 不同 metaid → 各自编目（异 metaid 非复本）。
+    expect(r.catalogRecords).toHaveLength(2)
+    // 两周期挂同一待审 Book。
+    expect(r.borrowCycles).toHaveLength(2)
+    for (const c of r.borrowCycles) {
+      expect(c.bookId).toBe(r.books[0]!.id)
+    }
+  })
+})
+
 describe('importPipeline — 第二次导入不破坏既有周期（回归）', () => {
   function runBatch(rows: Record<string, unknown>[], impId: string) {
     const m: ImportMeta = {

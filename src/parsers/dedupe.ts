@@ -103,6 +103,10 @@ export function dedupeCatalogsAndBooks(
   const batchIsbnFirstIdx = new Map<string, number>()
   const batchIsbnFirstMetaId = new Map<string, string | null>()
   const batchIsbnFlaggedMeta = new Set<string>()
+  // 批内无 ISBN 同题同著者合并追踪（H2）：组首候选索引/metaid——
+  // 同 metaIdKey 为同编目复本（不置标），异/缺 metaIdKey 的模糊合并置待审。
+  const batchTitleAuthorFirstIdx = new Map<string, number>()
+  const batchTitleAuthorFirstMeta = new Map<string, string | null>()
   // 本批次内已置 needsReview 的既有 Book（避免同批多候选重复置标/重复警告）。
   const flaggedBookIds = new Set<string>()
 
@@ -192,6 +196,16 @@ export function dedupeCatalogsAndBooks(
         // 材料类型不一致（设备 vs 图书）不合并，独立处理（device-borrows 规格 §5）。
         if (!target.needsReview && (bookP.materialType ?? 'book') === target.materialType) {
           assignBook(target.id)
+          // H2 回归：书名+作者模糊合并 → 置待审（design-decisions §4「需标记为
+          // 待确认」），目标 Book 与候选均标记——同名同著者的不同作品（无 ISBN
+          // 多卷/再版/丛书分册）不再被静默合并。组内首次置标去重（flaggedBookIds）。
+          if (!flaggedBookIds.has(target.id)) {
+            flaggedBookIds.add(target.id)
+            reviewFlags[i] = true
+            state.books = state.books.map((b) =>
+              b.id === target.id ? { ...b, needsReview: true } : b,
+            )
+          }
           warnings.push({
             type: 'duplicate',
             message: `建议合并到已存在书目「${target.title}」（标题/作者模糊匹配）`,
@@ -248,6 +262,21 @@ export function dedupeCatalogsAndBooks(
         return
       }
       const token = batchBookByTitleAuthor.get(k) ?? `new:noisbn:${k}`
+      if (batchBookByTitleAuthor.has(k)) {
+        // H2 回归：批内同题同著者合并（无 ISBN 模糊合并）→ 置待审，置标传播
+        // 到组首候选（pipeline 在组首建 Book）；同 metaIdKey 为同编目复本
+        // （internal-schema：同源同 metaid 多复本不置标）。
+        const firstMeta = batchTitleAuthorFirstMeta.get(k) ?? null
+        const candMeta = cr.metaIdKey ?? null
+        if (firstMeta == null || firstMeta !== candMeta) {
+          const firstIdx = batchTitleAuthorFirstIdx.get(k)
+          if (firstIdx != null) reviewFlags[firstIdx] = true
+          reviewFlags[i] = true
+        }
+      } else {
+        batchTitleAuthorFirstIdx.set(k, i)
+        batchTitleAuthorFirstMeta.set(k, cr.metaIdKey ?? null)
+      }
       batchBookByTitleAuthor.set(k, token)
       batchTitleAuthorKind.set(k, candKind)
       assignBook(token)
