@@ -102,6 +102,16 @@ interface BorrowCycle {
 | 同一条码连续两次借出 | 视为两个独立周期，第一个 `status = 'unknown'` |
 | 续借操作 | 不产生新 BorrowCycle，忽略该记录 |
 
+### 跨文件与空条码（import-pipeline 规格 §8）
+
+- **跨文件闭环**：后一次导入中的归还行会闭合前一次导入留下的打开周期（`borrowed`），此闭合**不作为警告**上抛。
+- **空条码配对**：条码缺失时按 `metaIdKey`（同编目下）配对借/还行，见 import-pipeline 规格。
+- **重复导入幂等**：重新导入同一文件时保留既有 BorrowCycle，不重复合成；`backfill-borrow-status` 在启动时幂等回填存量数据的借阅状态。
+
+### 材料类型（设备借阅）
+
+BorrowCycle 本身**不区分**材料类型——非书设备借阅（如电子书阅读器）在 `Book.materialType`（`'book'`/`'device'`）上识别，阅读画像统计层（`src/lib/profile-stats.ts`）统一排除设备借阅，见 [device-borrows 规格](../specs/device-borrows.md)。
+
 ## 派生计算（前端实时计算）
 
 ```typescript

@@ -37,7 +37,7 @@ src/
 
 ## 2. Parser 接口与注册表
 
-- `src/parsers/types.ts` 导出 `SourceParser`、`ParseResult`、`ParseWarning`，与 [source](../metadata/source.md) Parser 接口规范、[entities](../src/types/entities.ts) 完全对齐。`parse(rawData, source)` 在本里程碑**同步**（szlib 数据已在内存为 string）；`rawData` 形参为 `string | ArrayBuffer`。
+- `src/parsers/types.ts` 导出 `SourceParser`、`ParseResult`、`ParseWarning`，与 [source](../metadata/source.md) Parser 接口规范、[entities](../../src/types/entities.ts) 完全对齐。`parse(rawData, source)` 在本里程碑**同步**（szlib 数据已在内存为 string）；`rawData` 形参为 `string | ArrayBuffer`。
 - `src/parsers/registry.ts`：
   - 维护 `Record<string, SourceParser>`，按 `parser.id === source.parserId` 查找。
   - `getParser(parserId)`：未注册抛 `Error`（不静默回退）。

@@ -11,11 +11,12 @@
 
 ### 方式一：uv（推荐）
 
+依赖声明在 `pyproject.toml`，锁文件为 `uv.lock`：
+
 ```bash
 cd szlib_scraper
-uv venv
-source .venv/bin/activate
-uv pip sync requirements.txt
+uv sync
+uv run szlib_scraper.py
 ```
 
 ### 方式二：标准 pip

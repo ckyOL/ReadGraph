@@ -213,7 +213,7 @@ src/
 
 **选书帮占位**（福田图书馆「选书帮」）：记录共享占位书名「福田图书馆读者自选图书」、ISBN 为空、索书号共享，仅 barcode 可区分 → 解析时每 barcode 独立 Book、`needsReview=true`（dedupe 第 4 条）。用户需补全真实书目（书名/作者/ISBN）或合并到库中已有书。
 
-**套装候选**（同 ISBN 多卷）：同一 ISBN 对应多卷/多作品是出版方违规但普遍的现象（如夹具 [szlib-202605.json](../../tests/fixtures/szlib-202605.json) 中「合成书目052 . 3 / 合成书目053 . 4」共用 ISBN 978-7-5740-1274-5，深图编目分开为 metaid 7109377/7109378）。导入时同 ISBN 合并为一 Book（现状保持），卷级信息无处安放 → 标记待审，由用户结构化（卷号入编目、题名规范化）。
+**套装候选**（同 ISBN 多卷）：同一 ISBN 对应多卷/多作品是出版方违规但普遍的现象（如夹具 [szlib-202605.json](../../src/tests/fixtures/szlib-202605.json) 中「合成书目052 . 3 / 合成书目053 . 4」共用 ISBN 978-7-5740-1274-5，深图编目分开为 metaid 7109377/7109378）。导入时同 ISBN 合并为一 Book（现状保持），卷级信息无处安放 → 标记待审，由用户结构化（卷号入编目、题名规范化）。
 
 外部依据（2026-08 检索）：[ISBN 用户手册 §6.5](https://www.isbn-international.org/sites/default/files/ISBN%20users%27%20Manual%202017-simplified%20chinese%20%28Chinese%20translation%20of%20seventh%20edition%29.pdf)（多卷出版物应分配整套 ISBN，套装共用 ISBN 是违规但普遍）；[台湾国家图书馆编目园地 Q&A（2025-09）](https://catweb.ncl.edu.tw/QandA/page/32331)（《纳尼亚传奇》3 册同一 ISBN，官方指导整套 1 条记录）；台大图书馆期刊论文（《大學圖書館》20-2）（ISBN 一对多是已知数据质量问题，需人工确认）；[r/Libraries：图书系列编目](https://www.reddit.com/r/Libraries/comments/1dfzskm/cataloging_book_series/)（每卷独立 MARC 记录是馆方主流）。
 

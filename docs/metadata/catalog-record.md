@@ -56,6 +56,29 @@ interface CatalogRecord {
    */
   classifications: ClassificationEntry[];
 
+  /** === OPAC 补全审计（opac-enrichment 规格 §6） === */
+
+  /**
+   * OPAC 编目补全状态
+   * - 记录最近一次 OPAC 抓取/应用的 Provider、结果状态与时间
+   * - null 表示从未执行过补全；default(null) → 旧导出兼容，无迁移脚本
+   */
+  opacEnrichment: {
+    providerId: string | null;
+    status: 'fetched' | 'not_found' | 'failed';
+    fetchedAt: Date | null;
+    sourceUrl: string | null;
+  } | null;
+
+  /** === 套装卷号 === */
+
+  /**
+   * 卷号（套装书/多卷集）
+   * - 如 "上"、"v.1"、"第一册"；default(null) → 旧导出兼容，无迁移脚本
+   * - 非索引字段，卷号语义与判定见 book-editing 规格 §10
+   */
+  volume: string | null;
+
   /** === 元信息 === */
 
   /** 记录创建时间 (UTC) */
@@ -86,6 +109,15 @@ interface ClassificationEntry {
 
 在 ReadGraph 架构中，`Book` 是跨数据源的全局表现体，用于归集相同 ISBN 或书名的记录；而 `CatalogRecord` 用于封存带有强烈本地色彩的数据，如特定图书馆的 `metaId` 和分类习惯，从而避免了多数据源合并时本地编目数据的冲突和互相覆盖。
 
+## 派生值（不存储，按需计算）
+
+| 派生值 | 计算方式 | 说明 |
+|--------|---------|------|
+| 归属馆 `owningBranch` | `src/lib/branch-prefix.ts` 条码前缀注册表，按 `Source.parserId` 路由 | 由 `barcodes` 前缀（如 szlib `F44010` 大学城）解析；规则见 [szlib-parser §6](./parsers/szlib-parser.md)，展示组件 `src/components/branch-badge.tsx` |
+| 分类路径/类名 | `src/lib/classification-path.ts` + 用户提供的 CLC JSON 数据 | 由 `classifications` 的 `system`/`code` 解析出完整路径与钻取树，见 [classification-hierarchy 规格](../specs/classification-hierarchy.md) |
+
+> 设计要点：归属馆与分类名都是**来源相关**的派生展示，不落库，避免多来源合并时互相覆盖；未命中前缀或未知来源时不渲染。
+
 ## 分类号对照表（参考示例）
 
 由于支持多种分类法，系统需维护不同分类法的映射。以下为 CLC（中图分类法）一级类目示例：
@@ -115,4 +147,4 @@ interface ClassificationEntry {
 | X | 环境科学、安全科学 | Environmental Science |
 | Z | 综合性图书 | General |
 
-> 注意：TP（自动化技术、计算机技术）是 T 的子类，在分析中可进一步细分。
+> 完整 CLC 层次（含复分号、时代标记等）解析见 [classification-hierarchy 规格](../specs/classification-hierarchy.md) 与 `src/lib/classification-path.ts`；分类数据由用户提供 JSON 外部加载（见 [classification 数据契约](../specs/classification-hierarchy.md)），仓库不捆绑 CLC 内容。

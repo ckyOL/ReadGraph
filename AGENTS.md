@@ -29,7 +29,7 @@ pnpm verify                       # frozen install + supply-chain re-check
 pnpm audit --audit-level=high     # security audit
 ```
 
-Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv venv && uv pip sync requirements.txt && uv run szlib_scraper.py`
+Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv sync && uv run szlib_scraper.py`
 
 ## Conventions
 

@@ -68,10 +68,16 @@ ReadGraph/
 ├─ docs/                     # 规格、设计、数据模型文档（本目录）
 │  ├─ app-spec.md            # 本文件：项目规格索引
 │  ├─ specs/                 # 功能规格（SDD 权威）
-│  │  ├─ ui-navigation.md    # UI 导航规格
-│  │  ├─ data-layer.md       # 数据层规格
 │  │  ├─ import-pipeline.md  # 导入管线规格
+│  │  ├─ data-layer.md       # 数据层规格
+│  │  ├─ ui-navigation.md    # UI 导航规格
+│  │  ├─ book-editing.md     # 统一编辑规格
+│  │  ├─ opac-enrichment.md  # OPAC 编目补全规格
+│  │  ├─ classification-hierarchy.md  # CLC 分类层次规格
 │  │  ├─ reading-profile.md  # 阅读画像与图表规格
+│  │  ├─ device-borrows.md   # 设备借阅区分规格
+│  │  ├─ branch-library.md   # 条码归属馆解析规格
+│  │  ├─ debug-mode.md       # 调试模式规格
 │  │  └─ settings.md         # 设置与系统重置规格
 │  ├─ tasks/                 # 里程碑任务分解
 │  ├─ metadata/              # 实体 schema、parser 设计
@@ -80,30 +86,41 @@ ReadGraph/
 │  ├─ i18n-conventions.md
 │  └─ ai-agent-workflow-rules.md
 ├─ src/                      # 前端源码
-│  ├─ app/                   # 应用入口、Provider、路由树（后续）
-│  ├─ components/            # shadcn/ui 落盘组件 + 本地组件
-│  ├─ features/              # 功能切片：import、library、reading-profile、settings（后续）
-│  ├─ routes/                # TanStack Router 文件路由（codegen）
-│  ├─ db/                    # Dexie schema、Repository
+│  ├─ components/            # shadcn/ui 落盘组件（ui/）+ 本地组件（branch-badge 等）
+│  ├─ db/                    # Dexie schema、Repository、回填/备份/重置
+│  ├─ enrich/                # OPAC 补全 Provider 与纯函数层
+│  ├─ import/                # 导入向导 UI
+│  ├─ profile/               # 阅读画像 UI
+│  ├─ settings/              # 设置页 UI
+│  ├─ hooks/                 # 共享 hooks
+│  ├─ i18n/                  # i18next 初始化 + locales/{zh-CN,en}
+│  ├─ lib/                   # 通用纯函数：去重、归一化、日期、ISBN、分类路径、统计
 │  ├─ parsers/               # 各来源 Parser 实现
-│  ├─ lib/                   # 通用纯函数：去重、归一化、日期、ISBN
+│  ├─ routes/                # TanStack Router 文件路由（codegen）
 │  ├─ types/                 # 跨层共享 TypeScript 类型
-│  ├─ App.tsx                # 根组件
 │  ├─ main.tsx               # Vite 入口
-│  └─ styles.css             # Tailwind 入口与全局样式
-├─ tests/                    # Vitest 单测与夹具（后续）
-├─ e2e/                      # Playwright E2E（后续）
-├─ public/                   # 静态资源（本地字体/图标，不联网）
+│  ├─ router.tsx             # 路由根
+│  ├─ routeTree.gen.ts       # 路由 codegen 产物
+│  └─ index.css              # Tailwind 入口与全局样式
+├─ tests/                    # Vitest 单测（与源码同目录的 *.test.ts(x) 并行）
+├─ e2e/                      # Playwright E2E
+├─ scripts/                  # 数据生成/校验脚本（tz-cities、classification-data）
+├─ public/                   # 静态资源（分类 JSON 数据、本地图标）
+├─ bugfile/                  # 原始抓取样本（含真实数据，禁止提交）
+├─ szlib_scraper/            # 深圳图书馆抓取工具（Python，pyproject + uv.lock）
 ├─ .npmrc                    # pnpm/npm 通用安全加固（已就绪，勿改）
-├─ .gitignore                # 含 node_modules / dist / .env
-├─ .env.example              # 仅占位，不含真实令牌
+├─ .gitignore                # 含 node_modules / dist / .env / bugfile
 ├─ .oxlintrc.json            # oxlint 规则（模板生成，勿弱化）
 ├─ index.html
 ├─ package.json
 ├─ pnpm-lock.yaml            # 必须提交、CI 用 pnpm install --frozen-lockfile
+├─ pnpm-workspace.yaml       # 供应链策略（minimumReleaseAge 等）
+├─ components.json           # shadcn/ui 配置
+├─ DESIGN.md                 # 视觉设计规范
+├─ playwright.config.ts
 ├─ tsconfig.json / tsconfig.app.json / tsconfig.node.json
 ├─ vite.config.ts
-├─ vitest.config.ts          # 本里程碑新增（模板不含）
+├─ vitest.config.ts
 └─ README.md
 ```
 
