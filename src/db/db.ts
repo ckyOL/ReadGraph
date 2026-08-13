@@ -110,6 +110,21 @@ export class ReadGraphDB extends Dexie {
             })
         }
       })
+    // v3 迁移：移除 books.needsReview 索引（H1 回归）。IDB 合法键类型不含
+    // boolean（MDN：string/date/float/binary/array），真实浏览器中该索引
+    // 永不收录记录且查询抛 DataError；书库列表/待完善计数本就在内存过滤，
+    // 索引无收益反而制造「Chrome 恒 0 / Firefox 写库报错」的差异。纯索引
+    // 变更：无 upgrade 回调，Dexie 自动重建，数据保留。
+    this.version(3).stores({
+      books: 'id, &isbn13, title, createdAt, *sourceIds, *tags',
+      catalogRecords:
+        'id, bookId, sourceId, metaId, metaIdKey, *classCodes, *barcodes, [sourceId+metaIdKey]',
+      borrowCycles:
+        'id, bookId, sourceId, borrowedAt, returnedAt, status, [bookId+borrowedAt], [sourceId+borrowedAt]',
+      sources: 'id, &parserId, type',
+      rawRecords: 'id, importLogId, sourceId, parseStatus',
+      importLogs: 'id, sourceId, importedAt',
+    })
   }
 }
 

@@ -42,8 +42,9 @@ function SidebarNav() {
   const { t } = useTranslation('nav')
   const { isMobile, setOpenMobile } = useSidebar()
   // 待完善徽标：needsReview=true 的 Book 数（book-editing 规格 §5.3，响应式计数，挂书库入口）。
+  // 不建索引（IDB 键类型不含 boolean，真实浏览器布尔索引失效，H1 回归）→ 全量内存过滤。
   const reviewCount = useLiveQuery(
-    () => db.books.where('needsReview').equals(1).count(),
+    async () => (await db.books.toArray()).filter((b) => b.needsReview).length,
     [],
   )
   return (

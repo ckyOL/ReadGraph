@@ -71,8 +71,13 @@ export class BookRepository implements Repository<Book> {
   findBySourceId(sourceId: string): Promise<Book[]> {
     return this.db.books.where('sourceIds').equals(sourceId).toArray() as Promise<Book[]>
   }
+  /**
+   * 待完善书目（needsReview=true）。全量内存过滤、不建索引：IDB 合法键类型
+   * 不含 boolean（真实浏览器中布尔索引永不收录记录、equals(true) 抛 DataError，
+   * H1 回归），书库列表/待完善筛选本就在内存过滤。
+   */
   findNeedsReview(): Promise<Book[]> {
-    return this.db.books.where('needsReview').equals(1).toArray() as Promise<Book[]>
+    return this.db.books.toArray().then((books) => books.filter((b) => b.needsReview))
   }
   searchByTitle(query: string): Promise<Book[]> {
     const lower = query.toLowerCase()

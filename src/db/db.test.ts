@@ -80,8 +80,8 @@ describe('DB schema', () => {
       ['books', 'borrowCycles', 'catalogRecords', 'importLogs', 'rawRecords', 'sources'].sort(),
     )
   })
-  it('declares version 2', () => {
-    expect(db.verno).toBe(2)
+  it('declares version 3', () => {
+    expect(db.verno).toBe(3)
   })
 
   it('v1 → v2 升级清理存量重复周期并重指 rawRecords', async () => {
@@ -153,7 +153,10 @@ describe('DB schema', () => {
     expect(names).toContain('isbn13')
     expect(names).toContain('sourceIds')
     expect(names).toContain('tags')
-    expect(names).toContain('needsReview')
+    // H1 回归：needsReview 不建索引——IDB 合法键类型不含 boolean（真实浏览器
+    // 布尔索引永不收录记录、查询抛 DataError），待完善筛选/计数本就在内存过滤。
+    // fake-indexeddb 测不出真实键类型语义差异，此处断言 schema 本身。
+    expect(names).not.toContain('needsReview')
     const isbn = idx.indexes.find((i) => i.name === 'isbn13')
     expect(isbn?.unique).toBe(true)
   })
