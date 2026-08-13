@@ -121,6 +121,12 @@ export function importPipeline(
   // 编目 ID 按「派生输入」缓存：同输入恒同 id；同 barcode 多候选（如空条码行按
   // metaid 消歧）不会互相覆盖（旧版按 barcode 缓存会让后者复用前者的 id）。
   const crIdByDerived = new Map<string, string>()
+  // 批内已建编目（id → 记录）：同 (sourceId, metaIdKey) 多副本候选合并条码。
+  const newCrById = new Map<string, CatalogRecord>()
+  // 既有编目按 id：命中后补入新副本条码（重导/增量文件恢复，C1 回归）。
+  const existingCrById = new Map(existing.catalogRecords.map((cr) => [cr.id, cr] as const))
+  // 命中既有编目并补入新条码后的记录：返回时替换原记录（bulkPut 全量写回）。
+  const mergedExistingCrs = new Map<string, CatalogRecord>()
   // barcode → 本批次编目 ID 列表：供周期关联判定唯一/歧义。
   const crIdsByBarcode = new Map<string, string[]>()
   // metaIdKey → 本批次编目：同 barcode 多编目时按原始行 metaid 消歧。
@@ -150,11 +156,39 @@ export function importPipeline(
     const cId = matchedCrId
       ? matchedCrId
       : (crIdByDerived.get(crDerivedInput) ?? makeCrId(crDerivedInput))
-    if (!matchedCrId) crIdByDerived.set(crDerivedInput, cId)
     const bcCrs = crIdsByBarcode.get(barcode) ?? []
     bcCrs.push(cId)
     crIdsByBarcode.set(barcode, bcCrs)
-    if (matchedCrId) continue
+    if (matchedCrId) {
+      // 编目级命中：复用既有记录；若候选带来记录没有的副本条码（同 metaid
+      // 新复本 / 旧版缺陷丢码后重导恢复），并入 barcodes——否则副本条码
+      // 静默丢失（C1 回归；空串条码无物理副本身份，不并入）。
+      const existingCr = existingCrById.get(matchedCrId)
+      if (existingCr) {
+        const newBarcodes = (cr.barcodes ?? []).filter(
+          (bc) => bc !== '' && !existingCr.barcodes.includes(bc),
+        )
+        if (newBarcodes.length > 0) {
+          mergedExistingCrs.set(matchedCrId, {
+            ...existingCr,
+            barcodes: [...existingCr.barcodes, ...newBarcodes],
+          })
+        }
+      }
+      continue
+    }
+    // 批内同 (sourceId, metaIdKey) 多副本候选（一书多册）：合并为单条编目、
+    // barcodes 取并集。szlib 按条码分候选（catKey 含 barcode），而编目级身份
+    // 是 metaid——旧版两条候选派生同 id，bulkPut 时后者覆盖前者、副本条码
+    // 静默丢失（C1 回归）。
+    const batchCr = newCrById.get(cId)
+    if (batchCr) {
+      for (const bc of cr.barcodes ?? []) {
+        if (bc !== '' && !batchCr.barcodes.includes(bc)) batchCr.barcodes.push(bc)
+      }
+      continue
+    }
+    crIdByDerived.set(crDerivedInput, cId)
 
     // 逐候选取结果：同 barcode 多候选（空条码多书）不互相覆盖。
     let bookId = bookIds[i] ?? bookIdByBarcode.get(barcode)
@@ -212,6 +246,7 @@ export function importPipeline(
       updatedAt: now,
     }
     newCatalogRecords.push(newCr)
+    newCrById.set(cId, newCr)
     if (metaIdKey) crByMetaKey.set(`${sourceId}|${metaIdKey}`, newCr)
   }
 
@@ -395,7 +430,10 @@ export function importPipeline(
   return {
     // 既有 Book 可能被去重置标（套装候选），用去重后的 state.books 而非 existing.books。
     books: [...dedupeState.books, ...newBooks],
-    catalogRecords: [...existing.catalogRecords, ...newCatalogRecords],
+    catalogRecords: [
+      ...existing.catalogRecords.map((cr) => mergedExistingCrs.get(cr.id) ?? cr),
+      ...newCatalogRecords,
+    ],
     borrowCycles: finalCycles,
     importLog,
     rawRecords: rows,

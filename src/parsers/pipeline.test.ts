@@ -184,6 +184,88 @@ describe('importPipeline — 同 ISBN 多条码（一书多册）批内合并（
   })
 })
 
+describe('importPipeline — 同 metaid 多副本（一书多册）编目合并（C1 回归）', () => {
+  const bookRows = [
+    mkRow({ date: '20260501', time: '10:00:00', optype: '读者借出', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'C1', ISBN: '978-7-5740-1274-5' }),
+    mkRow({ date: '20260510', time: '10:00:00', optype: '读者还回文献', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'C1', ISBN: '978-7-5740-1274-5' }),
+    mkRow({ date: '20260520', time: '10:00:00', optype: '读者借出', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'C2', ISBN: '978-7-5740-1274-5' }),
+    mkRow({ date: '20260525', time: '10:00:00', optype: '读者还回文献', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'C2', ISBN: '978-7-5740-1274-5' }),
+  ]
+  function run(rows: Record<string, unknown>[], impId: string, existing?: ExistingState) {
+    const m: ImportMeta = { ...meta, id: impId }
+    return importPipeline(
+      rows.map((d, i) => ({
+        id: `${impId}-raw-${i + 1}`,
+        importLogId: impId,
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      existing ?? empty,
+      m,
+    )
+  }
+
+  it('同批同 metaid 两条码 → 单条编目 barcodes 并集，不互相覆盖（旧版丢 C1）', () => {
+    const r = run(bookRows, 'imp-c1')
+    // 单条编目，barcodes 含两条码（旧版两条同派生 id → bulkPut 后者覆盖前者）。
+    expect(r.catalogRecords).toHaveLength(1)
+    const cr = r.catalogRecords[0]!
+    expect(cr.metaIdKey).toBe('9001')
+    expect(cr.barcodes).toEqual(['C1', 'C2'])
+    // 单 Book（&isbn13 唯一索引）；两周期均挂同一编目与 Book。
+    expect(r.books).toHaveLength(1)
+    expect(r.borrowCycles).toHaveLength(2)
+    for (const c of r.borrowCycles) {
+      expect(c.catalogRecordId).toBe(cr.id)
+      expect(c.bookId).toBe(r.books[0]!.id)
+    }
+    // 同源同 metaid 多复本不置标（同 ISBN 多卷才置标）。
+    expect(r.books[0]!.needsReview).toBe(false)
+    expect(r.importLog.stats.newBooks).toBe(1)
+  })
+
+  it('重导同文件：既有编目 barcodes 不变、不新增记录', () => {
+    const first = run(bookRows, 'imp-c1a')
+    const existing: ExistingState = {
+      books: first.books,
+      catalogRecords: first.catalogRecords,
+      borrowCycles: first.borrowCycles,
+    }
+    const replay = run(bookRows, 'imp-c1b', existing)
+    expect(replay.catalogRecords).toHaveLength(1)
+    expect(replay.catalogRecords[0]!.barcodes).toEqual(['C1', 'C2'])
+    expect(replay.books).toHaveLength(1)
+  })
+
+  it('旧版缺陷落库态（仅 C2）重导：按 metaIdKey 命中并入 C1 恢复，不丢码', () => {
+    const first = run(bookRows, 'imp-c1a')
+    const originalCr = first.catalogRecords[0]!
+    // 模拟旧版缺陷产物：同 id 但 barcodes 只剩 [C2]（C1 被覆盖丢失）。
+    const corrupted: ExistingState = {
+      books: first.books,
+      catalogRecords: [{ ...originalCr, barcodes: ['C2'] }],
+      borrowCycles: [],
+    }
+    const recovered = run(bookRows, 'imp-c1c', corrupted)
+    // 既有编目被并入 C1（重导同文件可恢复，报告 C1 影响项）。
+    expect(recovered.catalogRecords).toHaveLength(1)
+    const recCr = recovered.catalogRecords[0]!
+    expect(recCr.id).toBe(originalCr.id)
+    expect(recCr.barcodes).toEqual(['C2', 'C1'])
+    // 新周期挂到恢复后的编目。
+    for (const c of recovered.borrowCycles) {
+      expect(c.catalogRecordId).toBe(originalCr.id)
+    }
+  })
+})
+
 describe('importPipeline — 第二次导入不破坏既有周期（回归）', () => {
   function runBatch(rows: Record<string, unknown>[], impId: string) {
     const m: ImportMeta = {
