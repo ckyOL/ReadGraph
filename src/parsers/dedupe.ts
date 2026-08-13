@@ -1,6 +1,6 @@
 // 去重合并纯函数（§10.6、internal-schema 去重策略 + szlib-parser §4/§5）。
 // existing 由调用方显式传入；本模块只做映射、不读写存储、不带时钟。
-import type { Book, BorrowCycle, CatalogRecord, ParseWarning } from '@/types/entities'
+import type { Book, BorrowCycle, CatalogRecord, MaterialType, ParseWarning } from '@/types/entities'
 import { normalize } from '@/lib/normalize'
 import type { SourceParser } from './types'
 
@@ -96,6 +96,9 @@ export function dedupeCatalogsAndBooks(
   // 值即 pipeline 的 `new:` 派生 token：`new:isbn:<isbn13>` / `new:noisbn:<题名|著者>`。
   const batchBookByIsbn = new Map<string, string>()
   const batchBookByTitleAuthor = new Map<string, string>()
+  // 无 ISBN 同题同著者 token 的材料类型（device-borrows 规格 §5）：
+  // 设备与图书材料类型不同，不得复用同一 token（设备不并入图书 Book）。
+  const batchTitleAuthorKind = new Map<string, MaterialType>()
   // 批内同 ISBN 多 metaid（套装候选）追踪：组首候选索引/metaid + 已警告的 metaid 对。
   const batchIsbnFirstIdx = new Map<string, number>()
   const batchIsbnFirstMetaId = new Map<string, string | null>()
@@ -186,7 +189,8 @@ export function dedupeCatalogsAndBooks(
       const list = bookByTitleAuthor.get(`${titleKey}|${authorKey}`)
       if (list && list.length > 0) {
         const target = list[0]!
-        if (!target.needsReview) {
+        // 材料类型不一致（设备 vs 图书）不合并，独立处理（device-borrows 规格 §5）。
+        if (!target.needsReview && (bookP.materialType ?? 'book') === target.materialType) {
           assignBook(target.id)
           warnings.push({
             type: 'duplicate',
@@ -237,8 +241,15 @@ export function dedupeCatalogsAndBooks(
     const batchAuthorKey = normalize((bookP.authors ?? [])[0] ?? '')
     if (batchTitleKey !== '' && batchAuthorKey !== '') {
       const k = `${batchTitleKey}|${batchAuthorKey}`
+      // 材料类型不一致（设备 vs 图书）不复用同键 token → 独立书目（device-borrows 规格 §5）。
+      const candKind: MaterialType = bookP.materialType ?? 'book'
+      if (batchTitleAuthorKind.has(k) && batchTitleAuthorKind.get(k) !== candKind) {
+        assignBook(`new:u:${i}`)
+        return
+      }
       const token = batchBookByTitleAuthor.get(k) ?? `new:noisbn:${k}`
       batchBookByTitleAuthor.set(k, token)
+      batchTitleAuthorKind.set(k, candKind)
       assignBook(token)
       return
     }

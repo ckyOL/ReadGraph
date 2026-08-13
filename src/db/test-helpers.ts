@@ -86,6 +86,7 @@ export function makeBook(
     createdAt: NOW,
     updatedAt: NOW,
     needsReview,
+    materialType: 'book',
     sourceIds,
     parallelTitles: [],
   }

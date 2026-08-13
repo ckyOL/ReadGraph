@@ -32,6 +32,7 @@ function makeBook(id: string, over: Partial<Book> = {}): Book {
     createdAt: Day1,
     updatedAt: Day1,
     needsReview: false,
+    materialType: 'book',
     sourceIds: ['src-1'],
     parallelTitles: [],
     ...over,
@@ -493,5 +494,93 @@ describe('computeProfileStats - 纯函数性', () => {
     const a = computeProfileStats(input, NO_OP)
     const b = computeProfileStats(input, NO_OP)
     expect(a).toEqual(b)
+  })
+})
+
+describe('computeProfileStats - 设备排除（device-borrows 规格 §4）', () => {
+  const bookA = makeBook('b-a', { title: '甲书' })
+  const bookB = makeBook('b-b', { title: '乙书' })
+  const device = makeBook('b-dev', { title: '电子书阅读器', materialType: 'device' })
+  const cycA = makeCycle('c-a', 'b-a', U('2023-02-01T00:00:00Z'), {
+    status: 'returned',
+    returnedAt: U('2023-02-11T00:00:00Z'), // 10 天
+    barcode: 'BA1',
+  })
+  const cycDev = makeCycle('c-dev', 'b-dev', U('2023-02-03T00:00:00Z'), {
+    status: 'returned',
+    returnedAt: U('2023-02-08T00:00:00Z'), // 5 天
+    barcode: 'DEV1',
+  })
+  const cycDevOpen = makeCycle('c-dev2', 'b-dev', U('2023-03-01T00:00:00Z'), {
+    status: 'borrowed',
+    barcode: 'DEV1',
+  })
+
+  it('summary 全维度排除设备：totalBooks/totalCycles/inBorrow/时长', () => {
+    const r = computeProfileStats(
+      {
+        books: [bookA, device],
+        catalogRecords: [],
+        borrowCycles: [cycA, cycDev, cycDevOpen],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.summary.totalBooks).toBe(1)
+    expect(r.summary.totalCycles).toBe(1)
+    expect(r.summary.inBorrow).toBe(0) // 设备在借不计
+    expect(r.summary.avgDurationDays).toBe(10)
+    expect(r.summary.medianDurationDays).toBe(10)
+  })
+
+  it('设备周期不进 borrowVolume / durationDistribution / gantt', () => {
+    const r = computeProfileStats(
+      {
+        books: [bookA, bookB, device],
+        catalogRecords: [],
+        borrowCycles: [cycA, cycDev],
+        sources: [],
+      },
+      NO_OP,
+    )
+    // 借阅量：仅乙、甲两书周期；设备周期（02-03）不入桶。
+    const vol = r.borrowVolume.find((p) => p.bucket === '2023-02')
+    expect(vol?.count).toBe(1)
+    // 时长分布：仅 10 天桶 +1，设备 5 天不入桶。
+    const dur = r.durationDistribution.find((d) => d.range === '0–7')
+    expect(dur?.count).toBe(0)
+    expect(r.durationDistribution.find((d) => d.range === '8–14')?.count).toBe(1)
+    // 甘特：lane 只含图书周期，设备 lane 不存在。
+    expect(r.gantt.map((l) => l.laneKey)).toEqual(['b-a:BA1'])
+  })
+
+  it('设备 Book 不进分类 treemap（含未分类桶）', () => {
+    const crA = makeCatalog('cr-a', 'b-a', {
+      classifications: [{ system: 'clc', code: 'I', category: '文学' }],
+    })
+    const r = computeProfileStats(
+      { books: [bookA, device], catalogRecords: [crA], borrowCycles: [], sources: [] },
+      NO_OP,
+    )
+    expect(r.classification.find((c) => c.code === 'I')?.value).toBe(1)
+    // 设备无分类也不占 __unclassified__。
+    expect(r.classification.find((c) => c.code === '__unclassified__')).toBeUndefined()
+    expect(r.summary.totalBooks).toBe(1)
+  })
+
+  it('无设备数据时结果与旧语义一致（排除不误伤普通书）', () => {
+    const r = computeProfileStats(
+      {
+        books: [bookA, bookB],
+        catalogRecords: [],
+        borrowCycles: [cycA, makeCycle('c-b', 'b-b', U('2023-05-01T00:00:00Z'), { status: 'borrowed' })],
+        sources: [],
+      },
+      NO_OP,
+    )
+    expect(r.summary.totalBooks).toBe(2)
+    expect(r.summary.totalCycles).toBe(2)
+    expect(r.summary.inBorrow).toBe(1)
+    expect(r.gantt.map((l) => l.laneKey).sort()).toEqual(['b-a:BA1', 'b-b:__noBarcode__'])
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import type { Source } from '@/types/entities'
-import { szlibParser } from './szlib'
+import { szlibParser, isDeviceCirtype } from './szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
 
 const source: Source = {
@@ -210,5 +210,71 @@ describe('szlibParser.parse', () => {
     expect(sorted.map((c) => c.status)).toEqual(['unknown', 'borrowed'])
     expect(sorted[0]!.returnedAt).toBeNull()
     expect(sorted[1]!.returnedAt).toBeNull()
+  })
+})
+
+describe('设备借阅（device-borrows 规格）', () => {
+  // 结构对照 szlib-202604.json 脱敏设备行（cirtype=电子设备外借、metaid=5952182、无 ISBN）。
+  const deviceRow = (optype: string, time: string) => ({
+    date: '20260411',
+    time,
+    optype,
+    cirtype: '电子设备外借',
+    metatable: 'bibliosm',
+    metaid: 5952182,
+    title: '合成书目036/ 合成著者36著',
+    ISBN: '',
+    addr: '合成馆16自助借还机',
+    barcode: '04400790006607',
+    callno: 'TP368.3/168',
+  })
+  const bookRow = {
+    date: '20260411',
+    time: '16:25:29',
+    optype: '读者借出',
+    cirtype: '中文图书外借',
+    metatable: 'bibliosm',
+    metaid: 5952183,
+    title: '合成书目037/ 合成著者37著',
+    ISBN: '978-7-100-00000-1',
+    addr: '合成馆1自助借还机',
+    barcode: '04400790006608',
+    callno: 'TP311/1',
+  }
+
+  it('isDeviceCirtype：精确匹配，undefined/空串/其它值/前缀均 false', () => {
+    expect(isDeviceCirtype('电子设备外借')).toBe(true)
+    expect(isDeviceCirtype(undefined)).toBe(false)
+    expect(isDeviceCirtype('')).toBe(false)
+    expect(isDeviceCirtype('中文图书外借')).toBe(false)
+    expect(isDeviceCirtype('电子设备外借测试')).toBe(false)
+  })
+
+  it('设备行产出 materialType=device 的 Book，普通行缺省不带字段', () => {
+    const rows = [deviceRow('读者借出', '16:25:29'), deviceRow('读者还回文献', '17:17:09')]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    expect(r.books).toHaveLength(1)
+    expect(r.books[0]!.materialType).toBe('device')
+
+    const rb = szlibParser.parse(JSON.stringify([bookRow]), source)
+    expect(rb.books[0]!.materialType).toBeUndefined()
+  })
+
+  it('设备行 filterRows 保留（预览所见即导入所得，区别于自助查询/续借）', () => {
+    const rows = [deviceRow('读者借出', '16:25:29'), deviceRow('读者还回文献', '17:17:09')]
+    const filtered = szlibParser.filterRows(rows)
+    expect(filtered).toHaveLength(2)
+    expect(filtered).toEqual(rows)
+  })
+
+  it('设备借还照常合成一个 returned 周期，携带 barcode/addr', () => {
+    const rows = [deviceRow('读者借出', '16:25:29'), deviceRow('读者还回文献', '17:17:09')]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    expect(r.borrowCycles).toHaveLength(1)
+    const c = r.borrowCycles[0]!
+    expect(c.status).toBe('returned')
+    expect(c.barcode).toBe('04400790006607')
+    expect(c.borrowLocation).toBe('合成馆16自助借还机')
+    expect(c.returnLocation).toBe('合成馆16自助借还机')
   })
 })

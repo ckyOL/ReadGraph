@@ -31,6 +31,7 @@
   - `subtitle` 恒为 `null`（不再由 ` : ` 右侧派生；字段保留给未来来源/手动编辑）；`parallelTitles` 取 ` = ` 右侧各段，无则 `[]`。
   - `authors` 取责任者区角色词为 `著`/`编`/`主编`/`编著`/`绘` 的个人（含无角色词的第一组默认），`translators` 取 `译`/`校`/`校译` 的个人；`等` 暂并入姓名字符串保留，由归一化阶段统一剥离。
   - 占位书名（`isPlaceholder=true`，如选书帮 `"福田图书馆读者自选图书"`、空串）短路返回 `authors=[]`、`translators=[]`，保留 `title=rawTitle` 原样。
+  - **设备材料类型**（[device-borrows 规格](../../specs/device-borrows.md)）：当行 `cirtype` **精确等于** `"电子设备外借"`（深图设备外借流通类型，如电子书阅读器 `metaid=5952182`）时，该行产出的 Book 携带 `materialType='device'`；非设备行缺省（装配层默认 `'book'`）。判定函数 `isDeviceCirtype` 与存量回填共用。设备行仍是合法借阅（**不**被 `filterRows` 剔除、落入 `rawRecords`），仅材料类型不同——阅读画像统计全维度不纳入设备，时间线/书库展示保留。
 
 **B. 本地编目记录 (CatalogRecord)**
 - `id`: 生成新 UUID。

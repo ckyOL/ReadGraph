@@ -6,6 +6,7 @@ import type {
   CatalogRecord,
   ImportLog,
   ImportLogStats,
+  MaterialType,
   ParseWarning,
   RawRecord,
   Source,
@@ -189,6 +190,9 @@ export function importPipeline(
           updatedAt: now,
           // review 规格 §9.2：套装候选（批内同 ISBN 多 metaid 等）置 needsReview。
           needsReview: ((bookPartial.needsReview ?? false) || reviewFlags[i]) as boolean,
+          // device-borrows 规格 §3：parser 标记的设备（cirtype=电子设备外借）沿用；
+          // 非设备缺省 'book'。
+          materialType: (bookPartial.materialType ?? 'book') as MaterialType,
           sourceIds: (bookPartial.sourceIds ?? [source.id]) as string[],
           parallelTitles: (bookPartial.parallelTitles ?? []) as string[],
         })

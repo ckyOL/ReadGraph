@@ -74,6 +74,8 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 **各维度语义**：
 
+0. **设备排除总则**（[device-borrows 规格 §4](device-borrows.md#4-统计排除stats)）：`Book.materialType='device'`（电子书阅读器等非书实物，由 szlib parser 依 `cirtype="电子设备外借"` 标记）的 Book 与其全部 BorrowCycle **不进入任何维度**——`summary.*`、分类 treemap、借阅量柱图、时长分布、甘特带均排除；`inBorrow` 不计设备在借。排除在 `computeProfileStats` 内部完成（同步 `useMemo` 与 Worker 共用同一纯函数入口，两路径自动覆盖）；无设备数据时结果与旧语义等价。设备借阅历史仍由 `/timeline` 展示，本页仅统计排除。
+
 1. **分类法分布 treemap**（`classification`）
    - 体系取 `opts.classificationSystem`；缺省度量为各 `Source.library.classificationSystem` 的多数票（无则 `'clc'`）。
    - 每个 `Book` 计一次，避免多 `CatalogRecord` 多副本重复计数。Book 的分类号取其 `CatalogRecord.classifications` 中**首选匹配体系**的条目；命中多条取首条；无匹配则归入 `未分类`（`code: '__unclassified__'`）。

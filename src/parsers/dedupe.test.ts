@@ -31,6 +31,7 @@ function mkBook(p: Partial<Book>): Book {
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     needsReview: false,
+    materialType: 'book',
     sourceIds: [],
     parallelTitles: [],
     ...p,
@@ -333,6 +334,128 @@ describe('dedupeCatalogsAndBooks', () => {
     )
     expect(r.bookIds).toEqual(['bk-B'])
     expect(r.bookIdByBarcode.get('')).toBe('bk-B')
+  })
+
+  it('材料类型守卫：设备候选不并入既有图书 Book（title+author 兜底路径），记警告', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-book', isbn13: null, title: '合成书目036', authors: ['合成著者36'] })],
+      catalogRecords: [],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['DEV1'], metaIdKey: '5952182' },
+          bookPartial: {
+            isbn13: null,
+            title: '合成书目036',
+            authors: ['合成著者36'],
+            materialType: 'device',
+            sourceIds: ['szlib'],
+          },
+          isPlaceholder: false,
+        },
+      ],
+      ['DEV1'],
+      existing,
+      szlibParser,
+    )
+    // 不挂到图书 Book：独立 token。隔离是正常行为（设备/图书不同材料类型），不记警告。
+    expect(r.bookIds).not.toEqual(['bk-book'])
+    expect(r.bookIds[0]!.startsWith('new:')).toBe(true)
+    expect(r.warnings).toEqual([])
+  })
+
+  it('材料类型守卫：图书候选也不并入设备 Book', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-dev', isbn13: null, title: '合成书目036', authors: ['合成著者36'], materialType: 'device' })],
+      catalogRecords: [],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['B1'], metaIdKey: '42' },
+          bookPartial: { isbn13: null, title: '合成书目036', authors: ['合成著者36'], sourceIds: ['szlib'] },
+          isPlaceholder: false,
+        },
+      ],
+      ['B1'],
+      existing,
+      szlibParser,
+    )
+    expect(r.bookIds[0]!.startsWith('new:')).toBe(true)
+  })
+
+  it('设备候选与既有设备 Book 照常合并（同型号设备多次借阅归并）', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-dev', isbn13: null, title: '合成书目036', authors: ['合成著者36'], materialType: 'device' })],
+      catalogRecords: [],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['DEV2'], metaIdKey: '5952183' },
+          bookPartial: {
+            isbn13: null,
+            title: '合成书目036',
+            authors: ['合成著者36'],
+            materialType: 'device',
+            sourceIds: ['szlib'],
+          },
+          isPlaceholder: false,
+        },
+      ],
+      ['DEV2'],
+      existing,
+      szlibParser,
+    )
+    expect(r.bookIds[0]).toBe('bk-dev')
+  })
+
+  it('编目级匹配不受守卫影响：同 barcode 设备编目沿用既有设备 Book（跨文件）', () => {
+    const existing: DedupeState = {
+      books: [mkBook({ id: 'bk-dev', isbn13: null, title: '合成书目036', authors: ['合成著者36'], materialType: 'device' })],
+      catalogRecords: [
+        mkCatalog({ id: 'cr-dev', bookId: 'bk-dev', barcodes: ['04400790006607'], metaIdKey: '5952182' }),
+      ],
+      borrowCycles: [],
+    }
+    const r = dedupeCatalogsAndBooks(
+      [
+        {
+          partial: { sourceId: 'szlib', barcodes: ['04400790006607'], metaIdKey: '5952182' },
+          bookPartial: {
+            isbn13: null,
+            title: '合成书目036',
+            authors: ['合成著者36'],
+            materialType: 'device',
+            sourceIds: ['szlib'],
+          },
+          isPlaceholder: false,
+        },
+      ],
+      ['04400790006607'],
+      existing,
+      szlibParser,
+    )
+    expect(r.bookIdByBarcode.get('04400790006607')).toBe('bk-dev')
+    expect(r.existingCrIds).toEqual(['cr-dev'])
+    expect(r.warnings).toEqual([])
+  })
+
+  it('批内守卫：设备候选不复用同键图书 token（无 ISBN 同题同著者）', () => {
+    const r = dedupeCatalogsAndBooks(
+      [
+        { partial: { sourceId: 'szlib', barcodes: ['B1'], metaIdKey: '11' }, bookPartial: { isbn13: null, title: '合成书目036', authors: ['合成著者36'], sourceIds: ['szlib'] }, isPlaceholder: false },
+        { partial: { sourceId: 'szlib', barcodes: ['DEV1'], metaIdKey: '5952182' }, bookPartial: { isbn13: null, title: '合成书目036', authors: ['合成著者36'], materialType: 'device', sourceIds: ['szlib'] }, isPlaceholder: false },
+      ],
+      ['B1', 'DEV1'],
+      { books: [], catalogRecords: [], borrowCycles: [] },
+      szlibParser,
+    )
+    expect(r.bookIds).toEqual(['new:noisbn:合成书目036|合成著者36', 'new:u:1'])
   })
 })
 

@@ -25,6 +25,7 @@ const validBook = {
   createdAt: now(),
   updatedAt: now(),
   needsReview: false,
+  materialType: 'book',
   sourceIds: ['src-1'],
   parallelTitles: [],
 }
@@ -206,6 +207,26 @@ describe('entity schemas — reject invalid', () => {
     const { title: _omit, ...rest } = validBook
     void _omit
     expect(bookSchema.safeParse(rest).success).toBe(false)
+  })
+  it('book accepts materialType device and book', () => {
+    expect(
+      bookSchema.safeParse({ ...validBook, materialType: 'device' }).success,
+    ).toBe(true)
+    expect(
+      bookSchema.safeParse({ ...validBook, materialType: 'book' }).success,
+    ).toBe(true)
+  })
+  it('book rejects bad materialType enum (device-borrows 规格 §3)', () => {
+    expect(
+      bookSchema.safeParse({ ...validBook, materialType: 'magazine' }).success,
+    ).toBe(false)
+  })
+  it('book missing materialType defaults to "book" (旧导出兼容)', () => {
+    const { materialType: _omit, ...rest } = validBook
+    void _omit
+    const r = bookSchema.safeParse(rest)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.materialType).toBe('book')
   })
 })
 

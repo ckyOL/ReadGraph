@@ -44,6 +44,7 @@ function mkBook(over: Partial<Book>): Book {
     createdAt: NOW,
     updatedAt: NOW,
     needsReview: false,
+    materialType: 'book',
     sourceIds: ['src-sz'],
     parallelTitles: [],
     ...over,

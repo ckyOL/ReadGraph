@@ -215,6 +215,7 @@ pnpm install --ignore-scripts
 | 6 | OPAC 编目补全规格 | ✅ 已补 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) | 多来源 Provider 架构（`OpacProvider` 注册表 + 统一 `OpacDetail`，szlib 为首个参考实现）、字段映射与建议改动模型（fill/conflict，字段级新旧对照 + 恢复）、表单预填应用（复用 book-editing 编辑表单）、`CatalogRecord.opacEnrichment` schema 增量（含 providerId）、CORS 部署与降级、两阶段执行模型（抓取/应用）— 纯函数 `mapOpacDetail`/`prefillFromChanges`/`parseSzlibDetail` 待 TDD 落地 |
 | 7 | 统一编辑规格 | ✅ 已落地 | [specs/book-editing.md](./specs/book-editing.md) | 删除 /review 页，编辑统一收口到 /library/$bookId 详情页 Dialog（Book 全字段 + 编目 volume/barcodes/classifications，保存即解除待审）；书库列表承载占位/套装徽标与类型筛选；待审类型语义（选书帮占位 + 同 ISBN 套装候选的判定/卷号解析/操作语义）并入 §10；`CatalogRecord.volume`、dedupe 置标、`src/lib/volume.ts`、合并/拆书 — 已 TDD 落地（见 ui-navigation §8） |
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
+| 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 

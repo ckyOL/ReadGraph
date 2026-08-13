@@ -33,6 +33,7 @@ function mkBook(over: Partial<Book>): Book {
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     needsReview: false,
+    materialType: 'book',
     sourceIds: [],
     parallelTitles: [],
     ...over,

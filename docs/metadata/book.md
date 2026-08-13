@@ -117,6 +117,19 @@ interface Book {
   needsReview: boolean;
 
   /**
+   * 材料类型
+   * - `'book'`：图书（默认，所有既有数据与手动录入数据）。
+   * - `'device'`：非书实物设备（电子书阅读器等），由 Parser 依据来源流通类型
+   *   （如 szlib `cirtype="电子设备外借"`）标记。**编目事实，UI 只读**（同
+   *   `subjects` 受控字段，不提供用户编辑入口；误标经重导修复）。
+   * - 阅读画像统计（[reading-profile 规格 §2](../specs/reading-profile.md)）全维度
+   *   不纳入设备；时间线与书库展示保留。检测与排除细则见
+   *   [device-borrows 规格](../specs/device-borrows.md)。
+   * - 旧导出文件无此字段时默认 `'book'`（schemas default，无迁移脚本）。
+   */
+  materialType: 'book' | 'device';
+
+  /**
    * 数据来源标记
    * - 记录此书籍信息最初从哪个 source 导入
    * - 后续可能被其他 source 的数据补充

@@ -20,6 +20,9 @@ export interface ClassificationEntry {
 /** OPAC 补全状态（opac-enrichment 规格 §6）：'fetched'=用户经编辑表单应用并保存；'not_found'/'failed'=抓取阶段回写。 */
 export type OpacEnrichmentStatus = 'fetched' | 'not_found' | 'failed'
 
+/** 材料类型（device-borrows 规格）：'book'=图书；'device'=非书实物设备（电子书阅读器等）。 */
+export type MaterialType = 'book' | 'device'
+
 /** OPAC 补全审计（CatalogRecord.opacEnrichment；null=未抓取/抓取成功未保存）。 */
 export interface OpacEnrichment {
   /** 补全来源（= Source.parserId），多 provider 场景审计与区分 */
@@ -51,6 +54,12 @@ export interface Book {
   createdAt: Date
   updatedAt: Date
   needsReview: boolean
+  /**
+   * 材料类型（device-borrows 规格 §3）：'book'=图书；'device'=非书实物设备
+   * （电子书阅读器等）。编目事实，由 parser 依来源流通类型标记，UI 只读；
+   * 阅读画像统计不纳入设备。
+   */
+  materialType: MaterialType
   sourceIds: string[]
   /** 并列题名（ISBD ` = ` 右侧各段，跨语种辅助辨识）。参见 app-spec §10.13。 */
   parallelTitles: string[]

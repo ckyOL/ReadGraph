@@ -366,4 +366,39 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     await expect(executeImport(db, request({ text: '[]' }))).rejects.toThrow()
     expect(await db.importLogs.count()).toBe(0)
   })
+
+  it('设备行（cirtype=电子设备外借）导入：Book.materialType=device，rawRecords 保留原行', async () => {
+    const deviceRows = [
+      {
+        date: '20260411', time: '16:25:29', optype: '读者借出', cirtype: '电子设备外借',
+        metatable: 'bibliosm', metaid: 5952182, title: '合成书目036/ 合成著者36著',
+        ISBN: '', addr: '合成馆16自助借还机', barcode: '04400790006607', callno: 'TP368.3/168',
+      },
+      {
+        date: '20260411', time: '17:17:09', optype: '读者还回文献', cirtype: '电子设备外借',
+        metatable: 'bibliosm', metaid: 5952182, title: '合成书目036/ 合成著者36著',
+        ISBN: '', addr: '合成馆16自助借还机', barcode: '04400790006607', callno: 'TP368.3/168',
+      },
+    ]
+    const text = JSON.stringify(deviceRows)
+    const result = await executeImport(db, request({ fileName: 'device.json', text }))
+
+    expect(result.books).toHaveLength(1)
+    expect(result.books[0]!.materialType).toBe('device')
+    expect(result.borrowCycles).toHaveLength(1)
+    expect(result.borrowCycles[0]!.status).toBe('returned')
+
+    const books = await db.books.toArray()
+    expect(books).toHaveLength(1)
+    expect(books[0]!.materialType).toBe('device')
+
+    // rawRecords 保留设备行（含 cirtype，供溯源与回填判定）。
+    const raws = await db.rawRecords.toArray()
+    expect(raws).toHaveLength(2)
+    const cirtypeOf = (rr: (typeof raws)[number]): unknown =>
+      'cirtype' in rr.data ? rr.data.cirtype : undefined
+    expect(raws.every((r) => cirtypeOf(r) === '电子设备外借')).toBe(true)
+    // rawRecord.bookId 回填到设备 Book（回填脚本依赖此关联）。
+    expect(raws.every((r) => r.bookId === books[0]!.id)).toBe(true)
+  })
 })

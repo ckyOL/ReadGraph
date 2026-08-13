@@ -29,6 +29,7 @@ const emptyBook = (over: Partial<Book> = {}): Book => ({
   createdAt: now(),
   updatedAt: now(),
   needsReview: false,
+  materialType: 'book',
   sourceIds: ['src-1'],
   parallelTitles: [],
   ...over,

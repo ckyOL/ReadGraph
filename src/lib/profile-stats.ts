@@ -125,6 +125,13 @@ export function computeProfileStats(
 ): ProfileStatsResult {
   const { books, catalogRecords, borrowCycles, sources } = input
 
+  // --- 设备排除（device-borrows 规格 §4）：材料类型为 device 的 Book 与其
+  // 借阅周期不进入任何统计维度（藏书/周期/在借/时长/分类/借阅量/甘特）。 ---
+  const deviceBookIds = new Set(
+    books.filter((b) => b.materialType === 'device').map((b) => b.id),
+  )
+  const isDeviceCycle = (c: BorrowCycle): boolean => deviceBookIds.has(c.bookId)
+
   // --- 分类法分布 ---
   const system = resolveSystem(opts.classificationSystem, sources)
   const classMap = new Map<string, ClassificationBucket>()
@@ -137,6 +144,7 @@ export function computeProfileStats(
   }
 
   for (const book of books) {
+    if (deviceBookIds.has(book.id)) continue
     const records = recordsByBook.get(book.id) ?? []
     let merged: { code: string; category: string | null; name: string } | null = null
     for (const cr of records) {
@@ -173,7 +181,9 @@ export function computeProfileStats(
   const classification = Array.from(classMap.values())
 
   // --- 借阅量柱图（range 裁剪，UTC 桶） ---
-  const volumeCycles = borrowCycles.filter((c) => inRange(c.borrowedAt, opts.range))
+  const volumeCycles = borrowCycles.filter(
+    (c) => !isDeviceCycle(c) && inRange(c.borrowedAt, opts.range),
+  )
   const volumeMap = new Map<string, number>()
   let yearMode = false
   if (volumeCycles.length > 0) {
@@ -202,6 +212,7 @@ export function computeProfileStats(
   const durations: number[] = []
   const durationCounts = [0, 0, 0, 0, 0]
   for (const c of borrowCycles) {
+    if (isDeviceCycle(c)) continue
     if (c.status === 'returned' && c.returnedAt != null) {
       const dur = Math.ceil(
         (c.returnedAt.getTime() - c.borrowedAt.getTime()) / MS_PER_DAY,
@@ -225,7 +236,9 @@ export function computeProfileStats(
   const medianDurationDays = durations.length > 0 ? median(durations) : null
 
   // --- 甘特带（range 裁剪） ---
-  const ganttCycles = borrowCycles.filter((c) => inRange(c.borrowedAt, opts.range))
+  const ganttCycles = borrowCycles.filter(
+    (c) => !isDeviceCycle(c) && inRange(c.borrowedAt, opts.range),
+  )
   const laneMap = new Map<string, GanttLane>()
   for (const c of ganttCycles) {
     const laneKey = `${c.bookId}:${c.barcode ?? '__noBarcode__'}`
@@ -257,13 +270,14 @@ export function computeProfileStats(
   // --- 概览汇总 ---
   let inBorrow = 0
   for (const c of borrowCycles) {
+    if (isDeviceCycle(c)) continue
     if (c.status === 'borrowed') inBorrow += 1
   }
 
   return {
     summary: {
-      totalBooks: books.length,
-      totalCycles: borrowCycles.length,
+      totalBooks: books.length - deviceBookIds.size,
+      totalCycles: borrowCycles.filter((c) => !isDeviceCycle(c)).length,
       inBorrow,
       avgDurationDays,
       medianDurationDays,

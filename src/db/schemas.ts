@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { ClassificationSystem, ParseStatus, ParseWarningType } from '@/types/entities'
+import type { ClassificationSystem, MaterialType, ParseStatus, ParseWarningType } from '@/types/entities'
 
 // 时间字段：接受 Date 实例或 ISO 8601 字符串，统一归一为 Date 对象（UTC 语义由调用方保证）。
 const utcDate = z.union([
@@ -26,6 +26,9 @@ const classificationSystemEnum = z.enum([
   'udc',
   'other',
 ] as const satisfies readonly ClassificationSystem[])
+
+// 材料类型（device-borrows 规格 §3）：default('book') → 旧导出兼容，无迁移脚本。
+const materialTypeEnum = z.enum(['book', 'device'] as const satisfies readonly MaterialType[])
 
 const classificationEntrySchema = z.object({
   system: classificationSystemEnum,
@@ -69,6 +72,8 @@ export const bookSchema = z.object({
   createdAt: utcDate,
   updatedAt: utcDate,
   needsReview: z.boolean(),
+  // device-borrows 规格 §3：旧导出无此字段时默认 'book' 兜底。
+  materialType: materialTypeEnum.default('book'),
   sourceIds: z.array(z.string()),
   // app-spec §10.13：Title 结构化解析后存并列题名；旧导出无此字段时默认 [] 兜底。
   parallelTitles: z.array(z.string()).default([]),
