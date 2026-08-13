@@ -93,12 +93,20 @@ export interface ImportOptions {
  * 所有校验与纯函数计算先于任何写操作；失败时拒绝且不触碰既有数据。
  */
 async function replayImport(db: ReadGraphDB, parsed: ExportData): Promise<void> {
-  // 完整性：每条 rawRecord 必须能回溯到 ImportLog（缺一则拒绝）。
-  const logIds = new Set(parsed.importLogs.map((l) => l.id))
+  // 完整性：每条 rawRecord 必须能回溯到 ImportLog，且来源与所属批次一致
+  // （M3 回归：损坏备份中 rawRecord.sourceId 与 ImportLog.sourceId 不一致会
+  // 静默归错来源；空批次 ImportLog 保留与 snapshot 模式一致）。
+  const logsById = new Map(parsed.importLogs.map((l) => [l.id, l] as const))
   for (const r of parsed.rawRecords) {
-    if (!logIds.has(r.importLogId)) {
+    const log = logsById.get(r.importLogId)
+    if (!log) {
       throw new Error(
         `importDatabase: rawRecord ${r.id} references unknown importLog ${r.importLogId}`,
+      )
+    }
+    if (r.sourceId !== log.sourceId) {
+      throw new Error(
+        `importDatabase: rawRecord ${r.id} sourceId ${r.sourceId} does not match importLog ${log.id} sourceId ${log.sourceId}`,
       )
     }
   }
@@ -125,7 +133,12 @@ async function replayImport(db: ReadGraphDB, parsed: ExportData): Promise<void> 
 
   for (const log of logs) {
     const rows = rowsByLog.get(log.id)
-    if (!rows || rows.length === 0) continue
+    if (!rows || rows.length === 0) {
+      // 空批次（导入文件全被行级过滤剔除）：无原始行可重放，但 ImportLog 是
+      // 导入史的一部分——保留（与 snapshot 模式恢复结果一致，M3 回归）。
+      finalLogs.push(log)
+      continue
+    }
     const source = sourcesById.get(log.sourceId)
     if (!source) {
       throw new Error(`importDatabase: replay source not found: ${log.sourceId}`)
@@ -163,6 +176,51 @@ async function replayImport(db: ReadGraphDB, parsed: ExportData): Promise<void> 
 }
 
 /**
+ * M2 回归：快照模式参照完整性校验——孤儿 bookId/sourceId/catalogRecordId/
+ * importLogId 一律拒绝入库（先清库后写，坏数据会成为唯一状态）。
+ * 纯函数，先于任何写操作执行；失败抛错，事务不启动。
+ */
+export function assertSnapshotIntegrity(data: ExportData): void {
+  const bookIds = new Set(data.books.map((b) => b.id))
+  const sourceIds = new Set(data.sources.map((s) => s.id))
+  const crIds = new Set(data.catalogRecords.map((c) => c.id))
+  const logIds = new Set(data.importLogs.map((l) => l.id))
+  const must = (cond: boolean, msg: string): void => {
+    if (!cond) throw new Error(`importDatabase: ${msg}`)
+  }
+  for (const b of data.books) {
+    for (const sid of b.sourceIds) {
+      must(sourceIds.has(sid), `book ${b.id} references unknown source ${sid}`)
+    }
+  }
+  for (const cr of data.catalogRecords) {
+    must(bookIds.has(cr.bookId), `catalogRecord ${cr.id} references unknown book ${cr.bookId}`)
+    must(sourceIds.has(cr.sourceId), `catalogRecord ${cr.id} references unknown source ${cr.sourceId}`)
+  }
+  for (const c of data.borrowCycles) {
+    must(bookIds.has(c.bookId), `borrowCycle ${c.id} references unknown book ${c.bookId}`)
+    must(
+      sourceIds.has(c.sourceId),
+      `borrowCycle ${c.id} references unknown source ${c.sourceId}`,
+    )
+    must(
+      crIds.has(c.catalogRecordId),
+      `borrowCycle ${c.id} references unknown catalogRecord ${c.catalogRecordId}`,
+    )
+  }
+  for (const r of data.rawRecords) {
+    must(sourceIds.has(r.sourceId), `rawRecord ${r.id} references unknown source ${r.sourceId}`)
+    must(
+      logIds.has(r.importLogId),
+      `rawRecord ${r.id} references unknown importLog ${r.importLogId}`,
+    )
+  }
+  for (const l of data.importLogs) {
+    must(sourceIds.has(l.sourceId), `importLog ${l.id} references unknown source ${l.sourceId}`)
+  }
+}
+
+/**
  * snapshot 模式：先校验，再单事务清空 + bulkPut 全部实体
  * （逐实体过 Zod safeParse 校验；清空与写入同事务，失败整体回滚）。
  * replay 模式：sources + rawRecords 重放重建（见 replayImport）。
@@ -187,6 +245,9 @@ export async function importDatabase(
     await replayImport(db, parsed)
     return
   }
+
+  // M2 回归：孤儿引用先于清库/写库拒绝（快照数据成为唯一状态前兜底）。
+  assertSnapshotIntegrity(parsed)
 
   await db.transaction('rw', READGRAPH_TABLES, async () => {
     await Promise.all(READGRAPH_TABLES.map((name) => db.table(name).clear()))

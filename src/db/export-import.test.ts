@@ -21,8 +21,9 @@ async function seedAll(d: ReadGraphDB): Promise<void> {
   const srcId = 'src-sz'
   await d.sources.put(makeSource(srcId))
   await d.books.put(makeBook('b1', '9787000000001', 'T'))
+  // 编目 id 与 makeCycle 派生的 catalogRecordId（`cr-${id}`）对齐，满足参照完整性。
   await d.catalogRecords.put(
-    makeCatalog('cr1', 'b1', srcId, 'BC1', 'K1', [{ system: 'clc', code: 'TP312' }]),
+    makeCatalog('cr-cyc1', 'b1', srcId, 'BC1', 'K1', [{ system: 'clc', code: 'TP312' }]),
   )
   await d.borrowCycles.put(makeCycle('cyc1', 'b1', srcId, now()))
   await d.rawRecords.put(makeRawRecord(uuid(), 'log1', srcId))
@@ -224,6 +225,64 @@ describe('importDatabase replay（settings 规格 §4/§9-5：rawRecords 重放�
       importDatabase(db, JSON.parse(JSON.stringify(exportData)), { mode: 'replay' }),
     ).rejects.toThrow(/parser/)
     expect(deepEqualDates(bodyOf(await exportDatabase(db)), bodyOf(before))).toBe(true)
+  })
+})
+
+describe('importDatabase — 参照完整性（M2/M3 回归）', () => {
+  it('snapshot：孤儿 bookId 的编目拒绝入库，且不触碰既有数据', async () => {
+    await seedAll(db)
+    const data = JSON.parse(JSON.stringify(await exportDatabase(db))) as ExportData
+    data.catalogRecords[0]!.bookId = 'bk-ghost'
+    await expect(importDatabase(db, data, { mode: 'snapshot' })).rejects.toThrow(
+      /unknown book/,
+    )
+    // 校验先于清库：既有数据保持原样（M2：坏数据不得成为唯一状态）。
+    expect(await db.books.count()).toBe(1)
+    expect(await db.catalogRecords.count()).toBe(1)
+  })
+
+  it('snapshot：孤儿 catalogRecordId 的周期拒绝入库', async () => {
+    await seedAll(db)
+    const data = JSON.parse(JSON.stringify(await exportDatabase(db))) as ExportData
+    data.borrowCycles[0]!.catalogRecordId = 'cr-ghost'
+    await expect(importDatabase(db, data, { mode: 'snapshot' })).rejects.toThrow(
+      /unknown catalogRecord/,
+    )
+  })
+
+  it('snapshot：孤儿 sourceId（importLog）拒绝入库', async () => {
+    await seedAll(db)
+    const data = JSON.parse(JSON.stringify(await exportDatabase(db))) as ExportData
+    data.importLogs[0]!.sourceId = 'src-ghost'
+    await expect(importDatabase(db, data, { mode: 'snapshot' })).rejects.toThrow(
+      /unknown source/,
+    )
+  })
+
+  it('replay：rawRecord.sourceId 与 ImportLog.sourceId 不一致 → 拒绝（M3 不静默归错来源）', async () => {
+    await seedAll(db)
+    const before = await exportDatabase(db)
+    const exportData = buildReplayableExport()
+    exportData.rawRecords[0]!.sourceId = 'src-other'
+    await expect(
+      importDatabase(db, JSON.parse(JSON.stringify(exportData)), { mode: 'replay' }),
+    ).rejects.toThrow(/does not match importLog/)
+    expect(deepEqualDates(bodyOf(await exportDatabase(db)), bodyOf(before))).toBe(true)
+  })
+
+  it('replay：空批次 ImportLog 保留（与 snapshot 恢复结果一致，M3）', async () => {
+    const exportData = buildReplayableExport()
+    // 空批次：有 ImportLog、无对应 rawRecords（导入文件全被行级过滤剔除的产物）。
+    const emptyLog = {
+      ...exportData.importLogs[0]!,
+      id: 'log-empty',
+      fileName: 'empty.json',
+    }
+    const data = JSON.parse(JSON.stringify(exportData)) as ExportData
+    data.importLogs.push(emptyLog)
+    await importDatabase(db, data, { mode: 'replay' })
+    const logs = await db.importLogs.toArray()
+    expect(logs.map((l) => l.id).sort()).toEqual(['log-1', 'log-empty'].sort())
   })
 })
 
