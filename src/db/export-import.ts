@@ -233,13 +233,8 @@ export async function importDatabase(
   const result = exportDataSchema.safeParse(data)
   if (!result.success) throw result.error
   const parsed = result.data
-  if (parsed.version !== EXPORT_VERSION) {
-    throw new Error(`importDatabase: unsupported export version "${parsed.version}"`)
-  }
-  // rawRecords 为必导项，字段缺失（undefined）时拒绝。
-  if (!('rawRecords' in parsed) || !Array.isArray(parsed.rawRecords)) {
-    throw new Error('importDatabase: rawRecords is required')
-  }
+  // 版本与 rawRecords 必导已由 exportDataSchema 的 z.literal/数组 schema 保证，
+  // 此处不再重复检查（L15：旧版两段检查在 zod 校验后恒不可达）。
 
   if (options.mode === 'replay') {
     await replayImport(db, parsed)

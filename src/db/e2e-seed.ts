@@ -45,7 +45,9 @@ function reviveDates<T>(rows: T[], keys: readonly string[]): T[] {
 }
 
 const DATE_KEYS = {
-  books: ['createdAt', 'updatedAt', 'publishDate'],
+  // publishDate 不入列：实体类型为 string|null（出版日字符串，schema 校验），
+  // reviveDates 会把它变成 Date 违反契约（L2 回归；详情页/编辑表单虽有防御归一）。
+  books: ['createdAt', 'updatedAt'],
   catalogRecords: ['createdAt', 'updatedAt'],
   borrowCycles: ['borrowedAt', 'returnedAt', 'createdAt', 'updatedAt'],
   sources: ['createdAt', 'lastImportAt'],

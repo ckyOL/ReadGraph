@@ -101,7 +101,8 @@ function buildReplayableExport(): ExportData {
     version: EXPORT_VERSION,
     exportedAt: new Date('2026-07-08T00:00:00.000Z'),
     sources: [source],
-    rawRecords: rows,
+    // 用管线产出的回填后克隆（L9：管线不再变异入参 rows）。
+    rawRecords: result.rawRecords,
     books: result.books,
     catalogRecords: result.catalogRecords,
     borrowCycles: result.borrowCycles,
