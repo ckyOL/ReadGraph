@@ -60,6 +60,11 @@ src/routes/
 1. **Dashboard（/）**：概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 最近导入）+ 最近借阅列表 + 快速入口（导入 / 书库）。
    - 空态：`Empty` + 首次导入引导（按钮跳 `/import`）。
 2. **书库（/library）**：`Table` 密实列表，列含书名、作者、ISBN13、来源徽标（`Badge`）、分类号芯片、借阅次数；可搜索/筛选/排序。状态徽标列：占位书「占位」（destructive）、套装 Book「套装」（outline），普通书无徽标；顶部类型筛选 Select（全部/待完善/占位/套装，派生判定）；徽标可直达详情页编辑。侧边栏「书库」入口带 `needsReview=true` 计数徽标（原「待审」入口删除）。待完善数据的发现与过滤全部由此承载（见 [book-editing §5](book-editing.md#5-书库列表承载待完善标记与过滤)）。
+   - **三档响应式呈现**（对齐 DESIGN.md §5.3 卡片网格意图；纯展示层，行派生/过滤/排序管线共用）：
+     - **桌面 ≥1024px**：完整 7 列表格。`table-fixed` 显式列宽分配，杜绝长文本（分类类名）驱动列宽漂移挤压其他列；书名列 `sticky left` 冻结（横向滚动时锚点不丢，sticky cell 需不透明背景 + z-index）；排序走**表头点击**（现状保留）。列宽策略：书名 ~28%（2 行 `line-clamp`，DESIGN.md §4.6）、作者 ~16%（单行省略）、ISBN13 固定 ~140px（等宽不截断）、来源固定 ~120px（徽标）、借阅时间固定 ~120px（`tabular-nums`）、分类 ~22%（芯片内 code 等宽不截断，类名单行省略 + tooltip）、借阅固定 ~64px（右对齐 `tabular-nums`）。
+     - **平板 768–1023px**：2 列卡片网格（`Card`，纸墨语言：直角、无阴影、1px 罫线）。每卡：书名（`.font-display` 2 行 clamp）→ 作者（弱化 1 行省略）→ 底部行 = 分类芯片 + 来源徽标 + 借阅次数（右对齐）。排序走**工具栏排序组件**（下）。
+     - **移动 ≤767px**：1 列卡片网格，卡片间距 8px，触摸目标 ≥44px；无横向滚动、无隐藏列（作者/来源/ISBN/借阅时间全量可达，弃用 `hidden md:table-cell` 逐列隐藏）。
+   - **工具栏排序组件**（平板/移动呈现的排序入口，对齐 GitLab Pajamas Sorting 模式）：`Select`（排序键：书名/作者/ISBN13/借阅时间/借阅次数）+ 升/降方向按钮（`ArrowUpIcon`/`ArrowDownIcon`，常显不位移、选中即重排、`aria-pressed`）。与「来源」「类型」筛选 Select 同排；变更写入同一 `sort`/`dir` URL search——两种呈现共享同一状态，互相同步。排序键值在卡片上固定位置、高对比呈现（UX 卡片排序模式：键值可扫读比较）。
    - 筛选/排序状态由 URL search 参数承载：`q`（搜索串）、`source`（来源 id）、`status`（needsReview/placeholder/set，缺省=全部）、`sort`（title/author/isbn/borrowed/borrows，缺省=title）、`dir`（asc/desc，缺省=asc）——全 optional + Zod 校验，默认值不写 URL（干净的 `/library`）。变更经 `navigate({ search, replace: true })` 回写：筛选操作不产生历史条目，返回键不会在筛选历史里翻页；进详情页再返回时历史条目自带参数，筛选原样恢复（编辑多本待审书场景）；搜索框输入防抖 ~200ms。
    - 书目详情（/library/$bookId）：卷卡式（方向 A），`Card` 容器展示书目元数据 + 该 Book 的各 `CatalogRecord`（来源、`metaId`、`barcodes`、`classifications`）+ `BorrowCycle` 时间线小图。头部动作区「编辑」（search `edit=true` 驱动宽屏 Dialog，Book 全字段 + 编目 volume/barcodes/classifications，见 [book-editing](book-editing.md)）与「更多」菜单（待审书：标记为已确认/合并到已有书目/拆为独立 Book，破坏性操作 AlertDialog 二次确认）。
    - 空态：无 Book 时 `Empty` + 导入引导。

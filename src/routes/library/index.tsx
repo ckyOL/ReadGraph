@@ -6,8 +6,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDownIcon, ArrowUpIcon, SearchIcon } from 'lucide-react'
 
 import { db } from '@/db/db-instance'
-import { ClassificationBadge } from '@/components/classification-badge'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,7 +18,6 @@ import {
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -33,7 +30,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { readPreferences } from '@/lib/preferences'
-import { formatDateInTz } from '@/lib/display-time'
 import { reviewBadgeOf, type ReviewTypeFilter } from '@/lib/book-status'
 import {
   buildLibraryRows,
@@ -41,6 +37,7 @@ import {
   type SortDir,
   type SortKey,
 } from '@/lib/library-view'
+import { LibraryCardView, LibraryRowView } from './-list-items'
 
 // 书库筛选/排序状态 URL 化（ui-navigation §3）：全 optional + Zod 校验，默认值不写 URL
 // （干净的 /library）；变更经 navigate replace 回写，不产生历史条目，返回/刷新/直达均保留筛选。
@@ -250,106 +247,108 @@ function LibraryPage() {
                 </SelectContent>
               </Select>
             </div>
+            {/* 工具栏排序组件（平板/移动呈现的排序入口；桌面表格用表头排序，ui-navigation §3）。
+                与表头共享同一 sort/dir URL 状态，选中即重排；方向按钮常显不位移（GitLab Sorting 模式）。 */}
+            <div className="flex items-center gap-1.5 lg:hidden">
+              <span className="text-xs text-muted-foreground">
+                {t('library.sort.label')}
+              </span>
+              <Select
+                value={sortKey}
+                onValueChange={(v) => patchSearch({ sort: v as SortKey, dir: undefined })}
+              >
+                <SelectTrigger className="h-8 w-32 text-xs" aria-label={t('library.sort.label')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="title">{t('library.column.title')}</SelectItem>
+                  <SelectItem value="author">{t('library.column.author')}</SelectItem>
+                  <SelectItem value="isbn">{t('library.column.isbn')}</SelectItem>
+                  <SelectItem value="borrowed">{t('library.column.borrowed')}</SelectItem>
+                  <SelectItem value="borrows">{t('library.column.borrows')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-8"
+                onClick={() => toggleSort(sortKey)}
+                aria-label={
+                  sortDir === 'asc'
+                    ? t('library.sort.ascending')
+                    : t('library.sort.descending')
+                }
+                aria-pressed={sortDir === 'asc'}
+              >
+                {sortDir === 'asc' ? (
+                  <ArrowUpIcon className="size-3.5" />
+                ) : (
+                  <ArrowDownIcon className="size-3.5" />
+                )}
+              </Button>
+            </div>
           </div>
 
-          <Table className="mt-4">
-            <TableHeader>
-              <TableRow>
-                {/* aria-sort：可排序列声明当前方向（L11 a11y）。 */}
-                <TableHead aria-sort={sortKey === 'title' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {sortButton('title', t('library.column.title'))}
-                </TableHead>
-                <TableHead className="hidden md:table-cell" aria-sort={sortKey === 'author' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {sortButton('author', t('library.column.author'))}
-                </TableHead>
-                <TableHead className="hidden lg:table-cell" aria-sort={sortKey === 'isbn' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {sortButton('isbn', t('library.column.isbn'))}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">
-                  {t('library.column.source')}
-                </TableHead>
-                <TableHead className="hidden lg:table-cell" aria-sort={sortKey === 'borrowed' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {sortButton('borrowed', t('library.column.borrowed'))}
-                </TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  {t('library.column.classification')}
-                </TableHead>
-                <TableHead className="text-right" aria-sort={sortKey === 'borrows' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {sortButton('borrows', t('library.column.borrows'))}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((r) => {
-                const badge = reviewBadgeOf(r.book, r.book.id, catalogRecords)
-                return (
-                  <TableRow key={r.book.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to="/library/$bookId"
-                          params={{ bookId: r.book.id }}
-                          search={viewSearch()}
-                          className="min-w-0 truncate hover:underline"
-                        >
-                          {r.book.title}
-                        </Link>
-                        {badge && (
-                          <Link
-                            to="/library/$bookId"
-                            params={{ bookId: r.book.id }}
-                            search={{ ...viewSearch(), edit: true }}
-                            aria-label={`${badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')} ${r.book.title}`}
-                          >
-                            <Badge
-                              variant={badge === 'placeholder' ? 'destructive' : 'outline'}
-                            >
-                              {badge === 'placeholder'
-                                ? t('library.badge.placeholder')
-                                : t('library.set')}
-                            </Badge>
-                          </Link>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="text-muted-foreground">{r.authors}</span>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs lg:table-cell">
-                      {r.isbn13 ?? '—'}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {r.sourceName ? (
-                        <Badge variant="outline" className="rounded-none">
-                          {r.sourceName}
-                        </Badge>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <span className="tabular-nums text-muted-foreground">
-                        {r.lastBorrowedAt
-                          ? formatDateInTz(r.lastBorrowedAt, displayTimezone)
-                          : '—'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      {r.classification ? (
-                        <ClassificationBadge
-                          system={r.classification.system}
-                          code={r.classification.code}
-                        />
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{r.borrowCount}</TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          {/* 桌面表格（≥1024px，ui-navigation §3）：table-fixed 显式列宽防长文本驱动漂移；
+              书名列 sticky left 冻结（横向滚动锚点不丢，不透明背景防透字）。 */}
+          <div className="hidden lg:block">
+            <Table className="mt-4 table-fixed">
+              <TableHeader>
+                <TableRow>
+                  {/* aria-sort：可排序列声明当前方向（L11 a11y）。 */}
+                  <TableHead
+                    className="sticky left-0 z-10 w-[28%] bg-background"
+                    aria-sort={sortKey === 'title' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
+                    {sortButton('title', t('library.column.title'))}
+                  </TableHead>
+                  <TableHead className="w-[16%]" aria-sort={sortKey === 'author' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                    {sortButton('author', t('library.column.author'))}
+                  </TableHead>
+                  <TableHead className="w-[140px]" aria-sort={sortKey === 'isbn' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                    {sortButton('isbn', t('library.column.isbn'))}
+                  </TableHead>
+                  <TableHead className="w-[120px]">
+                    {t('library.column.source')}
+                  </TableHead>
+                  <TableHead className="w-[120px]" aria-sort={sortKey === 'borrowed' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                    {sortButton('borrowed', t('library.column.borrowed'))}
+                  </TableHead>
+                  <TableHead className="w-[22%]">
+                    {t('library.column.classification')}
+                  </TableHead>
+                  <TableHead className="w-[64px] text-right" aria-sort={sortKey === 'borrows' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                    {sortButton('borrows', t('library.column.borrows'))}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((r) => (
+                  <LibraryRowView
+                    key={r.book.id}
+                    row={r}
+                    badge={reviewBadgeOf(r.book, r.book.id, catalogRecords)}
+                    viewSearch={viewSearch()}
+                    displayTimezone={displayTimezone}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {/* 卡片网格（平板 2 列 / 移动 1 列，<1024px，ui-navigation §3）：信息完整、无隐藏列、
+              无横向滚动；与表格共享同一 filtered/排序状态。 */}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+            {filtered.map((r) => (
+              <LibraryCardView
+                key={r.book.id}
+                row={r}
+                badge={reviewBadgeOf(r.book, r.book.id, catalogRecords)}
+                viewSearch={viewSearch()}
+                displayTimezone={displayTimezone}
+              />
+            ))}
+          </div>
           {filtered.length === 0 && (
             <p className="mt-4 text-sm text-muted-foreground">
               {t('library.filter.noResults')}

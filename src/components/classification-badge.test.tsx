@@ -144,7 +144,8 @@ describe('ClassificationBadgeView', () => {
         source: 'tree',
       },
     })
-    expect(html).toContain('max-w-28 truncate')
+    expect(html).toContain('truncate')
+    expect(html).toMatch(/max-w-\d+/)
   })
 })
 

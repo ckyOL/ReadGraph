@@ -7,6 +7,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import {
   loadClcTree,
   loadClcOverlay,
@@ -24,6 +25,8 @@ interface ClassificationBadgeProps {
   code: string
   /** 显式 category（已有编目数据时优先）；无深层路径（none）时回退显示。 */
   category?: string
+  /** 次级类名截断宽度类（同 ClassificationBadgeView）。 */
+  categoryClassName?: string
 }
 
 /** 树/overlay/复分表懒加载状态（clc 体系一次性拉取，缓存于模块内）。 */
@@ -58,10 +61,17 @@ interface ClassificationBadgeViewProps {
   code: string
   category?: string
   path: ClassificationPath
+  /** 次级类名截断宽度类（默认 max-w-28；书库表格/卡片等宽裕场景放宽，规格 ui-navigation §3）。 */
+  categoryClassName?: string
 }
 
 /** 纯展示：给定已解析路径渲染芯片（树/overlay 已由调用方解析）。 */
-export function ClassificationBadgeView({ code, category, path }: ClassificationBadgeViewProps) {
+export function ClassificationBadgeView({
+  code,
+  category,
+  path,
+  categoryClassName,
+}: ClassificationBadgeViewProps) {
   const { t } = useTranslation('pages')
   const segments = path.path
   const deepest = segments.length > 0 ? segments[segments.length - 1] : null
@@ -93,7 +103,12 @@ export function ClassificationBadgeView({ code, category, path }: Classification
     >
       <span>{code}</span>
       {primary && (
-        <span className="max-w-28 truncate text-[10px] font-normal text-muted-foreground">
+        <span
+          className={cn(
+            'truncate text-[10px] font-normal text-muted-foreground',
+            categoryClassName ?? 'max-w-28',
+          )}
+        >
           {primary}
         </span>
       )}
@@ -109,7 +124,15 @@ export const ClassificationBadge = memo(function ClassificationBadge({
   system,
   code,
   category,
+  categoryClassName,
 }: ClassificationBadgeProps) {
   const path = useClassificationPath(system, code)
-  return <ClassificationBadgeView code={code} category={category} path={path} />
+  return (
+    <ClassificationBadgeView
+      code={code}
+      category={category}
+      path={path}
+      categoryClassName={categoryClassName}
+    />
+  )
 })
