@@ -230,12 +230,11 @@ function BookDetailPage() {
   const isPlaceholderBook =
     book != null && book.needsReview && parseTitle(book.title).isPlaceholder
 
-  /** 单条补全按钮可见性：provider 命中 + lookupKey 有效；已 fetched 隐藏（幂等，§11.2）。 */
+  /** 单条补全按钮可见性：provider 命中 + lookupKey 有效；已 fetched 显示「重新抓取」（§6，可重复抓取）。 */
   const enrichActionsOf = (cr: CatalogRecord): ReactNode => {
     const src = sourceById.get(cr.sourceId)
     const provider = src ? getProvider(src.parserId) : null
     if (!provider || !src || !hasLookupKey(cr, currentBook, provider)) return null
-    if (cr.opacEnrichment?.status === 'fetched') return null
     if (isPlaceholderBook) {
       return (
         <div className="flex flex-wrap items-center gap-2">
@@ -246,6 +245,7 @@ function BookDetailPage() {
         </div>
       )
     }
+    const isFetched = cr.opacEnrichment?.status === 'fetched'
     const detailUrl = provider.detailUrl(cr, currentBook)
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -257,7 +257,9 @@ function BookDetailPage() {
         >
           {enrichingId === cr.id
             ? te('running')
-            : te('fetch', { provider: provider.displayName })}
+            : isFetched
+              ? te('refetch')
+              : te('fetch', { provider: provider.displayName })}
         </Button>
         {detailUrl && (
           <a

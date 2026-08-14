@@ -449,6 +449,95 @@ describe('updateBookWithRecords — enrichment 载荷（opac-enrichment §7.2）
     expect((await db.catalogRecords.get('cr-en'))!.opacEnrichment).toBeNull()
     expect((await db.books.get('bk-en'))!.isbn13).toBeNull()
   })
+
+  it('套装候选（needsReview+isbn13）保存 enrichment → 同源全部编目一并 fetched（§7.2）', async () => {
+    const b = makeBook('bk-set', '9787574012745', '合成书目052 : 合成副题 52 . 3', true)
+    const cr3 = makeCatalog('cr-s3', 'bk-set', 'src-sz', 'B3', 7109377)
+    const cr4 = makeCatalog('cr-s4', 'bk-set', 'src-sz', 'B4', 7109378)
+    const crGz = makeCatalog('cr-gz', 'bk-set', 'src-gz', 'G1', 9900001)
+    await putAll([b], [cr3, cr4, crGz])
+    const fetchedAt = new Date('2026-08-05T02:00:00.000Z')
+    await updateBookWithRecords(
+      db,
+      'bk-set',
+      draft({ title: '合成书目052' }),
+      [
+        { id: 'cr-s3', metaId: '7109377', volume: '3', barcodes: ['B3'], classifications: [] },
+        { id: 'cr-s4', metaId: '7109378', volume: '4', barcodes: ['B4'], classifications: [] },
+        { id: 'cr-gz', metaId: '9900001', volume: null, barcodes: ['G1'], classifications: [] },
+      ],
+      {
+        recordId: 'cr-s3',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt,
+        sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=7109377&client_id=t1',
+      },
+    )
+    expect((await db.catalogRecords.get('cr-s3'))!.opacEnrichment?.status).toBe('fetched')
+    // 同源（深图）编目整套标记，载荷字段一致
+    expect((await db.catalogRecords.get('cr-s4'))!.opacEnrichment).toEqual({
+      providerId: 'szlib',
+      status: 'fetched',
+      fetchedAt,
+      sourceUrl: 'https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&metaId=7109377&client_id=t1',
+    })
+    // 异源（广图）不标记，保留各自 provider 入口
+    expect((await db.catalogRecords.get('cr-gz'))!.opacEnrichment).toBeNull()
+    // 实体照常落库：needsReview 解除
+    expect((await db.books.get('bk-set'))!.needsReview).toBe(false)
+  })
+
+  it('已结构化套装（needsReview=false、≥2 卷）保存 enrichment → 同源全部编目 fetched', async () => {
+    const b = makeBook('bk-set2', '9787574012745', '合成书目052')
+    const cr3 = { ...makeCatalog('cr-t3', 'bk-set2', 'src-sz', 'B3', 7109377), volume: '3' }
+    const cr4 = { ...makeCatalog('cr-t4', 'bk-set2', 'src-sz', 'B4', 7109378), volume: '4' }
+    await putAll([b], [cr3, cr4])
+    const fetchedAt = new Date('2026-08-05T02:00:00.000Z')
+    await updateBookWithRecords(
+      db,
+      'bk-set2',
+      draft({ title: '合成书目052' }),
+      [
+        { id: 'cr-t3', metaId: '7109377', volume: '3', barcodes: ['B3'], classifications: [] },
+        { id: 'cr-t4', metaId: '7109378', volume: '4', barcodes: ['B4'], classifications: [] },
+      ],
+      {
+        recordId: 'cr-t3',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt,
+        sourceUrl: 'https://example.test/',
+      },
+    )
+    expect((await db.catalogRecords.get('cr-t3'))!.opacEnrichment?.status).toBe('fetched')
+    expect((await db.catalogRecords.get('cr-t4'))!.opacEnrichment?.status).toBe('fetched')
+  })
+
+  it('非套装多编目保存 enrichment → 仅目标编目标记（回归）', async () => {
+    const b = makeBook('bk-ns', null, '普通书')
+    const crA = makeCatalog('cr-n1', 'bk-ns', 'src-sz', 'N1', 100001)
+    const crB = makeCatalog('cr-n2', 'bk-ns', 'src-sz', 'N2', 100002)
+    await putAll([b], [crA, crB])
+    await updateBookWithRecords(
+      db,
+      'bk-ns',
+      draft({ title: '普通书' }),
+      [
+        { id: 'cr-n1', metaId: '100001', volume: null, barcodes: ['N1'], classifications: [] },
+        { id: 'cr-n2', metaId: '100002', volume: null, barcodes: ['N2'], classifications: [] },
+      ],
+      {
+        recordId: 'cr-n1',
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt: new Date('2026-08-05T02:00:00.000Z'),
+        sourceUrl: 'https://example.test/',
+      },
+    )
+    expect((await db.catalogRecords.get('cr-n1'))!.opacEnrichment?.status).toBe('fetched')
+    expect((await db.catalogRecords.get('cr-n2'))!.opacEnrichment).toBeNull()
+  })
 })
 
 // 类型健全性：CatalogRecordDraft 与动作签名对齐（无运行时行为）。

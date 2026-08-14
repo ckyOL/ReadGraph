@@ -47,6 +47,9 @@ export interface OpacMappingInput {
   book: Book
   record: CatalogRecord
   source: Source
+  /** 该 Book 是否套装（套装候选 needsReview+isbn13，或 ≥2 卷已结构化；book-editing §10.2 口径）。
+   *  由调用方按该书全部编目派生；决定 price 取套价（整套定价）还是主价（卷价），§5.2。 */
+  isSetBook: boolean
 }
 
 export interface OpacMappingResult {
@@ -119,18 +122,31 @@ function parsePublish(raw: string): { publisher: string | null; publishDate: str
   return { publisher: publisher === '' ? null : publisher, publishDate: year }
 }
 
-/**
- * price（"CNY35.00"/"¥35.00"/"35.00"）→ { amount, currency }；不可解析 → null。
- * 台版等书价实测形态「CNY110.00(TWD350.00,HKD117.00)」：括号前为主价
- * （馆方定价口径），括号内为原币种参考价——Book.price 只存主价
- * （opac-enrichment §5.2 实测样本补充）；主价为空时回退整体解析。
- */
-function parsePrice(raw: string): { amount: number; currency: string } | null {
-  const primary = raw.split(/[（(]/)[0]!.trim() || raw.trim()
-  const m = /^(?:([¥￥])|([A-Za-z]+))?\s*(\d+(?:\.\d+)?)$/.exec(primary)
+/** 单个价格 token（货币前缀 + 金额）：`¥`/`￥` → CNY，无前缀 → CNY，字母前缀原样大写。 */
+function parsePriceToken(text: string): { amount: number; currency: string } | null {
+  const m = /^(?:([¥￥])|([A-Za-z]+))?\s*(\d+(?:\.\d+)?)$/.exec(text.trim())
   if (!m) return null
   const currency = m[1] != null ? 'CNY' : (m[2] ?? '').toUpperCase() || 'CNY'
   return { amount: Number(m[3]), currency }
+}
+
+/**
+ * price（"CNY35.00"/"¥35.00"/"35.00"）→ { primary, set }；主价不可解析 → null。
+ * - primary = 括号前主价（馆方定价口径）：台版等实测形态「CNY110.00(TWD350.00,HKD117.00)」
+ *   括号内为原币种参考价，丢弃（opac-enrichment §5.2 实测样本补充）。
+ * - set = 括号内以 `套`/`套价`/`全套` 标记的整套定价——实测形态「CNY27.00(套CNY80.00)」
+ *   （metaid=6560072）：Book 为套装时 Book.price 存套价（§5.2）。判别键 = `套` 标记，
+ *   与台版原币种参考价天然区分；无 `套` 标记 → null。
+ */
+function parsePrice(raw: string): { primary: { amount: number; currency: string }; set: { amount: number; currency: string } | null } | null {
+  const primaryText = raw.split(/[（(]/)[0]!.trim() || raw.trim()
+  const primary = parsePriceToken(primaryText)
+  if (primary == null) return null
+  const setM = /(?:套价|全套|套)\s*(?:([¥￥])|([A-Za-z]+))?\s*(\d+(?:\.\d+)?)/.exec(raw)
+  const set = setM
+    ? { amount: Number(setM[3]), currency: setM[1] != null ? 'CNY' : (setM[2] ?? '').toUpperCase() || 'CNY' }
+    : null
+  return { primary, set }
 }
 
 /**
@@ -217,17 +233,20 @@ export function mapOpacDetail(detail: OpacDetail, existing: OpacMappingInput): O
     }
   }
 
-  // — Book.price（货币前缀 + 金额；无前缀默认 CNY） —
+  // — Book.price（货币前缀 + 金额；无前缀默认 CNY；套装取套价 §5.2） —
   if (detail.price != null) {
     const parsed = parsePrice(detail.price)
     if (parsed == null) {
       warnings.push(formatWarning(`无法解析定价: "${detail.price}"`))
     } else {
+      // 套装 Book（isSetBook）取套价（整套定价）；非套装取主价（单卷持有语义）；
+      // 台版等无 `套` 标记的括号参考价一律丢弃（parsePrice set=null）。
+      const proposed = parsed.set != null && existing.isSetBook ? parsed.set : parsed.primary
       const current = book.price
       if (current == null) {
-        changes.push({ field: 'price', kind: 'fill', current, proposed: parsed })
-      } else if (current.amount !== parsed.amount || current.currency !== parsed.currency) {
-        changes.push({ field: 'price', kind: 'conflict', current, proposed: parsed })
+        changes.push({ field: 'price', kind: 'fill', current, proposed })
+      } else if (current.amount !== proposed.amount || current.currency !== proposed.currency) {
+        changes.push({ field: 'price', kind: 'conflict', current, proposed })
       }
     }
   }

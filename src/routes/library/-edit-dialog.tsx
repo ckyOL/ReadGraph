@@ -518,7 +518,8 @@ export function EditForm({
           })}
           {enrichment.warnings.length > 0 &&
             ` · ${t('warnings', { ns: 'enrich', count: enrichment.warnings.length })}`}
-          {catalogRecords.length > 1 && ` · ${t('targetRecordOnly', { ns: 'enrich' })}`}
+          {catalogRecords.length > 1 &&
+            ` · ${t(badge === 'set' ? 'setMarkAll' : 'targetRecordOnly', { ns: 'enrich' })}`}
         </p>
       )}
 

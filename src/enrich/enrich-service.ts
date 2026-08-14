@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { ReadGraphDB } from '@/db/db'
 import { catalogRecordSchema } from '@/db/schemas'
 import { parseTitle } from '@/lib/title'
+import { reviewBadgeOf } from '@/lib/book-status'
 import type { Book, CatalogRecord, ParseWarning, Source } from '@/types/entities'
 import { mapOpacDetail, type EnrichmentChange } from '@/lib/opac-mapping'
 import { OpacFetchError } from './opac-client'
@@ -44,12 +45,12 @@ export function hasLookupKey(record: CatalogRecord, book: Book, provider: OpacPr
 
 /**
  * 候选判定（规格 §7，详情页按钮可见性）：provider 注册表命中；lookupKey 对应字段满足；
- * 已 fetched 排除（幂等）；占位 Book（needsReview=true 且占位书名）排除（§7.1）。
+ * 占位 Book（needsReview=true 且占位书名）排除（§7.1）。
+ * 已 fetched **不排除**（§6 修订）：可重新抓取（纠错/解析规则升级后重拉）；not_found/failed 可重试。
  */
 export function isEnrichmentCandidate(record: CatalogRecord, book: Book, source: Source): boolean {
   const provider = getProvider(source.parserId)
   if (!provider) return false
-  if (record.opacEnrichment?.status === 'fetched') return false
   if (book.needsReview && parseTitle(book.title).isPlaceholder) return false
   return hasLookupKey(record, book, provider)
 }
@@ -60,7 +61,8 @@ function validated<S extends z.ZodType>(schema: S, value: z.input<S>): z.output<
   return r.data
 }
 
-/** 回写抓取状态（规格 §7）：not_found/failed 仅回写 opacEnrichment，不触碰实体。 */
+/** 回写抓取状态（规格 §7）：not_found/failed 仅回写 opacEnrichment，不触碰实体。
+ *  已 fetched 记录不降级（§6）：重抓失败/未找到保留已应用事实，避免误覆盖补全审计。 */
 export async function writeEnrichmentStatus(
   db: ReadGraphDB,
   record: CatalogRecord,
@@ -69,6 +71,7 @@ export async function writeEnrichmentStatus(
 ): Promise<void> {
   const current = await db.catalogRecords.get(record.id)
   if (!current) return
+  if (current.opacEnrichment?.status === 'fetched') return
   await db.catalogRecords.put(
     validated(catalogRecordSchema, {
       ...current,
@@ -139,7 +142,10 @@ export async function enrichOneRecord(
       await writeEnrichmentStatus(db, record, status, provider.id)
       return { kind: status }
     }
-    const { changes, warnings } = mapOpacDetail(result.detail, { book, record, source })
+    // §5.2 套价规则：按该书全部编目派生 isSetBook（套装候选或 ≥2 卷结构化，book-editing §10.2）。
+    const records = await db.catalogRecords.where('bookId').equals(book.id).toArray()
+    const isSetBook = reviewBadgeOf(book, book.id, records) === 'set'
+    const { changes, warnings } = mapOpacDetail(result.detail, { book, record, source, isSetBook })
     return {
       kind: 'success',
       context: {

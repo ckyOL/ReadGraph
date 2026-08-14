@@ -129,7 +129,7 @@ GET https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&me
 | `callno` | `""` | 丢弃（本接口常空；真实索书号在馆藏列表）|
 | `series` | `""` | 丢弃（`Book` 无对应字段）|
 | `page` | `198页` | `page` |
-| `price` | `CNY35.00` | `price` |
+| `price` | `CNY35.00`；套装实测 `CNY27.00(套CNY80.00)`（metaid=6560072，括号内 `套` 标记 = 整套定价）| `price` |
 | `subject` | `漫画-连环画-日本-现代` | `subject` |
 | `classno` | `J238.2(313)` | `classno`（CLC 分类号，含地区复分后缀 `(313)`，去后缀在映射层）|
 | `abstract` / `abstracts` | `""` / `""` | `abstract`（多数为空；`abstracts` 可能为数组 → 数组按 `\n` join 后落 `abstract`）|
@@ -212,7 +212,7 @@ type OpacDetailResult =
 
 ### 5.2 `mapOpacDetail(detail: OpacDetail, existing): { changes, warnings }`
 
-`existing` = 当前 `Book` + `CatalogRecord`。输入是**统一 `OpacDetail`**（来源无关，任何 provider 产物均可），产出**建议改动集**——只描述「OPAC 建议什么、现状是什么」，**不做合并裁决**（裁决权在用户，§5.4）：
+`existing` = 当前 `Book` + `CatalogRecord` + `isSetBook: boolean`（该 Book 是否套装，由调用方按该书全部编目派生——套装候选 `needsReview && isbn13!==null` 或 ≥2 卷已结构化，口径同 [book-editing §10.2](book-editing.md#102-数据模型与类型判定)）。输入是**统一 `OpacDetail`**（来源无关，任何 provider 产物均可），产出**建议改动集**——只描述「OPAC 建议什么、现状是什么」，**不做合并裁决**（裁决权在用户，§5.4）：
 
 ```ts
 type EnrichmentChange = {
@@ -238,7 +238,7 @@ type EnrichmentChange = {
 | `Book.isbn13` / `isbn10` | `detail.isbn` 过 [lib/isbn 清洗](import-pipeline.md)（去连字符）| `isbn13` 为空 → fill；非空相同 → 不产出；非空不同 → conflict（预填建议值；若被他书占用，保存时由既有 ISBN 唯一冲突预检兜底报错，book-editing §4.2）|
 | `Book.publisher` / `publishDate` | `detail.publish` 首个 `:` 后按 `[,，]` 拆；末段以 4 位年份开头（后不紧跟数字）→ `publishDate` 取年份（台版实测 `2019(民108)` 出版年后跟民国纪年括注，年份仍提取），其余 → `publisher` | 为空 → fill；非空不同 → conflict |
 | `Book.pages` | `detail.page` 首个整数序列 | 为空 → fill；非空不同 → conflict |
-| `Book.price` | `detail.price` 货币前缀（`¥` → CNY，否则大写字母串）+ 金额；无前缀默认 CNY；**台版等实测形态 `CNY110.00(TWD350.00,HKD117.00)`：括号前为主价（馆方定价口径），取主价，括号内原币种参考价丢弃** | 为空 → fill；非空不同 → conflict |
+| `Book.price` | `detail.price` 货币前缀（`¥` → CNY，否则大写字母串）+ 金额；无前缀默认 CNY；**台版等实测形态 `CNY110.00(TWD350.00,HKD117.00)`：括号前为主价（馆方定价口径），取主价，括号内原币种参考价丢弃**；**套装实测形态 `CNY27.00(套CNY80.00)`（metaid=6560072）：括号内以 `套`/`套价`/`全套` 标记的为套价（整套定价）——`isSetBook` 时取套价（Book 即整套，卷价无意义），非套装取主价（单卷持有语义）；无 `套` 标记的括号内容一律按参考价丢弃** | 为空 → fill；非空不同 → conflict |
 | `Book.subjects` | `detail.subject` 按 `-` 拆分、trim、去空 | 为空 → fill；非空且集合不同 → conflict |
 | `Book.description` | `detail.abstract`（provider 已把数组拼串）| 为空 → fill；非空不同 → conflict |
 | `Book.coverUrl` | `detail.img` | 为空 → fill；非空不同 → conflict |
@@ -292,7 +292,8 @@ opacEnrichment: {
 
 - 默认 `null`；Zod `z.object({...}).nullable().default(null)` → 旧导出兼容，无迁移脚本（[data-layer §5](data-layer.md#5-迁移策略)）。
 - **status 语义**：`'fetched'` = 用户已通过编辑表单**应用并保存**补全（保存时同事务写入，§7.2）；`'not_found'` / `'failed'` = 抓取阶段回写（§7）。抓取成功但未保存 → **不写任何状态**（下次可重新抓取）。
-- 幂等依据不变：`status === 'fetched'` 的 CatalogRecord 不再抓取（§7）。
+- **可重新抓取（2026-08 定案，取消幂等隐藏）**：`status === 'fetched'` 的 CatalogRecord **仍可再次抓取**——详情页按钮文案切换为「重新抓取」（§10），覆盖误保存纠错、解析规则升级后重拉（如套价规则）等场景。重抓失败/未找到 **不降级** 既有 `fetched` 状态（已应用事实保留，§7 writeEnrichmentStatus 守卫）。
+- **套装整套标记（2026-08 定案）**：套装 Book 从任一条同源编目应用补全保存后，**同 sourceId 的全部编目一并写 `fetched`**——套装各卷共享同一来源编目数据，「选一个编目抓取即完备」（§7.2）；异源编目不标记，保留各自 provider 入口。
 
 ## 7. 执行模型
 
@@ -301,9 +302,9 @@ opacEnrichment: {
 - **候选集（provider 感知）**：`CatalogRecord` 满足——
   1. 其 `Source.parserId` 在 provider 注册表**命中**（未注册来源无补全能力，入口隐藏）；
   2. 命中 provider 的 `lookupKey` 对应字段满足：`'metaId'` → `metaIdKey` 非空且 `metaId !== 0`；`'isbn13'` → `Book.isbn13` 非空（如未来 OpenLibrary）；
-  3. `opacEnrichment.status !== 'fetched'`；
+  3. `opacEnrichment.status` **不排除任何值**——fetched 记录可重新抓取（§6）；`not_found`/`failed` 记录可重试（既有行为）；
   4. 其 `Book` 非占位。
-- **抓取阶段**（`enrich-service.enrichOneRecord`）：按 provider 分派（`getProvider(source.parserId)`）；单请求超时 10s、失败指数退避重试（最多 2 次）；`not_found`/`failed` 立即回写状态（含 providerId）、**不触碰实体**；成功产出 `{ record, changes, warnings, sourceUrl }` 上下文（零写入；落点 = 详情页组件态，§7.3）。批量编排（`enrichCatalogRecords`/候选集聚合）已随批量入口删除（§1）。
+- **抓取阶段**（`enrich-service.enrichOneRecord`）：按 provider 分派（`getProvider(source.parserId)`）；单请求超时 10s、失败指数退避重试（最多 2 次）；`not_found`/`failed` 立即回写状态（含 providerId；**已 fetched 记录不降级**，§6）、**不触碰实体**；成功先按该书全部编目派生 `isSetBook`（§5.2，套价规则用），产出 `{ record, changes, warnings, sourceUrl }` 上下文（零写入；落点 = 详情页组件态，§7.3）。批量编排（`enrichCatalogRecords`/候选集聚合）已随批量入口删除（§1）。
 - **应用阶段**（编辑表单）：预填 → 审视 → 保存（§7.2）。
 - **重建/重放语义**：replay 重建（[settings §4](settings.md#4-重建模式对照)）后 `opacEnrichment` 归 `null`（重导后需重新触发补全）；snapshot 恢复保留已补全字段与状态。已应用字段视为人工值，重导后丢失（与人工编辑同一取舍，book-editing §2.3）。
 
@@ -317,6 +318,7 @@ opacEnrichment: {
 
 - **唯一路径 = 详情页单条**：详情页某 CatalogRecord 卡「从 {provider.displayName} 补全」→ 抓取成功 → 上下文存入详情页组件态（§7.3）并打开编辑 Dialog（`search.edit=true`）→ 表单按 §5.3 预填（建议值入框 + 现有值对照，§10）→ 保存走 `updateBookWithRecords`（见下）→ 成功 Dialog 关闭、`useLiveQuery` 自动刷新；**取消 → 实体与状态零改动，上下文保留在组件态**——重开编辑仍带建议，无需重新抓取；「重新抓取」按钮覆盖上下文。
 - **保存钩子**：`updateBookWithRecords(db, bookId, bookDraft, recordDrafts, enrichment?: { recordId; providerId; status: 'fetched'; fetchedAt: Date; sourceUrl: string })`——可选载荷，**同一事务**写目标编目 `opacEnrichment`（Zod 失败整体回滚时状态一并回滚）；不传则行为与普通编辑完全一致。enrichment 载荷不参与字段合并（表单值即最终裁决）。
+- **套装整套标记**：目标 Book 为套装（`needsReview && isbn13!==null` 候选，或 ≥2 卷已结构化）时，保存把**同 sourceId** 的全部编目一并写 `opacEnrichment(status='fetched')`（providerId/fetchedAt/sourceUrl 同目标编目）——一次抓取应用即整套完成；异源编目不标记（跨馆同书保留各自 provider 入口）。非套装多编目仍只标记目标编目（§10 文案随之切换）。
 - **建议改动上下文不落 URL、不落库**（§7.3：仅存于详情页组件态；无批量场景，无跨页传递需求）。
 - **needsReview 联动**：保存即 `needsReview=false`（book-editing §2.2 既有语义，保存 = 人工确认）；占位 Book 不在此流程（§7.1）。
 
@@ -366,7 +368,7 @@ opacEnrichment: {
 
 ## 10. UI 设计说明（统一 UI 里程碑；依赖 book-editing 编辑表单）
 
-- **书目详情页（补全唯一入口）**：含有效 `lookupKey` 的 CatalogRecord 显示「从 {provider.displayName} 补全」Button；点击 → 按钮 loading →
+- **书目详情页（补全唯一入口）**：含有效 `lookupKey` 的 CatalogRecord 显示「从 {provider.displayName} 补全」Button（**已 fetched 记录文案为「重新抓取」**，§6）；点击 → 按钮 loading →
   - 成功：context 存入详情页组件态（§7.3）并自动打开编辑 Dialog（`search.edit=true`）；
   - `not_found` / `failed`：toast 提示（「馆内未找到该编目」/ 失败降级文案），状态已回写，**不打开 Dialog**。
 - **翻页导航（「‹ 上一个 / 下一个 ›」，逐本工作流核心）**：
@@ -377,7 +379,7 @@ opacEnrichment: {
 - **编辑 Dialog（复用 [book-editing §3](book-editing.md#3-编辑表单-ui-规格详情页-dialog) 表单）**：
   - **建议值入框**：表单初始 state = 现有值 ∪ `prefillFromChanges` 建议（§5.3）——fill 与 conflict 字段的输入框都直接呈现建议值，用户当场审视替换或保留。
   - **现有值对照**（conflict 字段，核心形态）：字段标签与输入框之间显示「现有：{current}」对照文字（低对比/删除线样式；长文本 `line-clamp` 截断 + 悬停 title 全文；数组字段以顿号分隔串回显）；输入框旁「恢复现有值」按钮——输入框值 ≠ 初始现有值时自动出现，点击回退初始值并隐藏。恢复后该字段等同「拒绝采纳」，其余字段不受影响。
-  - **目标编目高亮**（多编目书的关键形态）：上下文指向的 CatalogRecord 卡加主色边框 + 「{provider.shortName} 补全目标」徽标——明确「这次建议作用于哪条编目」，保存只写该编目 `opacEnrichment`（其余编目不受影响）；Dialog 顶部提示「保存后仅标记 {来源} 编目为已补全」。
+  - **目标编目高亮**（多编目书的关键形态）：上下文指向的 CatalogRecord 卡加主色边框 + 「{provider.shortName} 补全目标」徽标——明确「这次建议作用于哪条编目」，保存写该编目 `opacEnrichment`（套装书整套同源标记，§7.2）；Dialog 顶部提示随套装切换：「保存后标记该套装编目为已补全」（套装）/「保存后仅标记 {来源} 编目为已补全」（非套装）。
   - **provider 溯源徽标**：建议字段追加「{provider.shortName} OPAC」徽标（outline）；conflict 徽标警示色、fill 常规色，一眼区分「有旧值可对照」与「纯新增」——多来源建议可溯源；同书两条编目对同字段给出不同建议时按**顺序裁决**：先保存者成为后保存者的「现有：…」（对照文本即裁决现场）。
   - **摘要条**：Dialog 顶部一行「{provider.displayName} 建议：已填 N 项，M 项与现有不同」——全局兜底审视；逐条细节内联在字段，**不设独立建议面板**（同一信息只维护一处）。
   - **空值边界**：用户清空某字段保存 = 清空该字段（与普通编辑一致，`'' → null`）；「恢复现有值」可随时还原。
@@ -400,10 +402,10 @@ opacEnrichment: {
 ## 11. 用户故事与验收用例
 
 1. 详情页某编目卡「从 {provider.displayName} 补全」→ 抓取成功 → 编辑 Dialog 自动打开：空字段已预填、非空差异字段预填建议值并对照显示现有值（title/authors/publisher/pages/price/subjects/coverUrl + classifications）→ 保存 → Book 落库、CatalogRecord 补 classifications、`opacEnrichment.status='fetched'` + `providerId='szlib'`、`sourceUrl` 正确。
-2. 已应用记录再次触发（单条）→ 跳过（幂等，不重复请求；按钮隐藏）。
+2. 已应用记录再次触发（单条）→ 按钮文案「重新抓取」，可重复抓取（§6：纠错/解析规则升级后重拉）；重抓失败/未找到 → 既有 fetched 状态不降级（保留已应用事实）。
 3. metaid 无效（§3.4）→ `status='not_found'` 立即回写，实体零改动，不打开 Dialog，UI 提示「馆内未找到该编目」。
 4. 占位（选书帮）记录 → 不在候选集；UI 置灰并说明。
-5. 现有字段非空且与 OPAC 不同（如导入 ISBN 与 OPAC ISBN 不一致）→ 输入框预填建议值，标签与输入框之间对照显示「现有：…」；直接保存 → 建议值覆盖（采纳）；「恢复现有值」后保存 → 旧值保留（拒绝采纳）；两种情形都写 `status='fetched'`（已审视即已确认，避免反复抓取）。
+5. 现有字段非空且与 OPAC 不同（如导入 ISBN 与 OPAC ISBN 不一致）→ 输入框预填建议值，标签与输入框之间对照显示「现有：…」；直接保存 → 建议值覆盖（采纳）；「恢复现有值」后保存 → 旧值保留（拒绝采纳）；两种情形都写 `status='fetched'`（已审视即已确认）。
 6. 抓取成功但用户取消 Dialog → 实体与状态零改动，**context 保留在详情页组件态**——重开该书编辑仍带建议（不重新抓取）；「重新抓取」按钮覆盖建议后仍是建议值入框。
 7. 用户在预填基础上修改任意值再保存 → 以表单当前输入为准（表单即最终裁决）。
 8. conflict 字段用户手改第三值（非建议值、非旧值）后保存 → 以手改值为准（表单即最终裁决）；「恢复现有值」可回退后再次手改。
@@ -413,9 +415,10 @@ opacEnrichment: {
 12. **翻页逐本工作流**：书库列表按「来源=深图、最近借阅降序」筛选 → 点进某书 → 头部「下一个」→ 沿同一视图顺序到相邻书（筛选/排序上下文延续，URL 带视图参数）；首本「上一个」、末本「下一个」禁用；直接 URL 打开详情页（无视图参数）→ 全库默认排序翻页。
 13. 翻页时编辑 Dialog 打开（`edit=true`）→ 点「下一个」→ 导航不带 `edit`（Dialog 关闭，未保存编辑放弃）；新书 context 为空 → 编辑为普通表单。
 14. **书库列表无任何批量补全入口**（无按钮/无勾选）；导入完成页同样无补全入口——补全只能经详情页单条触发。
-15. **多编目书**（同书深图 + 广图两条编目）：每条编目卡各自「从 {provider.displayName} 补全」按钮，独立抓取互不干扰；从深图编目补全 → Dialog 中该编目卡主色边框高亮 + 「深图 补全目标」徽标，广图编目卡无标记；保存只写深图编目 `opacEnrichment`。
+15. **多编目书**（同书深图 + 广图两条编目）：每条编目卡各自「从 {provider.displayName} 补全」按钮，独立抓取互不干扰；从深图编目补全 → Dialog 中该编目卡主色边框高亮 + 「深图 补全目标」徽标，广图编目卡无标记；**套装书（§7.2）**保存 → 同 sourceId 全部深图编目标记 fetched（一次应用整套完成），广图编目不标记；**非套装**保存 → 只写目标深图编目 `opacEnrichment`。
 16. 同书两条编目对同字段给出不同建议（跨来源建议冲突）→ **顺序裁决**：先保存者成为后保存者的「现有：…」对照；字段徽标带 provider 短名（`{shortName} OPAC`）可溯源。
 17. 详情页刷新 → context 丢失（组件态，不落 URL/库）→ 重新点补全即可（一次请求成本）。
+18. **套装价解析**（metaid=6560072 形态 `CNY27.00(套CNY80.00)`）：套装 Book 抓取 → 价格建议为套价 `{80, CNY}`（Book 即整套）；非套装单卷 Book 同价格串 → 卷价 `{27, CNY}`；台版 `CNY110.00(TWD350.00,HKD117.00)` 套装 Book → 仍主价 `{110, CNY}`（无 `套` 标记）。
 
 ## 12. 测试清单（Vitest，mock fetch，夹具脱敏自 §3.3 实测样本）
 
@@ -436,6 +439,7 @@ opacEnrichment: {
 - 字段非空且值不同（isbn 冲突、title 差异、pages 差异、subjects 集合差异）→ `kind='conflict'`，current/proposed 正确。
 - `classno` 去 `(...)` 后缀；`classifications.system` 取来源 `classificationSystem` 缺省 `'clc'`；同 code+system 已有 → 不产出；不同 → fill（追加）。
 - `publish` 解析：`北京:合成出版社,2023` → publisher/publishDate fill；不可解析 → warning + 无对应 change。
+- **price 套价解析（metaid=6560072 形态）**：`CNY27.00(套CNY80.00)` + `isSetBook=true` → 建议套价 `{80,CNY}`（fill/conflict 均覆盖）；`isSetBook=false` → 卷价 `{27,CNY}`；台版 `CNY110.00(TWD350.00,HKD117.00)` + `isSetBook=true` → 仍主价（`套` 标记为判别键）；纯括号无主价 → warning。
 - `OpacDetail` 字段为 null → 对应字段不产出 change（来源无关性：缺字段的 provider 不产生建议）。
 - 占位 Book 不入候选（与 §7.1 组合测试）。
 - 确定性：同输入两次调用深等价。
@@ -444,13 +448,14 @@ opacEnrichment: {
 - fill **与 conflict** 的建议值全部落入 bookPrefill / recordPrefill（classifications = 现有 ∪ 建议去重）；`applied` 含两者；kind 由 changes 保留供 UI 对照。
 
 **`src/enrich/enrich-service.test.ts`（UI 里程碑补）**
-- 候选判定（provider 感知：无 provider 来源排除；metaId 空/0 排除；isbn13 键 provider 按 Book.isbn13 过滤；已 fetched 排除；占位排除）；单条抓取：超时/网络错误 → `failed` 回写（含 providerId）且实体不变；重试退避；not_found 回写；成功产出 context（changes/warnings/sourceUrl）且**零实体写入、零状态写入**；幂等跳过（fetched 记录不触发）。批量编排与候选集聚合函数已删除（无测试）。
+- 候选判定（provider 感知：无 provider 来源排除；metaId 空/0 排除；isbn13 键 provider 按 Book.isbn13 过滤；**已 fetched 不排除（可重新抓取）**；占位排除）；单条抓取：超时/网络错误 → `failed` 回写（含 providerId）且实体不变；重试退避；not_found 回写；成功产出 context（changes/warnings/sourceUrl）且**零实体写入、零状态写入**；**fetched 记录重抓失败 → 状态不降级**；**套装 Book（≥2 卷）抓取 → isSetBook 派生，套价进 changes；单卷书 → 主价**。批量编排与候选集聚合函数已删除（无测试）。
 
 **`src/lib/library-view.test.ts`（新增，§10 翻页）**
 - 视图派生与列表页过滤/排序等价（同一输入同序）；翻页相邻计算：首/末边界（prev/next 为 null）；携带视图参数（q/source/status/sort/dir）与缺省（全库 title asc）顺序正确；`edit` 参数不影响相邻计算。
 
 **`src/routes/library/-edit-actions.test.ts`（增量）**
 - `updateBookWithRecords` 带 enrichment 载荷 → 同事务写 `opacEnrichment`（providerId/status/fetchedAt/sourceUrl）；不带载荷 → 不触碰该字段；Zod 非法回滚时状态一并回滚（不残留）。
+- **套装整套标记（§7.2）**：套装候选（needsReview+isbn13）与已结构化套装（≥2 卷）保存 enrichment → 同 sourceId 全部编目 `fetched`；异源编目不标记；非套装多编目 → 仅目标编目标记。
 
 **`src/routes/library/-edit-dialog.test.tsx`（增量）**
 - 带建议改动上下文打开 → fill 与 conflict 字段均预填建议值；conflict 字段渲染「现有：…」对照文字 + 警示徽标；「恢复现有值」回退初始值且按钮隐藏、再次手改后按钮复现；摘要条计数正确（N 已填 / M 冲突）；**目标编目卡高亮 + provider 徽标（shortName）；摘要条带 provider.displayName**；取消不触发保存、不写状态。

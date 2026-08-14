@@ -117,6 +117,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toEqual(ALL_FILL_CHANGES)
     expect(warnings).toEqual([])
@@ -127,6 +128,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     const titleChange = changes.find((c) => c.field === 'title')
     const ptChange = changes.find((c) => c.field === 'parallelTitles')
@@ -139,6 +141,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes.find((c) => c.field === 'authors')?.proposed).toEqual(['合成作者'])
     expect(changes.find((c) => c.field === 'translators')?.proposed).toEqual(['合成译者'])
@@ -149,6 +152,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes.find((c) => c.field === 'classifications')?.proposed).toEqual([
       { system: 'clc', code: 'J238.2' },
@@ -156,7 +160,7 @@ describe('mapOpacDetail — 全空 Book', () => {
     // 时代区分号 = 后缀剥离（分类法规则「不作实际号码」；实证 K833.135.72=6）
     const era = mapOpacDetail(
       { ...sampleDetail, classno: 'K833.135.72=6' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(era.changes.find((c) => c.field === 'classifications')?.proposed).toEqual([
       { system: 'clc', code: 'K833.135.72' },
@@ -165,6 +169,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: source('ddc'),
+      isSetBook: false,
     })
     expect(ddc.changes.find((c) => c.field === 'classifications')?.proposed).toEqual([
       { system: 'ddc', code: 'J238.2' },
@@ -173,6 +178,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook(),
       record: emptyRecord(),
       source: { ...source(), library: null },
+      isSetBook: false,
     })
     expect(noLib.changes.find((c) => c.field === 'classifications')?.proposed).toEqual([
       { system: 'clc', code: 'J238.2' },
@@ -184,6 +190,7 @@ describe('mapOpacDetail — 全空 Book', () => {
       book: emptyBook({ title: '福田图书馆读者自选图书' }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes.find((c) => c.field === 'title')).toEqual({
       field: 'title',
@@ -217,6 +224,7 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
         classifications: [{ system: 'clc', code: 'J238.2' }],
       }),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toEqual([])
     expect(warnings).toEqual([])
@@ -227,6 +235,7 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook({ ...fullBook, subjects: ['现代', '日本', '连环画', '漫画'] }),
       record: emptyRecord({ classifications: [{ system: 'clc', code: 'J238.2' }] }),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toEqual([])
   })
@@ -236,6 +245,7 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook({ isbn13: '9787111111111' }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toContainEqual({
       field: 'isbn13',
@@ -250,6 +260,7 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook({ title: '旧题名', pages: 100, authors: ['别的作者'] }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toContainEqual({
       field: 'title',
@@ -271,6 +282,7 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook({ subjects: ['漫画'] }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(changes).toContainEqual({
       field: 'subjects',
@@ -285,12 +297,14 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook({ price: { amount: 35, currency: 'CNY' } }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(same.changes.find((c) => c.field === 'price')).toBeUndefined()
     const diff = mapOpacDetail(sampleDetail, {
       book: emptyBook({ price: { amount: 50, currency: 'CNY' } }),
       record: emptyRecord(),
       source: source(),
+      isSetBook: false,
     })
     expect(diff.changes).toContainEqual({
       field: 'price',
@@ -305,12 +319,14 @@ describe('mapOpacDetail — 现有值相同/不同', () => {
       book: emptyBook(),
       record: emptyRecord({ classifications: [{ system: 'clc', code: 'J238.2' }] }),
       source: source(),
+      isSetBook: false,
     })
     expect(dup.changes.find((c) => c.field === 'classifications')).toBeUndefined()
     const other = mapOpacDetail(sampleDetail, {
       book: emptyBook(),
       record: emptyRecord({ classifications: [{ system: 'clc', code: 'I247.5' }] }),
       source: source(),
+      isSetBook: false,
     })
     expect(other.changes).toContainEqual({
       field: 'classifications',
@@ -325,7 +341,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('publish 无冒号 → 整体为 publisher，无 publishDate', () => {
     const { changes } = mapOpacDetail(
       { ...sampleDetail, publish: '上海译文出版社' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'publisher')).toEqual({
       field: 'publisher',
@@ -339,7 +355,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('publish 出版年后带括注（台版民国纪年实测形态，metaid 4473139）→ publishDate 取年份', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, publish: '台北:合成出版社,2019(民108)' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'publisher')).toEqual({
       field: 'publisher',
@@ -359,7 +375,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('publish 不可解析（冒号后为空）→ format_error warning + 无对应 change', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, publish: '北京:' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'publisher')).toBeUndefined()
     expect(changes.find((c) => c.field === 'publishDate')).toBeUndefined()
@@ -371,7 +387,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('page 无整数序列 → format_error warning + 无 pages change', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, page: '无页码' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'pages')).toBeUndefined()
     expect(warnings).toEqual([
@@ -382,7 +398,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('price 前缀规则：¥ → CNY、无前缀 → CNY、字母前缀 → 原样大写', () => {
     const yen = mapOpacDetail(
       { ...sampleDetail, price: '¥35.00' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(yen.changes.find((c) => c.field === 'price')?.proposed).toEqual({
       amount: 35,
@@ -390,7 +406,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     })
     const bare = mapOpacDetail(
       { ...sampleDetail, price: '35.00' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(bare.changes.find((c) => c.field === 'price')?.proposed).toEqual({
       amount: 35,
@@ -398,7 +414,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     })
     const usd = mapOpacDetail(
       { ...sampleDetail, price: 'USD9.99' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(usd.changes.find((c) => c.field === 'price')?.proposed).toEqual({
       amount: 9.99,
@@ -409,7 +425,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('price 台版多币种形态「CNY110.00(TWD350.00,HKD117.00)」→ 取括号前主价（实测 metaid=4942259）', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, price: 'CNY110.00(TWD350.00,HKD117.00)' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'price')).toEqual({
       field: 'price',
@@ -421,7 +437,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     // 全角括号同规则
     const fullWidth = mapOpacDetail(
       { ...sampleDetail, price: 'CNY110.00（TWD350.00）' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(fullWidth.changes.find((c) => c.field === 'price')?.proposed).toEqual({
       amount: 110,
@@ -430,7 +446,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
     // 无主价（纯括号原价）→ 不可解析 → warning
     const bareParen = mapOpacDetail(
       { ...sampleDetail, price: '(TWD350.00,HKD117.00)' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(bareParen.changes.find((c) => c.field === 'price')).toBeUndefined()
     expect(bareParen.warnings).toEqual([
@@ -441,7 +457,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('price 不可解析 → format_error warning + 无 price change', () => {
     const { changes, warnings } = mapOpacDetail(
       { ...sampleDetail, price: '赠书' },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes.find((c) => c.field === 'price')).toBeUndefined()
     expect(warnings).toEqual([
@@ -452,7 +468,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('OpacDetail 字段为 null → 对应字段不产出 change（来源无关性）', () => {
     const { changes } = mapOpacDetail(
       { ...sampleDetail, isbn: null, price: null, img: null, subject: null, classno: null },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     const fields = changes.map((c) => c.field)
     expect(fields).not.toContain('isbn13')
@@ -467,7 +483,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('detail 只有 title（无 ` = ` 并列段）→ 仅 title change，无 parallelTitles', () => {
     const { changes } = mapOpacDetail(
       { ...sampleDetail, title: '只有题名', author: null, publish: null, page: null, price: null, subject: null, classno: null, isbn: null, img: null },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes).toEqual([
       { field: 'title', kind: 'fill', current: '', proposed: '只有题名' },
@@ -477,7 +493,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('现有 parallelTitles 非空而 OPAC 无并列题名 → conflict（建议清空，用户可恢复）', () => {
     const { changes } = mapOpacDetail(
       { ...sampleDetail, title: '只有题名', author: null, publish: null, page: null, price: null, subject: null, classno: null, isbn: null, img: null },
-      { book: emptyBook({ parallelTitles: ['Old title'] }), record: emptyRecord(), source: source() },
+      { book: emptyBook({ parallelTitles: ['Old title'] }), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes).toContainEqual({
       field: 'parallelTitles',
@@ -490,7 +506,7 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   it('description 由 abstract 落 fill', () => {
     const { changes } = mapOpacDetail(
       { ...sampleDetail, abstract: '内容简介', img: null, isbn: null },
-      { book: emptyBook(), record: emptyRecord(), source: source() },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
     )
     expect(changes).toContainEqual({
       field: 'description',
@@ -501,11 +517,100 @@ describe('mapOpacDetail — 解析退化与 warning', () => {
   })
 })
 
+describe('mapOpacDetail — 套装价解析（opac-enrichment §5.2 实测 metaid=6560072）', () => {
+  const SET_PRICE = 'CNY27.00(套CNY80.00)'
+
+  it('套装书（isSetBook=true）价格为空 → fill 套价（整套定价）', () => {
+    const { changes, warnings } = mapOpacDetail(
+      { ...sampleDetail, price: SET_PRICE },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: true },
+    )
+    expect(changes.find((c) => c.field === 'price')).toEqual({
+      field: 'price',
+      kind: 'fill',
+      current: null,
+      proposed: { amount: 80, currency: 'CNY' },
+    })
+    expect(warnings).toEqual([])
+  })
+
+  it('套装书已有卷价 27 → conflict 建议套价 80', () => {
+    const { changes } = mapOpacDetail(
+      { ...sampleDetail, price: SET_PRICE },
+      {
+        book: emptyBook({ price: { amount: 27, currency: 'CNY' } }),
+        record: emptyRecord(),
+        source: source(),
+        isSetBook: true,
+      },
+    )
+    expect(changes.find((c) => c.field === 'price')).toEqual({
+      field: 'price',
+      kind: 'conflict',
+      current: { amount: 27, currency: 'CNY' },
+      proposed: { amount: 80, currency: 'CNY' },
+    })
+  })
+
+  it('非套装单卷书（isSetBook=false）同价格串 → 卷价（单卷持有语义）', () => {
+    const { changes } = mapOpacDetail(
+      { ...sampleDetail, price: SET_PRICE },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false },
+    )
+    expect(changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 27,
+      currency: 'CNY',
+    })
+  })
+
+  it('套装书但无套标记（台版多币种形态）→ 仍主价（`套` 为判别键）', () => {
+    const { changes } = mapOpacDetail(
+      { ...sampleDetail, price: 'CNY110.00(TWD350.00,HKD117.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: true },
+    )
+    expect(changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 110,
+      currency: 'CNY',
+    })
+  })
+
+  it('套价变体：套价/全套前缀与无币种形态', () => {
+    const viaSetPrice = mapOpacDetail(
+      { ...sampleDetail, price: 'CNY27.00(套价CNY80.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: true },
+    )
+    expect(viaSetPrice.changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 80,
+      currency: 'CNY',
+    })
+    const viaFull = mapOpacDetail(
+      { ...sampleDetail, price: 'CNY27.00(全套80.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: true },
+    )
+    expect(viaFull.changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 80,
+      currency: 'CNY',
+    })
+  })
+
+  it('无主价纯套价括号 → 不可解析 warning（与台版纯括号同规则）', () => {
+    const { changes, warnings } = mapOpacDetail(
+      { ...sampleDetail, price: '(套CNY80.00)' },
+      { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: true },
+    )
+    expect(changes.find((c) => c.field === 'price')).toBeUndefined()
+    expect(warnings).toEqual([
+      { type: 'format_error', message: '无法解析定价: "(套CNY80.00)"', recordRef: null },
+    ])
+  })
+})
+
 describe('prefillFromChanges', () => {
   const { changes } = mapOpacDetail(sampleDetail, {
     book: emptyBook({ isbn13: '9787111111111', pages: 100 }),
     record: emptyRecord({ classifications: [{ system: 'clc', code: 'I247.5' }] }),
     source: source(),
+    isSetBook: false,
   })
 
   it('fill 与 conflict 的建议值全部落入 bookPrefill / recordPrefill；kind 保留', () => {
@@ -576,8 +681,8 @@ describe('prefillFromChanges', () => {
 
 describe('mapOpacDetail — 确定性', () => {
   it('同输入两次调用深等价', () => {
-    const a = mapOpacDetail(sampleDetail, { book: emptyBook(), record: emptyRecord(), source: source() })
-    const b = mapOpacDetail(sampleDetail, { book: emptyBook(), record: emptyRecord(), source: source() })
+    const a = mapOpacDetail(sampleDetail, { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false })
+    const b = mapOpacDetail(sampleDetail, { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false })
     expect(a).toEqual(b)
   })
 })
@@ -590,7 +695,7 @@ describe('opac-enrichment §12 组合：provider 产物 → 映射 → 预填', 
     vi.unstubAllGlobals()
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    const { changes } = mapOpacDetail(r.detail, { book: emptyBook(), record: emptyRecord(), source: source() })
+    const { changes } = mapOpacDetail(r.detail, { book: emptyBook(), record: emptyRecord(), source: source(), isSetBook: false })
     const { bookPrefill } = prefillFromChanges(emptyBook(), emptyRecord(), changes)
     expect(bookPrefill.title).toBe('合成绘本甲')
     expect(bookPrefill.authors).toEqual(['合成作者'])

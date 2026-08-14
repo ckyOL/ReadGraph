@@ -1,5 +1,6 @@
 {
   "fetch": "Enrich from {{provider}}",
+  "refetch": "Re-fetch",
   "running": "Enriching…",
   "viewInOpac": "View in {{provider}}",
   "notFound": "Catalog not found in the library",
@@ -11,5 +12,6 @@
   "summary": "Suggestions: {{filled}} filled, {{conflicts}} differ",
   "warnings": "{{count}} format warnings",
   "targetBadge": "{{provider}} target record",
-  "targetRecordOnly": "Save marks only this record as enriched"
+  "targetRecordOnly": "Save marks only this record as enriched",
+  "setMarkAll": "Save marks the whole set's records as enriched"
 }

@@ -248,7 +248,7 @@ describe('EditForm — OPAC 补全上下文（opac-enrichment §5.3/§10）', ()
 
   /** 经真实映射层产出建议改动上下文（来源无关链路）。 */
   function ctxFor(book: Book, record: CatalogRecord): EnrichmentContext {
-    const { changes, warnings } = mapOpacDetail(sampleDetail, { book, record, source })
+    const { changes, warnings } = mapOpacDetail(sampleDetail, { book, record, source, isSetBook: false })
     return {
       recordId: record.id,
       providerId: 'szlib',
@@ -329,6 +329,15 @@ describe('EditForm — OPAC 补全上下文（opac-enrichment §5.3/§10）', ()
     // 目标卡带 provider 徽标；另一编目卡无补全目标徽标
     expect(html).toContain('深图 补全目标')
     expect((html.match(/补全目标/g) ?? []).length).toBe(1)
+  })
+
+  it('套装书（候选）多编目：提示「保存后标记该套装编目为已补全」（§7.2 整套标记）', () => {
+    const book = mkBook({ id: 'bk-set', title: '', isbn13: '9787574012745', needsReview: true })
+    const target = mkCr({ id: 'cr-s1', bookId: 'bk-set', metaId: 7109377, metaIdKey: '7109377', barcodes: ['BC3'] })
+    const sib = mkCr({ id: 'cr-s2', bookId: 'bk-set', metaId: 7109378, metaIdKey: '7109378', barcodes: ['BC4'] })
+    const html = renderForm(book, [target, sib], [], ctxFor(book, target))
+    expect(html).toContain('保存后标记该套装编目为已补全')
+    expect(html).not.toContain('保存后仅标记该编目为已补全')
   })
 
   it('编目侧：recordPrefill.classifications = 现有 ∪ 建议（去重），对照现有分类', () => {

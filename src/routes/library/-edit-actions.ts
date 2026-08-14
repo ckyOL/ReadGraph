@@ -142,6 +142,15 @@ export async function updateBookWithRecords(
     if (enrichment && !crs.some((c) => c.id === enrichment.recordId)) {
       throw new Error(`updateBookWithRecords: enrichment recordId not found: ${enrichment.recordId}`)
     }
+    // opac-enrichment §7.2 套装整套标记：Book 为套装（候选 needsReview+isbn13，或 ≥2 卷
+    // 已结构化）时，从任一条同源编目应用补全 → 同源全部编目一并 fetched——套装各卷共享
+    // 同一来源编目数据，「选一个编目抓取即完备」；异源编目不标记（跨馆同书保留各自入口）。
+    // 非套装多编目 → 仅目标编目（既有行为）。
+    const isSet =
+      (existing.needsReview && existing.isbn13 != null) ||
+      crs.filter((c) => c.volume != null && c.volume !== '').length >= 2
+    const setTargetSourceId =
+      isSet && enrichment ? crs.find((c) => c.id === enrichment.recordId)?.sourceId : undefined
     const updates = crs.map((c) => {
       const d = draftById.get(c.id)
       if (!d) return c
@@ -158,7 +167,8 @@ export async function updateBookWithRecords(
         updatedAt: now(),
       }
       // enrichment 载荷不参与字段合并（表单值即最终裁决）。
-      if (enrichment && c.id === enrichment.recordId) {
+      // 套装整套标记：同 sourceId 的全部编目（含目标）一并写 fetched（§7.2）。
+      if (enrichment && (c.id === enrichment.recordId || c.sourceId === setTargetSourceId)) {
         next.opacEnrichment = {
           providerId: enrichment.providerId,
           status: enrichment.status,

@@ -111,7 +111,7 @@ describe('候选集过滤（§7 候选集 + §7.1 占位）', () => {
     }
   })
 
-  it('已 fetched 排除（幂等跳过）', () => {
+  it('已 fetched 不排除（可重新抓取，opac-enrichment §6 修订）', () => {
     const fetched = szRecord({
       opacEnrichment: {
         providerId: 'szlib',
@@ -120,7 +120,7 @@ describe('候选集过滤（§7 候选集 + §7.1 占位）', () => {
         sourceUrl: 'https://example.test/',
       },
     })
-    expect(isEnrichmentCandidate(fetched, book, source)).toBe(false)
+    expect(isEnrichmentCandidate(fetched, book, source)).toBe(true)
   })
 
   it('占位 Book（needsReview=true 且占位书名）排除（§7.1）', () => {
@@ -247,5 +247,54 @@ describe('单条抓取 enrichOneRecord', () => {
     expect(outcome).toEqual({ kind: 'failed' })
     expect(fn).toHaveBeenCalledTimes(3)
     expect((await db.catalogRecords.get('cr-1'))?.opacEnrichment?.status).toBe('failed')
+  })
+
+  it('fetched 记录重抓失败 → 状态不降级（保留已应用事实，§6）', async () => {
+    const fetched = szRecord({
+      opacEnrichment: {
+        providerId: 'szlib',
+        status: 'fetched',
+        fetchedAt: now(),
+        sourceUrl: 'https://example.test/',
+      },
+    })
+    await db.catalogRecords.put(fetched)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    const outcome = await enrichOneRecord(db, fetched, book, source, { backoffMs: 1 })
+    expect(outcome).toEqual({ kind: 'failed' })
+    const after = await db.catalogRecords.get('cr-1')
+    expect(after?.opacEnrichment).toEqual({
+      providerId: 'szlib',
+      status: 'fetched',
+      fetchedAt: now(),
+      sourceUrl: 'https://example.test/',
+    })
+  })
+
+  it('套装 Book（≥2 卷结构化）抓取 → isSetBook 派生，价格建议用套价（metaid=6560072 形态）', async () => {
+    const crA = szRecord({ id: 'cr-a', volume: '3' })
+    const crB = szRecord({ id: 'cr-b', volume: '4' })
+    await db.catalogRecords.bulkPut([crA, crB])
+    stubFetchText(JSON.stringify({ ...sample, price: 'CNY27.00(套CNY80.00)' }))
+    const outcome = await enrichOneRecord(db, crA, book, source, { backoffMs: 1 })
+    expect(outcome.kind).toBe('success')
+    if (outcome.kind !== 'success') return
+    expect(outcome.context.changes.find((c) => c.field === 'price')).toEqual({
+      field: 'price',
+      kind: 'fill',
+      current: null,
+      proposed: { amount: 80, currency: 'CNY' },
+    })
+  })
+
+  it('非套装单编目抓取 → 价格建议用主价（卷价）', async () => {
+    stubFetchText(JSON.stringify({ ...sample, price: 'CNY27.00(套CNY80.00)' }))
+    const outcome = await enrichOneRecord(db, record, book, source, { backoffMs: 1 })
+    expect(outcome.kind).toBe('success')
+    if (outcome.kind !== 'success') return
+    expect(outcome.context.changes.find((c) => c.field === 'price')?.proposed).toEqual({
+      amount: 27,
+      currency: 'CNY',
+    })
   })
 })

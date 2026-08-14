@@ -49,6 +49,7 @@ function catalog(
   bookId: string,
   barcode: string,
   volume: string | null,
+  over: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
     id,
@@ -61,6 +62,7 @@ function catalog(
     volume,
     createdAt: iso(Date.UTC(2024, 0, 1)),
     updatedAt: iso(Date.UTC(2024, 0, 1)),
+    ...over,
   }
 }
 
@@ -130,7 +132,15 @@ function buildEditingFixture(): {
       catalog('cat-1', 'book-1', 'BC1', null),
       catalog('cat-2', 'book-2', 'BC2', null),
       catalog('cat-3', 'book-3', 'BC3', null),
-      catalog('cat-4a', 'book-4', 'BC4', '3'),
+      // 已确认套装 book-4：cat-4a 已补全（fetched）→ 详情页「Re-fetch」；cat-4b 未补全 → 补全按钮。
+      catalog('cat-4a', 'book-4', 'BC4', '3', {
+        opacEnrichment: {
+          providerId: 'szlib',
+          status: 'fetched',
+          fetchedAt: null,
+          sourceUrl: 'https://example.test/',
+        },
+      }),
       catalog('cat-4b', 'book-4', 'BC5', '4'),
     ],
     borrowCycles: [
@@ -291,8 +301,14 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible()
   })
 
-  test('detail pager walks the library view order (opac-enrichment §10)', async ({ page }) => {
-    // 视图参数：sort=isbn&dir=asc → isbn 空值排前（book-2 福田），随后 0001/0003/5740。
+  test('fetched record shows Re-fetch; unfetched sibling keeps Enrich button (§6 可重新抓取)', async ({ page }) => {
+    // 已确认套装 book-4：cat-4a 已补全（fetched）→ 「Re-fetch」；cat-4b 未补全 → 「Enrich from …」。
+    await page.goto('/library/book-4')
+    await expect(page.getByRole('button', { name: 'Re-fetch' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Enrich from 深圳图书馆 OPAC/ })).toBeVisible()
+  })
+
+  test('detail pager walks the library view order (opac-enrichment §10)', async ({ page }) => {    // 视图参数：sort=isbn&dir=asc → isbn 空值排前（book-2 福田），随后 0001/0003/5740。
     await page.goto('/library?sort=isbn&dir=asc')
     const rows = page.locator('tbody tr')
     await expect(rows).toHaveCount(4)

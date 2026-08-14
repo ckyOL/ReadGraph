@@ -1,5 +1,6 @@
 {
   "fetch": "从 {{provider}} 补全",
+  "refetch": "重新抓取",
   "running": "补全中…",
   "viewInOpac": "在 {{provider}} 查看",
   "notFound": "馆内未找到该编目",
@@ -11,5 +12,6 @@
   "summary": "建议：已填 {{filled}} 项，{{conflicts}} 项与现有不同",
   "warnings": "{{count}} 条格式警告",
   "targetBadge": "{{provider}} 补全目标",
-  "targetRecordOnly": "保存后仅标记该编目为已补全"
+  "targetRecordOnly": "保存后仅标记该编目为已补全",
+  "setMarkAll": "保存后标记该套装编目为已补全"
 }
