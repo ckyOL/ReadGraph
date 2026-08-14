@@ -35,6 +35,7 @@
   "catalog.classification.system": "System",
   "catalog.classification.code": "Code",
   "catalog.addClassification": "Add classification",
+  "catalog.classification.remove": "Remove classification",
   "catalog.addBarcode": "Add barcode",
   "save": "Save",
   "cancel": "Cancel",
@@ -47,5 +48,6 @@
   "merge.select": "Select",
   "merge.confirmTitle": "Confirm merge?",
   "merge.confirmDesc": "{{count}} borrows of the placeholder will move to “{{title}}”, and the placeholder record will be deleted.",
+  "merge.confirmDesc_one": "{{count}} borrow of the placeholder will move to “{{title}}”, and the placeholder record will be deleted.",
   "merge.confirm": "Merge"
 }

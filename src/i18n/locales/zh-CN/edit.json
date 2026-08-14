@@ -35,6 +35,7 @@
   "catalog.classification.system": "体系",
   "catalog.classification.code": "分类号",
   "catalog.addClassification": "添加分类",
+  "catalog.classification.remove": "删除分类",
   "catalog.addBarcode": "添加条码",
   "save": "保存",
   "cancel": "取消",

@@ -89,6 +89,7 @@ export function MergeDialog(props: MergeDialogProps) {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void runSearch()}
                   placeholder={t('merge.search')}
+                  aria-label={t('merge.search')}
                   className="pl-8"
                 />
               </div>

@@ -34,6 +34,7 @@
   "library.needsReview": "待复核",
   "library.set": "套装",
   "library.badge.placeholder": "占位",
+  "library.filter.noResults": "没有符合当前筛选的书。",
   "bookDetail.title": "书目详情",
   "bookDetail.subtitle": "馆藏与借阅",
   "bookDetail.metadata.title": "书目信息",

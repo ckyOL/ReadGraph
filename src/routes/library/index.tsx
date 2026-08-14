@@ -134,9 +134,11 @@ function LibraryPage() {
     [rows, searchInput, sourceFilter, reviewFilter, sortKey, sortDir],
   )
 
-  /** 当前视图参数（非默认值才写 URL）——行链接携带，详情页翻页延续同一视图。 */
+  /** 当前视图参数（非默认值才写 URL）——行链接携带，详情页翻页延续同一视图。
+   *  q 取实时输入态：URL 态有 200ms 防抖，快速点行时 URL 尚未写入，
+   *  带旧 q 会让详情页翻页基于旧过滤、返回列表丢输入（L1 回归）。 */
   const viewSearch = () => ({
-    q: searchParams.q,
+    q: searchInput,
     source: sourceFilter !== 'all' ? sourceFilter : undefined,
     status: reviewFilter !== 'all' ? reviewFilter : undefined,
     sort: sortKey !== 'title' ? sortKey : undefined,
@@ -253,23 +255,26 @@ function LibraryPage() {
           <Table className="mt-4">
             <TableHeader>
               <TableRow>
-                <TableHead>{sortButton('title', t('library.column.title'))}</TableHead>
-                <TableHead className="hidden md:table-cell">
+                {/* aria-sort：可排序列声明当前方向（L11 a11y）。 */}
+                <TableHead aria-sort={sortKey === 'title' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                  {sortButton('title', t('library.column.title'))}
+                </TableHead>
+                <TableHead className="hidden md:table-cell" aria-sort={sortKey === 'author' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {sortButton('author', t('library.column.author'))}
                 </TableHead>
-                <TableHead className="hidden lg:table-cell">
+                <TableHead className="hidden lg:table-cell" aria-sort={sortKey === 'isbn' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {sortButton('isbn', t('library.column.isbn'))}
                 </TableHead>
                 <TableHead className="hidden md:table-cell">
                   {t('library.column.source')}
                 </TableHead>
-                <TableHead className="hidden lg:table-cell">
+                <TableHead className="hidden lg:table-cell" aria-sort={sortKey === 'borrowed' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {sortButton('borrowed', t('library.column.borrowed'))}
                 </TableHead>
                 <TableHead className="hidden sm:table-cell">
                   {t('library.column.classification')}
                 </TableHead>
-                <TableHead className="text-right">
+                <TableHead className="text-right" aria-sort={sortKey === 'borrows' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {sortButton('borrows', t('library.column.borrows'))}
                 </TableHead>
               </TableRow>
@@ -346,7 +351,9 @@ function LibraryPage() {
             </TableBody>
           </Table>
           {filtered.length === 0 && (
-            <p className="mt-4 text-sm text-muted-foreground">—</p>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t('library.filter.noResults')}
+            </p>
           )}
         </>
       )}

@@ -441,7 +441,9 @@ export function EditForm({
     return (
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground">{label}</label>
+          <label htmlFor={key} className="text-xs text-muted-foreground">
+            {label}
+          </label>
           {decor?.badge && (
             <Badge
               variant={decor.badge === 'conflict' ? 'destructive' : 'outline'}
@@ -461,6 +463,7 @@ export function EditForm({
         )}
         <div className="flex items-center gap-2">
           <Input
+            id={key}
             value={value}
             onChange={(e) => {
               onChange(e.target.value)
@@ -837,7 +840,7 @@ export function EditForm({
                                 classifications: d.classifications.filter((_, j) => j !== i),
                               })
                             }
-                            aria-label={t('cancel')}
+                            aria-label={t('catalog.classification.remove')}
                           >
                             <XIcon className="size-4" />
                           </Button>
