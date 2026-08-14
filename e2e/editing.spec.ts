@@ -153,9 +153,13 @@ function buildEditingFixture(): {
 
 async function seed(page: Page): Promise<void> {
   const payload = JSON.stringify(buildEditingFixture())
+  // sessionStorage 守卫：init script 每次导航都重跑，仅首次注入 seed key
+  // （应用灌库后清除 key；避免保存/合并后 goto 又被重新灌库清掉状态——settings.spec 同款）。
   await page.addInitScript(([key, value]) => {
     try {
+      if (sessionStorage.getItem('readgraph:e2e-seeded')) return
       localStorage.setItem(key, value)
+      sessionStorage.setItem('readgraph:e2e-seeded', '1')
     } catch {
       // ignore
     }
@@ -197,11 +201,12 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(rows).toHaveCount(1)
     await expect(rows.first()).toContainText('福田图书馆读者自选图书')
 
-    // 套装候选：只剩合成书目052。
+    // 套装：候选与已确认套装同口径命中（M4：徽标与筛选一致）——合成书目052（候选）+ 历史C（已确认）。
     await page.getByRole('combobox').filter({ hasText: 'Placeholder' }).click()
     await page.getByRole('option', { name: 'Set candidate' }).click()
-    await expect(rows).toHaveCount(1)
-    await expect(rows.first()).toContainText('合成书目052')
+    await expect(rows).toHaveCount(2)
+    await expect(page.getByRole('link', { name: '合成书目052', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '历史C', exact: true })).toBeVisible()
 
     // 待完善：占位 + 套装候选。
     await page.getByRole('combobox').filter({ hasText: 'Set candidate' }).click()
@@ -212,7 +217,8 @@ test.describe('book editing (book-editing §7.6)', () => {
   test('placeholder badge links to detail with edit dialog open', async ({ page }) => {
     await page.goto('/library')
     await page.getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
-    await expect(page).toHaveURL(/\/library\/book-2\?edit=true/)
+    // 行链接携带实时搜索 q（a67f6b7 L1：空输入也写 ?q=），URL 断言容忍任意参数前缀。
+    await expect(page).toHaveURL(/\/library\/book-2\?.*edit=true/)
     await expect(page.locator('input[value="福田图书馆读者自选图书"]')).toBeVisible()
   })
 
@@ -234,10 +240,13 @@ test.describe('book editing (book-editing §7.6)', () => {
     const volumeInput = page.getByRole('textbox', { name: /^Volume/ })
     await volumeInput.fill('3')
     await page.getByRole('button', { name: 'Save' }).click()
-    // 保存后解除待审：套装徽标剩已确认套装 book-4 与套装候选消失（单卷编目非套装，
-    // isSetBook 需 ≥2 volume）。
+    // 等待保存事务完成：Dialog 关闭（URL 清 edit）发生在 updateBookWithRecords 提交之后，
+    // 避免 goto 与事务竞态读到保存前状态。
+    await expect(page).not.toHaveURL(/edit=true/)
+    // 保存后解除待审：book-3 单卷非套装 → 徽标只剩已确认套装 book-4（守卫防重灌，
+    // 旧断言 2 是重灌恢复夹具的假象）。
     await page.goto('/library')
-    await expect(page.getByText('Set', { exact: true })).toHaveCount(2)
+    await expect(page.getByText('Set', { exact: true })).toHaveCount(1)
   })
 
   test('placeholder detail exposes merge action in more menu', async ({ page }) => {

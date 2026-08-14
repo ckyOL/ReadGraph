@@ -116,7 +116,9 @@ function cycle(
   return {
     id: `cycle-${i}`,
     bookId,
-    catalogRecordId: `cat-${i}`,
+    // 周期归属该书编目（M2/M3 参照完整性：导出→恢复须可 round-trip）。
+    // 不能用 `cat-${i}`：book-2/book-3 各有两个周期，索引会溢出到不存在的 cat-4+。
+    catalogRecordId: `cat-${bookId.replace('book-', '')}`,
     sourceId,
     borrowedAt: iso(borrowedMs),
     returnedAt: returnedMs === null ? null : iso(returnedMs),
