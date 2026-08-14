@@ -34,9 +34,14 @@ export function isValidIsbn13(isbn: string): boolean {
 /**
  * ISBN-10 → ISBN-13：去校验位、加 978 前缀、重算校验位。
  * 仅对合法 ISBN-10 转换；输入非合法 ISBN-10 返回 null。
+ * 979 组从未发行 10 位 ISBN（L10 回归：979 开头 10 位串校验位可合法，
+ * 旧版会加 978 前缀产出伪 978-13 书号）——非 978 前缀的 ISBN-10 不转换。
  */
 export function isbn10To13(isbn10: string): string | null {
   if (!isValidIsbn10(isbn10)) return null
+  // 979 组从未发行 10 位 ISBN：979 开头 10 位串（校验位可合法）加 978 前缀
+  // 会产出伪 978-13 书号（L10 回归）。
+  if (isbn10.startsWith('979')) return null
   const core = `978${isbn10.slice(0, 9)}`
   let sum = 0
   for (let i = 0; i < 12; i++) {

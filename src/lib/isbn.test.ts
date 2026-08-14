@@ -49,6 +49,13 @@ describe('isbn10To13', () => {
   it('非法 ISBN-10 返回 null', () => {
     expect(isbn10To13('0306406153')).toBeNull()
   })
+
+  it('979 开头 10 位串（校验位可合法）不转换，避免伪 978-13（L10）', () => {
+    // 979 组从未发行 10 位 ISBN；979 前缀 10 位串加 978 前缀会产出伪书号。
+    // 9790000006 为校验位合法的 10 位串（Σ 权重和 231 ≡ 0 mod 11）。
+    expect(isbn10To13('9790000006')).toBeNull()
+    expect(normalizeIsbn('9790000006')).toEqual({ isbn13: null, isbn10: '9790000006' })
+  })
 })
 
 describe('normalizeIsbn', () => {

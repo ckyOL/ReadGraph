@@ -108,24 +108,37 @@ export const szlibParser: SourceParser = {
   },
   parse(rawData, source) {
     const warnings: ParseWarning[] = []
-    let text: string
-    if (typeof rawData === 'string') {
-      text = rawData
-    } else if (rawData instanceof ArrayBuffer) {
-      text = new TextDecoder('utf-8', { fatal: false }).decode(rawData)
-    } else {
-      throw new Error('szlib.parse: rawData must be string or ArrayBuffer')
-    }
+    // L4：pipeline 直接传行对象数组（跳过 JSON stringify/parse 两遍全量处理）；
+    // 字符串/ArrayBuffer 入口保留给独立调用（测试/预览/validate 探测）。
     let parsed: unknown
-    try {
-      parsed = JSON.parse(text)
-    } catch (e) {
-      throw new Error(`szlib.parse: rawData is not valid JSON: ${(e as Error).message}`)
+    if (Array.isArray(rawData)) {
+      parsed = rawData
+    } else {
+      let text: string
+      if (typeof rawData === 'string') {
+        text = rawData
+      } else if (rawData instanceof ArrayBuffer) {
+        text = new TextDecoder('utf-8', { fatal: false }).decode(rawData)
+      } else {
+        throw new Error('szlib.parse: rawData must be string, ArrayBuffer, or array of rows')
+      }
+      try {
+        parsed = JSON.parse(text)
+      } catch (e) {
+        throw new Error(`szlib.parse: rawData is not valid JSON: ${(e as Error).message}`)
+      }
     }
     if (!Array.isArray(parsed)) {
       throw new Error('szlib.parse: expected a JSON array of circulation rows')
     }
     const rows = parsed as SzlibRow[]
+    // L7 回归：Source.timezone 缺失/空串时显式拒绝——旧版静默回落运行环境
+    // 本地时区（违背 UTC 约定），空串时整文件逐行 invalid_date 无根因提示。
+    if (!source.timezone) {
+      throw new Error(
+        `szlib.parse: source "${source.id}" has no timezone; set it in source settings`,
+      )
+    }
     const tz = source.timezone
     const validRows: RawRow[] = []
     let skippedFiltered = 0
@@ -178,6 +191,15 @@ export const szlibParser: SourceParser = {
         string,
         { borrowedAt: Date; borrowLocation: string | null; rows: RawRow[] }
       >()
+      // L6 回归：无 metaid 行（metaKey=''）不共享配对槽——交错借还
+      // （借A 借B 还A 还B，同 barcode 无 metaid）共享槽会把还回错挂。
+      // 无 metaid 无法按书目身份配对，退化为组内 FIFO（先借先还）：
+      // 还回配对最早未还借出，周期数不膨胀（旧版借出关旧会多产 unknown）。
+      const openNoMeta: {
+        borrowedAt: Date
+        borrowLocation: string | null
+        rows: RawRow[]
+      }[] = []
       for (const rr of g.sorted) {
         const { optype } = rr.data
         let utc: Date
@@ -189,6 +211,10 @@ export const szlibParser: SourceParser = {
         }
         if (optype === '读者借出') {
           const metaKey = metaIdKeyOf(rr.data.metatable, rr.data.metaid) ?? ''
+          if (metaKey === '') {
+            openNoMeta.push({ borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null, rows: [rr] })
+            continue
+          }
           const prev = openByMetaId.get(metaKey)
           if (prev) {
             pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: prev.borrowedAt, returnedAt: null, status: 'unknown', borrowLocation: prev.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, prev.rows)
@@ -196,10 +222,10 @@ export const szlibParser: SourceParser = {
           openByMetaId.set(metaKey, { borrowedAt: utc, borrowLocation: (rr.data.addr as string | undefined) ?? null, rows: [rr] })
         } else if (optype === '读者还回文献') {
           const metaKey = metaIdKeyOf(rr.data.metatable, rr.data.metaid) ?? ''
-          const open = openByMetaId.get(metaKey)
+          const open = metaKey === '' ? openNoMeta.shift() : openByMetaId.get(metaKey)
           if (open) {
             pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: utc, status: 'returned', borrowLocation: open.borrowLocation, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [...open.rows, rr])
-            openByMetaId.delete(metaKey)
+            if (metaKey !== '') openByMetaId.delete(metaKey)
           } else {
             pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: utc, returnedAt: utc, status: 'unknown', borrowLocation: null, returnLocation: (rr.data.addr as string | undefined) ?? null, rawRecordIds: [] } as Partial<BorrowCycle>, [rr])
           }
@@ -208,6 +234,9 @@ export const szlibParser: SourceParser = {
       // 文件末尾仍开启的周期 = 只有借出、无归还 → status='borrowed'、
       // returnedAt=null（borrow-cycle.md 派生规则表第一行）。
       for (const open of openByMetaId.values()) {
+        pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: null, status: 'borrowed', borrowLocation: open.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, open.rows)
+      }
+      for (const open of openNoMeta) {
         pushCycle({ sourceId: source.id, barcode: g.barcode || null, borrowedAt: open.borrowedAt, returnedAt: null, status: 'borrowed', borrowLocation: open.borrowLocation, returnLocation: null, rawRecordIds: [] } as Partial<BorrowCycle>, open.rows)
       }
     }

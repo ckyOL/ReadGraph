@@ -278,3 +278,35 @@ describe('设备借阅（device-borrows 规格）', () => {
     expect(c.returnLocation).toBe('合成馆16自助借还机')
   })
 })
+
+describe('szlibParser — L7/L6 回归', () => {
+  it('Source.timezone 缺失/空串时显式拒绝，不静默回落本地时区（L7）', () => {
+    for (const tz of [undefined, '', null]) {
+      const noTz = { ...source, timezone: tz as unknown as string }
+      expect(() => szlibParser.parse(JSON.stringify(sample), noTz)).toThrow(/timezone/)
+    }
+  })
+
+  it('无 metaid 交错借还（借A 借B 还A 还B，同 barcode）按 FIFO 各自闭合（L6）', () => {
+    // 无 metaid 行共享配对槽会把还回错挂（旧版：A 被关 unknown、还A 挂 B、
+    // 还B 变纯还回——3 周期 2 错）；FIFO 退化为先借先还，2 周期全对。
+    const rows = [
+      { metatable: 'bibliosm', date: '20260510', time: '10:00:00', optype: '读者借出', title: '甲书/ 甲著', barcode: 'B1', ISBN: '9780000000001' },
+      { metatable: 'bibliosm', date: '20260511', time: '10:00:00', optype: '读者借出', title: '乙书/ 乙著', barcode: 'B1', ISBN: '9780000000002' },
+      { metatable: 'bibliosm', date: '20260512', time: '10:00:00', optype: '读者还回文献', title: '甲书/ 甲著', barcode: 'B1', ISBN: '9780000000001' },
+      { metatable: 'bibliosm', date: '20260513', time: '10:00:00', optype: '读者还回文献', title: '乙书/ 乙著', barcode: 'B1', ISBN: '9780000000002' },
+    ]
+    const r = szlibParser.parse(JSON.stringify(rows), source)
+    // 无 metaid（metatable=bibliosm 但 metaid 缺失 → metaIdKey null）。
+    expect(r.borrowCycles).toHaveLength(2)
+    const sorted = [...r.borrowCycles].sort((x, y) =>
+      x!.borrowedAt!.getTime() - y!.borrowedAt!.getTime(),
+    )
+    const a = sorted[0]!
+    const b = sorted[1]!
+    expect(a!.status).toBe('returned')
+    expect(b!.status).toBe('returned')
+    // 先借先还：甲书（第一条借出）的还回在第 3 行闭合。
+    expect(a!.borrowedAt!.getTime()).toBeLessThan(b!.borrowedAt!.getTime())
+  })
+})
