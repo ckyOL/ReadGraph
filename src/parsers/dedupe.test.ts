@@ -642,3 +642,50 @@ describe('dedupeBorrowCycles', () => {
     expect(r.cycles).toHaveLength(2)
   })
 })
+
+describe('dedupeBorrowCycles — L5 跨文件连续借出', () => {
+  it('新借出候选关闭同书既有开放周期为 unknown（同文件规则跨文件等价）', () => {
+    const t1 = new Date('2026-01-01T00:00:00.000Z')
+    const t2 = new Date('2026-02-01T00:00:00.000Z')
+    const existing = [{
+      id: 'cy-1', bookId: 'bk', catalogRecordId: 'cr', sourceId: 'szlib', barcode: 'B1',
+      borrowedAt: t1, returnedAt: null, status: 'borrowed' as const,
+      borrowLocation: null, returnLocation: null, rawRecordIds: ['r1'], createdAt: t1, updatedAt: t1,
+    }]
+    const r = dedupeBorrowCycles(
+      [{
+        sourceId: 'szlib', barcode: 'B1', bookId: 'bk',
+        borrowedAt: t2, returnedAt: null, status: 'borrowed' as const,
+        borrowLocation: null, returnLocation: null, rawRecordIds: ['r2'],
+      }],
+      existing,
+    )
+    expect(r.skippedFlags).toEqual([false])
+    expect(r.cycles).toHaveLength(2)
+    // 既有开放周期关闭为 unknown（其归还日期无从确定，borrow-cycle.md 规则表）。
+    expect(r.cycles[0]!.status).toBe('unknown')
+    expect(r.cycles[0]!.returnedAt).toBeNull()
+    // 新借出照常成为 borrowed 开放周期。
+    expect(r.cycles[1]!.status).toBe('borrowed')
+    expect(r.cycles[1]!.borrowedAt.getTime()).toBe(t2.getTime())
+  })
+
+  it('不同书（bookId 不同）的开放周期不受新借出影响', () => {
+    const t1 = new Date('2026-01-01T00:00:00.000Z')
+    const t2 = new Date('2026-02-01T00:00:00.000Z')
+    const existing = [{
+      id: 'cy-1', bookId: 'bk-a', catalogRecordId: 'cr', sourceId: 'szlib', barcode: 'B1',
+      borrowedAt: t1, returnedAt: null, status: 'borrowed' as const,
+      borrowLocation: null, returnLocation: null, rawRecordIds: ['r1'], createdAt: t1, updatedAt: t1,
+    }]
+    const r = dedupeBorrowCycles(
+      [{
+        sourceId: 'szlib', barcode: 'B1', bookId: 'bk-b',
+        borrowedAt: t2, returnedAt: null, status: 'borrowed' as const,
+        borrowLocation: null, returnLocation: null, rawRecordIds: ['r2'],
+      }],
+      existing,
+    )
+    expect(r.cycles[0]!.status).toBe('borrowed')
+  })
+})

@@ -308,6 +308,11 @@ export function dedupeBorrowCycles(
   // 同一批次内重复行（如爬虫分页边界重复记录）也会各自成为候选，
   // 必须与已接受的批内候选比对，否则同批重复会产出多条相同周期。
   const batchKeys = new Set<string>()
+  // L4：既有周期精确键索引——替代逐候选全量扫描（O(n×m) → O(n+m)）。
+  const exactByKey = new Set<string>()
+  for (const ex of existingCycles) {
+    exactByKey.add(`${ex.sourceId}|${ex.barcode ?? ''}|${ex.borrowedAt.getTime()}`)
+  }
 
   const timeOverlap = (a: BorrowCycle, b: BorrowCycle): boolean => {
     if (a.barcode !== b.barcode || a.sourceId !== b.sourceId) return false
@@ -317,15 +322,10 @@ export function dedupeBorrowCycles(
 
   candidates.forEach((cand, i) => {
     const exactKey = `${cand.sourceId}|${cand.barcode ?? ''}|${cand.borrowedAt.getTime()}`
-    // 精确重复（全量扫描）：命中任意既有周期即跳过。独立于时间重叠警告——
+    // 精确重复（索引化）：命中既有周期即跳过。独立于时间重叠警告——
     // 旧逻辑同循环内先撞上时间重叠 break 会跳过后续周期的精确比对，
     // 重导时（既有周期已闭合）会把同书周期重复新建。
-    const exactDup = existingCycles.some(
-      (ex) =>
-        ex.sourceId === cand.sourceId &&
-        ex.barcode === cand.barcode &&
-        ex.borrowedAt.getTime() === cand.borrowedAt.getTime(),
-    )
+    const exactDup = exactByKey.has(exactKey)
     if (exactDup) {
       skippedFlags[i] = true
       warnings.push({
@@ -421,6 +421,30 @@ export function dedupeBorrowCycles(
         recordRef: cand.rawRecordIds.map((r) => `raw:${r}`).join(','),
       })
       return
+    }
+    // L5 回归：跨文件连续借出——同文件内 szlib 解析器会把连续借出的旧开放
+    // 周期置 unknown（borrow-cycle.md 规则表「连续两次借出，前一周期归还日期
+    // 无从确定」），跨文件边界需等价处理：接受新借出候选时，同书（bookId，
+    // 无书目身份则同 barcode）的既有开放周期关闭为 unknown。
+    if (cand.status === 'borrowed') {
+      const openIdx = cycles.findIndex(
+        (ex) =>
+          ex.sourceId === cand.sourceId &&
+          ex.returnedAt == null &&
+          ex.borrowedAt.getTime() < cand.borrowedAt.getTime() &&
+          (cand.bookId
+            ? ex.bookId === cand.bookId
+            : cand.barcode != null &&
+              cand.barcode !== '' &&
+              ex.barcode === cand.barcode),
+      )
+      if (openIdx >= 0) {
+        cycles[openIdx] = {
+          ...cycles[openIdx]!,
+          status: 'unknown',
+          updatedAt: cand.borrowedAt,
+        }
+      }
     }
     batchKeys.add(exactKey)
     cycles.push({
