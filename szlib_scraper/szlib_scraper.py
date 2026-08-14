@@ -55,7 +55,9 @@ def fetch_all_records(card_value, start_date, end_date, cookie_str, output_dir):
 
         response = None
         try:
-            print(f"第 {page}/{total_pages} 页 请求 URL: {url}")
+            # 打印请求信息但不含 URL——URL 的 query 携带借书证号（cardno），
+            # 终端/日志不得泄漏（L14）。
+            print(f"第 {page}/{total_pages} 页 请求 {base_url}?{service_path}（借书证号已隐藏）")
 
             # 发送 GET 请求
             response = requests.get(url, headers=headers, timeout=10)
@@ -106,12 +108,20 @@ def fetch_all_records(card_value, start_date, end_date, cookie_str, output_dir):
         if page <= total_pages:
             time.sleep(1)
 
-    # 抓取循环结束后，将所有记录作为一个完整的 JSON 数组统一写入文件
-    if all_records:
+    # 抓取循环结束后，将所有记录作为一个完整的 JSON 数组统一写入文件。
+    # 分页中途失败（break）时不得写出部分数据冒充完整导出——写文件仅限循环
+    # 正常完成（page 越界退出）；失败时丢弃已抓部分并显式提示（L14）。
+    completed = page > total_pages
+    if all_records and completed:
         with open(output_file, "w", encoding="utf-8") as f:
             # 使用 json.dump 输出格式化的 JSON（indent=4），ensure_ascii=False 保证中文正常显示
             json.dump(all_records, f, ensure_ascii=False, indent=4)
         print(f"\n抓取完成！共抓取 {len(all_records)} 条记录，已保存至 {output_file}。")
+    elif all_records:
+        print(
+            f"\n分页中途失败：已抓取 {len(all_records)} 条记录，未写入输出文件"
+            "（部分数据不得冒充完整导出，请重跑或检查网络）。"
+        )
     else:
         print("\n未获取到任何记录，未生成输出文件。")
 
