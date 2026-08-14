@@ -67,9 +67,16 @@ export function importPipeline(
   const warnings: ParseWarning[] = []
   const now = meta.importedAt
 
-  // 1. 把 rows 的 data 序列化为 parser 消费的 rawData（保持纯：不读文件）。
-  const rawData = JSON.stringify(rows.map((r) => r.data))
-  const parseRes = parser.parse(rawData, source)
+  // L9 回归：纯函数不变式——入参 rows 不得被原地变异（调用方可能复用）。
+  // 浅克隆后处理（只改顶层字段，data 引用共享）；返回的 rawRecords 为克隆。
+  const workingRows = rows.map((r) => ({ ...r }))
+
+  // 1. 把 rows 的 data 数组直接喂给 parser（L4：跳过 JSON 两遍全量
+  //    stringify/parse；保持纯：不读文件）。
+  const parseRes = parser.parse(
+    workingRows.map((r) => r.data),
+    source,
+  )
   warnings.push(...parseRes.warnings)
 
   // 2. 装配候选编目与书目；按 rowIndex（rows 顺序）对齐 parseRes 产出。
@@ -254,7 +261,7 @@ export function importPipeline(
   //    消费行文件行号（_rowIndexes，与 buildRawRecords.rowIndex 一致），
   //    不再按 barcode 游标猜行——旧法会混入自助查询/续借等无效行（metaid=0）
   //    导致行错位、metaid 消歧失效（空条码多书时周期错挂或无主）。
-  const rowByIdx = new Map(rows.map((r) => [r.rowIndex, r] as const))
+  const rowByIdx = new Map(workingRows.map((r) => [r.rowIndex, r] as const))
   const candidateCycles: CandidateCycle[] = []
   for (const cyc of parseRes.borrowCycles) {
     const rowIndexes = (cyc as Record<string, unknown>)._rowIndexes as
@@ -373,7 +380,7 @@ export function importPipeline(
     if (skippedFlags[i]) {
       const cyc = candidateCycles[i]!
       for (const rid of cyc.rawRecordIds) {
-        const rr = rows.find((r) => r.id === rid)
+        const rr = workingRows.find((r) => r.id === rid)
         if (rr) rr.parseStatus = 'skipped'
       }
     }
@@ -386,7 +393,7 @@ export function importPipeline(
   for (const c of finalCycles) {
     for (const rid of c.rawRecordIds) cycleIdByRawId.set(rid, c.id)
   }
-  for (const r of rows) {
+  for (const r of workingRows) {
     const bc = String((r.data as { barcode?: unknown }).barcode ?? '')
     // 空条码行不用 barcode-keyed 映射（多书共享空键、值被最后候选覆盖）→ 走 metaid 消歧。
     const byBc = bc === '' ? undefined : bookIdByBarcode.get(bc)
@@ -405,13 +412,28 @@ export function importPipeline(
     }
   }
 
+  // L8 回归：行级警告（invalid_date 等，recordRef 形如 row:N）→ 对应行
+  // parseStatus 置 warning/error。旧版只写 success/skipped，'warning'/'error'
+  // 全库从未出现——无效日期行等仍显示 success，审计失真。
+  // format_error 为硬错误（error），其余行级警告为 warning；skipped 优先级更高。
+  for (const w of warnings) {
+    const m = w.recordRef?.match(/^row:(\d+)$/)
+    if (!m) continue
+    const rr = rowByIdx.get(Number(m[1]))
+    if (rr && rr.parseStatus !== 'skipped') {
+      rr.parseStatus = w.type === 'format_error' ? 'error' : 'warning'
+    }
+  }
+
   // 8. 统计 ImportLog（§10.3）。
   const stats: ImportLogStats = {
-    totalRawRecords: rows.length,
+    totalRawRecords: workingRows.length,
     newBooks: newBooks.length,
     updatedBooks: 0,
     newBorrowCycles: finalCycles.length - existing.borrowCycles.length,
-    skippedRecords: rows.filter((r) => r.parseStatus === 'skipped').length,
+    skippedRecords: workingRows.filter((r) => r.parseStatus === 'skipped').length,
+    // 行级预过滤（filterRows）发生在管线外（executeImport）；管线内无过滤概念。
+    filteredRows: 0,
     warningCount: warnings.filter((w) => w.type !== 'format_error').length,
     errorCount: warnings.filter((w) => w.type === 'format_error').length,
   }
@@ -436,7 +458,7 @@ export function importPipeline(
     ],
     borrowCycles: finalCycles,
     importLog,
-    rawRecords: rows,
+    rawRecords: workingRows,
     warnings,
   }
 }

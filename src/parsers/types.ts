@@ -21,10 +21,10 @@ export interface SourceParser {
   /**
    * 解析原始数据。rawRecordIds 由调用方注入（pipeline 负责壳），
    * parser 的视角是「逐行解析 rows[i].data 并产出候选实体/警告」。
-   * 这里保持与 source.md 一致的字符串/ArrayBuffer 入口用于 validate 探测，
-   * 真正逐行装配在 pipeline 层完成。
+   * rawData 支持字符串/ArrayBuffer（validate 探测入口）与行对象数组
+   * （pipeline 直接传 rows 的 data，跳过 JSON 两遍全量处理，L4）。
    */
-  parse(rawData: string | ArrayBuffer, source: Source): ParseResult
+  parse(rawData: string | ArrayBuffer | unknown[], source: Source): ParseResult
   /** 验证原始数据格式是否匹配此 Parser（自动检测来源）。 */
   validate(rawData: string | ArrayBuffer): boolean
   /**

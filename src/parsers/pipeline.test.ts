@@ -504,3 +504,46 @@ describe('importPipeline — 第二次导入不破坏既有周期（回归）', 
 function borrowRowId(rows: RawRecord[], date: string): string {
   return rows.find((r) => (r.data as { date?: string }).date === date)!.id
 }
+
+describe('importPipeline — L8/L9 回归', () => {
+  it('无效日期行 parseStatus 置 warning（L8：旧版恒 success）', () => {
+    const rows = [
+      mkRow({ date: '20260501', time: '10:00:00', optype: '读者借出', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'B1', ISBN: '978-7-5740-1274-5' }),
+      mkRow({ date: '20260230', time: '10:00:00', optype: '读者还回文献', metaid: 9001, title: '合成书目052 . 3/ 合成著者著', barcode: 'B1', ISBN: '978-7-5740-1274-5' }),
+    ]
+    const r = importPipeline(
+      rows.map((d, i) => ({
+        id: `raw-${i + 1}`,
+        importLogId: meta.id,
+        sourceId: source.id,
+        data: d,
+        rowIndex: i + 1,
+        borrowCycleId: null,
+        bookId: null,
+        parseStatus: 'success' as const,
+        parseNote: null,
+      })),
+      source,
+      szlibParser,
+      empty,
+      meta,
+    )
+    const bad = r.rawRecords.find(
+      (x) => (x.data as { date?: string }).date === '20260230',
+    )!
+    expect(bad.parseStatus).toBe('warning')
+    // 正常行仍为 success。
+    const ok = r.rawRecords.find((x) => (x.data as { date?: string }).date === '20260501')!
+    expect(ok.parseStatus).toBe('success')
+  })
+
+  it('入参 rows 不被原地变异（L9：纯函数不变式；返回回填后的克隆）', () => {
+    const rows = buildRows()
+    const before = rows.map((r) => ({ ...r }))
+    const r = importPipeline(rows, source, szlibParser, empty, meta)
+    expect(rows).toEqual(before)
+    // 管线产物 rawRecords 是回填后的克隆（bookId/parseStatus 已填），非入参引用。
+    expect(r.rawRecords).not.toBe(rows)
+    expect(r.rawRecords.some((x) => x.bookId != null)).toBe(true)
+  })
+})
