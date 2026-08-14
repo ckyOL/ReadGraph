@@ -101,7 +101,16 @@ export async function executeImport(
   }
   // 与预览共用 parser.filterRows：无用条目（自助查询/读者续借等）在进入
   // 管线与落库前即剔除，rawRecords 只保留有效行（溯源/备份/重放均不含无用条目）。
-  const rows = buildRawRecords(parser.filterRows(parsed as Record<string, unknown>[]), meta, req.sourceId)
+  const filtered = parser.filterRows(parsed as Record<string, unknown>[])
+  const filteredRows = parsed.length - filtered.length
+  // L3 回归：全无效文件（全部行被行级过滤剔除）显式拒绝——旧版静默导入为空
+  // （零实体零警告），审计无从查证。
+  if (filtered.length === 0) {
+    throw new Error(
+      `import contains no valid rows after filtering (${filteredRows} rows filtered)`,
+    )
+  }
+  const rows = buildRawRecords(filtered, meta, req.sourceId)
   const existing: ExistingState = {
     books: await db.books.toArray(),
     catalogRecords: await db.catalogRecords.toArray(),
@@ -113,6 +122,11 @@ export async function executeImport(
       ? await runInWorker(rows, source, existing, meta)
       : importPipeline(rows, source, parser, existing, meta)
 
+  // L3：行级预过滤剔除数记入 ImportLog.stats（管线内无过滤概念，此处覆盖）。
+  result.importLog.stats = {
+    ...result.importLog.stats,
+    filteredRows,
+  }
   const stats: ImportLogStats = result.importLog.stats
   await db.transaction(
     'rw',

@@ -402,3 +402,28 @@ describe('executeImport — 向导执行装配（G-5/G-6 单元契约）', () =>
     expect(raws.every((r) => r.bookId === books[0]!.id)).toBe(true)
   })
 })
+
+describe('executeImport — L3 回归', () => {
+  it('全无效 optype 文件显式拒绝，不静默导入为空', async () => {
+    const text = JSON.stringify([
+      { metatable: 'bibliosm', date: '20260501', time: '10:00:00', optype: '自助查询', title: '', barcode: '' },
+      { metatable: 'bibliosm', date: '20260501', time: '10:00:00', optype: '读者续借', title: '', barcode: '' },
+    ])
+    await expect(executeImport(db, request({ text }))).rejects.toThrow(/no valid rows/)
+    // 拒绝发生在写库前：库保持空（无空 ImportLog 入账）。
+    expect(await db.importLogs.count()).toBe(0)
+  })
+
+  it('filteredRows 计入行级预过滤剔除数（审计「文件行 → 有效行」去向）', async () => {
+    const rows = (sample as Record<string, unknown>[]).concat([
+      { metatable: 'bibliosm', date: '20260501', time: '10:00:00', optype: '自助查询', title: '', barcode: '' },
+      { metatable: 'bibliosm', date: '20260501', time: '10:00:00', optype: '读者续借', title: '', barcode: '' },
+    ])
+    const text = JSON.stringify(rows)
+    const result = await executeImport(db, request({ text }))
+    // sample 自带 2 条被过滤行（自助查询/续借）+ 追加 2 条 = 4。
+    expect(result.importLog.stats.filteredRows).toBe(4)
+    // totalRawRecords 为过滤后有效行数（22 - 2 条 sample 自带过滤行）。
+    expect(result.importLog.stats.totalRawRecords).toBe(sample.length - 2)
+  })
+})

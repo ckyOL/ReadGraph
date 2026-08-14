@@ -173,6 +173,7 @@ export function makeImportLog(id = 'log-1', sourceId = 'src-sz'): ImportLog {
       updatedBooks: 0,
       newBorrowCycles: 1,
       skippedRecords: 0,
+      filteredRows: 0,
       warningCount: 0,
       errorCount: 0,
     },

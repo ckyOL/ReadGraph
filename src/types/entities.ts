@@ -165,6 +165,8 @@ export interface ImportLogStats {
   updatedBooks: number
   newBorrowCycles: number
   skippedRecords: number
+  /** 行级预过滤（filterRows）剔除的无用行数：审计「文件行 → 有效行」去向（L3）。 */
+  filteredRows: number
   warningCount: number
   errorCount: number
 }

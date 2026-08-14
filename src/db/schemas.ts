@@ -187,6 +187,8 @@ const importLogStatsSchema = z.object({
   updatedBooks: z.number(),
   newBorrowCycles: z.number(),
   skippedRecords: z.number(),
+  // L3：旧导出无此字段时默认 0（管线内无过滤概念；executeImport 覆盖为实际值）。
+  filteredRows: z.number().default(0),
   warningCount: z.number(),
   errorCount: z.number(),
 })
