@@ -43,6 +43,43 @@
 - **依赖面共识**：本路线图唯一依赖变更是**移除** `shadcn`（I-3）；SEC-3 可选 SW 若做需走供应链审查（新 devDep），不落本批次。
 
 
+## 并行执行协议
+
+> 定案：路线图任务**可并行执行**。唯一硬约束是阶段门——阶段 0 全绿 → 阶段 1 → 阶段 2/3/4/5（SEC-5 另依赖阶段 0–2 绿，见文末依赖链）。阶段内各任务逻辑独立，已逐一核对改动文件与区域，无「A 产出是 B 输入」的硬依赖；共享文件仅需合并协调（见下）。
+
+### 并行批次
+
+- 阶段 0：Q-1~Q-6 一批并行；Q-2 负责转绿 4 例 E2E 红灯，批内其余任务不触碰 E2E 断言。
+- 阶段 1：I-1~I-3 一批并行；I-1 的 audit 硬门禁在 I-3 落地前为已知红——合并顺序 I-3 先合，I-1 再验绿。
+- 阶段 2/3/4/5：CI 门禁生效后，各阶段内部并行，阶段间亦可并行启动（SEC-5 除外）。
+
+### 共享文件簇
+
+同一文件多个任务改动区域互不重叠，git 合并可解；执行时每任务独立分支/worktree、小步提交，按区域先合先得：
+
+| 文件 | 任务（改动区域） |
+|---|---|
+| `src/enrich/enrich-service.ts` | Q-3（状态回写异常）、Q-5（`hasLookupKey` metaId 判定） |
+| `src/routes/library/$bookId.tsx` | Q-3（catch 兜底）、Q-6（读路径归一接入）、H-2（publishDate 下沉）、SEC-2（外链守卫） |
+| `src/routes/library/index.tsx` | Q-2（data-slot 容器）、A-2（筛选 Select 可访问名）、A-6（目标尺寸审计）、Q-6（列表读路径归一接入） |
+| `src/routes/profile.tsx` | A-2（日期输入 label）、A-6（`aria-busy`/`aria-live` 遮罩）；A-1 的图表容器在 `src/profile/charts/*`（5 图），与 A-2/A-6 不重叠 |
+| `src/routes/library/-edit-dialog.tsx` | A-5（分隔符）、H-2（publishDate 归一） |
+| `src/lib/types.ts` | H-1（删 `supportedFormats`）、H-3（瞬态字段 JSDoc） |
+| `src/parsers/dedupe.ts`、`src/parsers/pipeline.ts` | Q-1（exactKey/exactByKey）、H-1（dedupe 第 4 参）、H-3（缺 `_bookKey` 警告） |
+| `README.md` | I-1（CI 说明）、I-2（License 徽标）、SEC-3（offline 措辞） |
+| `AGENTS.md` | I-1（ci 命令）、I-3（dlx 命令）、SEC-5（发布流程） |
+| `package.json` + lockfile | I-3（移除 shadcn 重锁）、SEC-5（version）——顺序执行，避免 lockfile 反复冲突 |
+| `e2e/editing.spec.ts` | Q-2、T-3；`e2e/classification.spec.ts`：Q-2、T-5 |
+
+**软耦合注意**：T-3 的 `e2e/fixtures.ts` 是 T-1「断言从 fixture 派生」的天然底座——并行时 T-1 先自行派生，T-3 合入后再接线；Q-1 改变 dedupe 行为，合入后跑一次全量 E2E 复查（app.spec 硬编码统计若受波及，归 H-6 处理）。
+
+### 进程与验证卫生
+
+- **E2E 单实例**：`playwright.config.ts` webServer 固定端口 4173（`pnpm build && pnpm preview`）——同一 checkout 同一时间只跑一个 `pnpm test:e2e`；并行任务用不同 worktree 或串行执行测试。
+- **每任务验收**：`pnpm test` + `pnpm build`；触碰 E2E 的任务合并前跑一次全量 `pnpm test:e2e`（先合 Q-2 让基线转绿）。
+- 流程卫生遵循 [ai-agent-workflow-rules §3](../ai-agent-workflow-rules.md#3-进程生命周期管理启动即登记结束即清理)。
+
+
 ---
 
 ## 阶段 0：正确性与主分支红灯（最高优先）
@@ -353,6 +390,7 @@
 
 ## 状态
 
+- 2026-08-15 **并行执行定案**：全路线图任务确认可并行执行（阶段门为唯一硬约束，阶段内无逻辑依赖）；新增「并行执行协议」节——并行批次、共享文件簇与合并顺序、E2E 单实例等进程卫生。
 - 2026-08-14 **标准全景定案**：新增「标准全景（适用性评估）」表——适用项 9 类（WCAG 2.2、OWASP 子集、CWV、ISO 8601/2108、分类法、BCP 47/CLDR、PWA、SemVer），已达标 4 项，派任务 5 项（SEC-1~SEC-5，阶段 5）；GDPR/PIPL 定案不适用（家庭豁免）。
 - 2026-08-14 **术语与标准定案**：仓库用语统一为「无障碍」（accessibility，原「可达性」）；合规目标 **WCAG 2.2 Level AA**（等价覆盖 EN 301 549 / Section 508 基线），基线评估对照表与 6 项任务见阶段 2。
 - 2026-08-14 **建档**：评估完成（阶段 0–5 全部待启动）。基线：651 单测绿、38 E2E 中 4 红（Q-2）、audit 19 项（I-3）、无 CI/LICENSE（I-1/I-2）、dedupe 精确键缺陷（Q-1）。
