@@ -298,8 +298,21 @@ export function importPipeline(
   for (const cr of [...existing.catalogRecords, ...newCatalogRecords]) {
     if (cr.metaIdKey) crByMetaKeyFull.set(`${cr.sourceId}|${cr.metaIdKey}`, cr)
   }
+  // 含既有编目：命中既有编目的新周期按 barcode 唯一命中时也要能解析到记录。
+  const crById = new Map(
+    [...existing.catalogRecords, ...newCatalogRecords].map((cr) => [cr.id, cr] as const),
+  )
+  // 候选周期预解析归属书目——解析顺序与下方 finalCycles 新周期分支一致
+  // （barcode 本批次唯一命中 → 该编目；否则按 metaIdKey 消歧；再否则空）：
+  // 精确去重键（Q-1）含 bookId 身份分量，两侧（候选 vs 存库周期）bookId
+  // 必须同源可比，否则 metaid=0 但 barcode 唯一命中的候选重导时身份分量
+  // 不匹配，破坏重导幂等（Q-1 回归防线）。
   for (const cand of candidateCycles) {
-    if (cand.metaIdKey) {
+    const bc = cand.barcode ?? ''
+    const bcCrs = crIdsByBarcode.get(bc) ?? []
+    if (bcCrs.length === 1) {
+      cand.bookId = crById.get(bcCrs[0]!)?.bookId ?? ''
+    } else if (cand.metaIdKey) {
       cand.bookId =
         crByMetaKeyFull.get(`${cand.sourceId}|${cand.metaIdKey}`)?.bookId ?? ''
     }
@@ -323,11 +336,6 @@ export function importPipeline(
     ids.add(cr.id)
     barcodeCrIds.set(bcKey, ids)
   }
-  // 含既有编目：命中既有编目的新周期按 barcode 唯一命中时也要能解析到记录。
-  const crById = new Map(
-    [...existing.catalogRecords, ...newCatalogRecords].map((cr) => [cr.id, cr] as const),
-  )
-
   // 新周期 → 候选对齐（dedupe 输出 = existing + 未跳过候选，按序）。
   const newCandidateByKey = new Map<string, CandidateCycle>()
   for (let i = 0; i < candidateCycles.length; i++) {

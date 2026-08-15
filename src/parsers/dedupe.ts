@@ -292,7 +292,7 @@ export function dedupeCatalogsAndBooks(
 
 /**
  * BorrowCycle 去重（§10.6 后段）。
- * 精确重复（sourceId + barcode + borrowedAt）跳过并记 duplicate 警告；
+ * 精确重复（sourceId + barcode + borrowedAt + bookId）跳过并记 duplicate 警告；
  * 时间重叠（同 bookId + barcode 已有周期范围内再出现借出）记 unpaired_record 警告但仍建周期。
  * 返回合并后的 borrowCycles 与去重后的有效候选（带 dedupeResult）。
  */
@@ -304,14 +304,14 @@ export function dedupeBorrowCycles(
   const cycles = [...existingCycles]
   const skippedFlags: boolean[] = candidates.map(() => false)
 
-  // 批次内已接受候选的精确键（sourceId+barcode+borrowedAt）。
+  // 批次内已接受候选的精确键（sourceId+barcode+borrowedAt+bookId）。
   // 同一批次内重复行（如爬虫分页边界重复记录）也会各自成为候选，
   // 必须与已接受的批内候选比对，否则同批重复会产出多条相同周期。
   const batchKeys = new Set<string>()
   // L4：既有周期精确键索引——替代逐候选全量扫描（O(n×m) → O(n+m)）。
   const exactByKey = new Set<string>()
   for (const ex of existingCycles) {
-    exactByKey.add(`${ex.sourceId}|${ex.barcode ?? ''}|${ex.borrowedAt.getTime()}`)
+    exactByKey.add(`${ex.sourceId}|${ex.barcode ?? ''}|${ex.borrowedAt.getTime()}|${ex.bookId}`)
   }
 
   const timeOverlap = (a: BorrowCycle, b: BorrowCycle): boolean => {
@@ -321,7 +321,7 @@ export function dedupeBorrowCycles(
   }
 
   candidates.forEach((cand, i) => {
-    const exactKey = `${cand.sourceId}|${cand.barcode ?? ''}|${cand.borrowedAt.getTime()}`
+    const exactKey = `${cand.sourceId}|${cand.barcode ?? ''}|${cand.borrowedAt.getTime()}|${cand.bookId ?? ''}`
     // 精确重复（索引化）：命中既有周期即跳过。独立于时间重叠警告——
     // 旧逻辑同循环内先撞上时间重叠 break 会跳过后续周期的精确比对，
     // 重导时（既有周期已闭合）会把同书周期重复新建。
@@ -412,7 +412,7 @@ export function dedupeBorrowCycles(
         return
       }
     }
-    // 批次内去重：同批已有完全相同（sourceId+barcode+borrowedAt）的候选时跳过。
+    // 批次内去重：同批已有完全相同（sourceId+barcode+borrowedAt+bookId）的候选时跳过。
     if (batchKeys.has(exactKey)) {
       skippedFlags[i] = true
       warnings.push({
