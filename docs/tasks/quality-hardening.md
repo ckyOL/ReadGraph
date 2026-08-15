@@ -154,11 +154,16 @@
 - **验收**：故意制造一次失败提交验证门禁拦截（Red 验证 CI 本身）。
 - **关联**：[AGENTS.md](../../AGENTS.md) 命令表补 `ci` 说明。
 
-### I-2 LICENSE
+### I-2 LICENSE ✅（2026-08-15 完成）
 
 - **现状**：无 LICENSE——法律上非开源，与 README「Contributing」矛盾。
 - **改动**：根目录新增 `LICENSE`（**默认 MIT**；若倾向 copyleft 改 GPL-3.0，需立项时定夺——本路线图按 MIT 排期，README 补 License 徽标）。
-- **验收**：`npx license-checker` 或 GitHub 界面识别 License；README 徽标一致。
+- **落地（2026-08-15，定夺为 MIT，版权人 ckyOL）**：
+  - `LICENSE`：MIT 全文；
+  - `package.json`：补 `"license": "MIT"` 字段；
+  - `README.md` / `README-zh.md`：License 徽标 + License 小节；
+  - 合规延伸：新增 `THIRD_PARTY_NOTICES.md`（20 个运行时依赖的 SPDX 表格、版权行、Apache NOTICE 全文、MIT/ISC/Apache-2.0 标准许可全文——覆盖 Apache-2.0 §4(d) NOTICE 保留义务（ECharts/Dexie/comlink/CVA/dexie-react-hooks）与 MIT/ISC 再分发声明义务）与 `scripts/generate-third-party-notices.mjs`（幂等生成脚本，`pnpm generate:notices` 重跑，新增依赖后需重新生成）。
+- **验收**：`license` 字段 / LICENSE / 双 README 徽标三者一致（grep 验证）；生成脚本幂等性通过。
 
 ### I-3 移除 shadcn CLI 运行时依赖
 - **现状**：`package.json:42` `"shadcn": "^4.14.0"` 挂在 **dependencies**——CLI 构建工具零运行时引用（已 grep 证实），却把 undici/@dotenvx/ajv/hono 整条供应链拖进 lockfile，造成 19 项 audit 噪音（7 high），与 [npm-supply-chain-security](../npm-supply-chain-security.md) 最小化原则自相矛盾。
@@ -390,6 +395,7 @@
 
 ## 状态
 
+- 2026-08-15 **I-2 完成**：LICENSE 定夺并落地为 **MIT**（版权人 ckyOL）——`LICENSE` 全文、`package.json` `license` 字段、双 README 徽标与 License 小节；合规延伸落地 `THIRD_PARTY_NOTICES.md` + 幂等生成脚本 `scripts/generate-third-party-notices.mjs`（`pnpm generate:notices`），覆盖 20 个运行时依赖的再分发声明义务（Apache-2.0 §4(d) NOTICE 保留 + MIT/ISC 声明）。
 - 2026-08-15 **并行执行定案**：全路线图任务确认可并行执行（阶段门为唯一硬约束，阶段内无逻辑依赖）；新增「并行执行协议」节——并行批次、共享文件簇与合并顺序、E2E 单实例等进程卫生。
 - 2026-08-14 **标准全景定案**：新增「标准全景（适用性评估）」表——适用项 9 类（WCAG 2.2、OWASP 子集、CWV、ISO 8601/2108、分类法、BCP 47/CLDR、PWA、SemVer），已达标 4 项，派任务 5 项（SEC-1~SEC-5，阶段 5）；GDPR/PIPL 定案不适用（家庭豁免）。
 - 2026-08-14 **术语与标准定案**：仓库用语统一为「无障碍」（accessibility，原「可达性」）；合规目标 **WCAG 2.2 Level AA**（等价覆盖 EN 301 549 / Section 508 基线），基线评估对照表与 6 项任务见阶段 2。

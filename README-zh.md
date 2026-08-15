@@ -12,6 +12,7 @@
 ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind%20CSS%20v4-38BDF8)
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 [English](./README.md) · **简体中文**
 
@@ -86,6 +87,10 @@ pnpm audit --audit-level=high    # 安全审计
 - **可离线** — 静态部署即可使用，无需网络。
 - **供应链加固** — pnpm 11 强制 7 天发布冷却（`minimumReleaseAge`）、锁定 lockfile、强制 HTTPS；见 [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md)。
 - **仓库不含真实个人数据** — 读者证号 / IP 一律不得提交，测试夹具均已脱敏。
+
+## 许可证
+
+MIT —— 见 [LICENSE](./LICENSE)。运行时依赖的第三方许可声明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 ## 参与贡献
 

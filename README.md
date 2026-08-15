@@ -12,6 +12,7 @@ Import borrow/return exports from your public library or e-book platform, and tu
 ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind%20CSS%20v4-38BDF8)
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 **English** · [简体中文](./README-zh.md)
 
@@ -86,6 +87,10 @@ pnpm audit --audit-level=high    # security audit
 - **Offline-capable** — statically deployable, works without network.
 - **Supply-chain hardening** — pnpm 11 with 7-day release cooldown (`minimumReleaseAge`), frozen lockfile, strict SSL; see [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md).
 - **No real personal data in the repo** — reader card numbers / IPs must never be committed; fixtures are desensitized.
+
+## License
+
+MIT — see [LICENSE](./LICENSE). Third-party notices for bundled runtime dependencies: [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ## Contributing
 
