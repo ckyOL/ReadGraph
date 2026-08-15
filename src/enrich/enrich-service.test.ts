@@ -94,6 +94,11 @@ describe('候选集过滤（§7 候选集 + §7.1 占位）', () => {
     expect(isEnrichmentCandidate(record, book, source)).toBe(true)
   })
 
+  it('metaId 字符串 "0"（导入形态）排除，不放行抓取（与数值 0 同语义）', () => {
+    // metaIdKey='0' 非空仍不满足：metaId 为 '0' 视为无效反查键（R4 缺陷回归）
+    expect(isEnrichmentCandidate(szRecord({ metaId: '0' }), book, source)).toBe(false)
+  })
+
   it('isbn13 键 provider（如未来 OpenLibrary）按 Book.isbn13 过滤', () => {
     defaultOpacRegistry.register(isbn13Provider)
     try {

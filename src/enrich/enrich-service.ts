@@ -13,6 +13,7 @@ import type { Book, CatalogRecord, ParseWarning, Source } from '@/types/entities
 import { mapOpacDetail, type EnrichmentChange } from '@/lib/opac-mapping'
 import { OpacFetchError } from './opac-client'
 import { getProvider, type OpacDetailResult, type OpacProvider } from './opac-provider'
+import { metaIdIsEmpty } from './providers/szlib'
 
 /** 单请求超时（规格 §7）。 */
 export const ENRICH_TIMEOUT_MS = 10_000
@@ -38,7 +39,7 @@ export interface EnrichOptions {
 /** lookupKey 对应字段是否满足（§7 候选集第 2 条）：'metaId' → metaIdKey 非空且 metaId≠0；'isbn13' → Book.isbn13 非空。 */
 export function hasLookupKey(record: CatalogRecord, book: Book, provider: OpacProvider): boolean {
   if (provider.lookupKey === 'metaId') {
-    return record.metaIdKey != null && record.metaIdKey !== '' && record.metaId !== 0
+    return record.metaIdKey != null && record.metaIdKey !== '' && !metaIdIsEmpty(record.metaId)
   }
   return book.isbn13 != null && book.isbn13 !== ''
 }

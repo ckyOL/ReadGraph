@@ -19,9 +19,17 @@ const META_TABLE = 'bibliosm'
 /** 站点固定参数（§3.2），常量保留。 */
 const CLIENT_ID = 't1'
 
+/**
+ * metaId 无效判定（0、'0'、null、undefined、'' 均视为空；enrich-service hasLookupKey 与
+ * provider 反查键共用同一语义——导入管线可能产出字符串形态 '0'，严格比较会漏放）。
+ */
+export function metaIdIsEmpty(metaId: string | number | null | undefined): boolean {
+  return metaId == null || metaId === '' || String(metaId) === '0'
+}
+
 /** metaId 空/0 → 无有效反查键（与候选集 §7.1 判定一致）。 */
 function metaIdOf(record: CatalogRecord): string | number | null {
-  return record.metaId == null || record.metaId === 0 ? null : record.metaId
+  return metaIdIsEmpty(record.metaId) ? null : record.metaId
 }
 
 export const szlibProvider: OpacProvider = {
