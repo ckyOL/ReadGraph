@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 
 /**
  * book-editing 规格 §7.6 E2E：详情页统一编辑（search.edit 驱动）、书库类型筛选与徽标
@@ -166,6 +166,12 @@ async function seed(page: Page): Promise<void> {
   }, [SEED_KEY, payload] as const)
 }
 
+/** 桌面视口（默认 1280px ≥ lg 断点）下书库列表断言限定表格容器：卡片网格（lg:hidden）与表格
+ *  同挂 DOM（748f52a CSS 断点切换），未限定的 getByText/getByRole 命中两份 → strict-mode 冲突。 */
+function libraryTable(page: Page): Locator {
+  return page.locator('[data-slot="library-table"]')
+}
+
 test.describe('book editing (book-editing §7.6)', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
@@ -192,8 +198,8 @@ test.describe('book editing (book-editing §7.6)', () => {
     const rows = page.locator('tbody tr')
     await expect(rows).toHaveCount(4)
     // 徽标：占位书 destructive「Placeholder」、套装（候选与已确认）outline「Set」。
-    await expect(page.getByText('Placeholder', { exact: true })).toBeVisible()
-    await expect(page.getByText('Set', { exact: true })).toHaveCount(2)
+    await expect(libraryTable(page).getByText('Placeholder', { exact: true })).toBeVisible()
+    await expect(libraryTable(page).getByText('Set', { exact: true })).toHaveCount(2)
 
     // 类型筛选：Placeholder（来源筛选也含 “All”，用 ^All$ 精确匹配类型下拉）。
     await page.getByRole('combobox').filter({ hasText: /^All$/ }).click()
@@ -205,8 +211,8 @@ test.describe('book editing (book-editing §7.6)', () => {
     await page.getByRole('combobox').filter({ hasText: 'Placeholder' }).click()
     await page.getByRole('option', { name: 'Set candidate' }).click()
     await expect(rows).toHaveCount(2)
-    await expect(page.getByRole('link', { name: '合成书目052', exact: true })).toBeVisible()
-    await expect(page.getByRole('link', { name: '历史C', exact: true })).toBeVisible()
+    await expect(libraryTable(page).getByRole('link', { name: '合成书目052', exact: true })).toBeVisible()
+    await expect(libraryTable(page).getByRole('link', { name: '历史C', exact: true })).toBeVisible()
 
     // 待完善：占位 + 套装候选。
     await page.getByRole('combobox').filter({ hasText: 'Set candidate' }).click()
@@ -216,7 +222,7 @@ test.describe('book editing (book-editing §7.6)', () => {
 
   test('placeholder badge links to detail with edit dialog open', async ({ page }) => {
     await page.goto('/library')
-    await page.getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
+    await libraryTable(page).getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
     // 行链接携带实时搜索 q（a67f6b7 L1：空输入也写 ?q=），URL 断言容忍任意参数前缀。
     await expect(page).toHaveURL(/\/library\/book-2\?.*edit=true/)
     await expect(page.locator('input[value="福田图书馆读者自选图书"]')).toBeVisible()
@@ -246,7 +252,7 @@ test.describe('book editing (book-editing §7.6)', () => {
     // 保存后解除待审：book-3 单卷非套装 → 徽标只剩已确认套装 book-4（守卫防重灌，
     // 旧断言 2 是重灌恢复夹具的假象）。
     await page.goto('/library')
-    await expect(page.getByText('Set', { exact: true })).toHaveCount(1)
+    await expect(libraryTable(page).getByText('Set', { exact: true })).toHaveCount(1)
   })
 
   test('placeholder detail exposes merge action in more menu', async ({ page }) => {
@@ -263,7 +269,7 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(page).toHaveURL(/\/library\/book-1/)
     await page.goto('/library')
     await expect(page.getByText('福田图书馆读者自选图书')).toHaveCount(0)
-    await expect(page.getByText('小说A', { exact: true })).toBeVisible()
+    await expect(libraryTable(page).getByText('小说A', { exact: true })).toBeVisible()
   })
 
   test('closing edit dialog does not reopen on browser back', async ({ page }) => {
@@ -290,7 +296,7 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(rows).toHaveCount(2)
 
     // 徽标直达编辑（push ?edit=true；行链接携带视图参数 status=needsReview，opac-enrichment §10）。
-    await page.getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
+    await libraryTable(page).getByRole('link', { name: /Placeholder 福田图书馆读者自选图书/ }).click()
     await expect(page).toHaveURL(/\/library\/book-2\?.*edit=true/)
     await expect(page.locator('input[value="福田图书馆读者自选图书"]')).toBeVisible()
 
@@ -300,7 +306,7 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(rows).toHaveCount(2)
 
     // 连续审核下一本：筛选仍在。
-    await page.getByRole('link', { name: /Set 合成书目052/ }).click()
+    await libraryTable(page).getByRole('link', { name: /Set 合成书目052/ }).click()
     await expect(page).toHaveURL(/\/library\/book-3\?.*edit=true/)
   })
 
@@ -357,5 +363,23 @@ test.describe('book editing (book-editing §7.6)', () => {
     await next.click()
     await expect(page).toHaveURL(/\/library\/book-3\?.*sort=isbn/)
     await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
+  test('mobile 375px: card grid shows fields, table hidden (Q-2)', async ({ page }) => {
+    // 双视图同挂 DOM（CSS 断点切换）：375px 视口下表格隐藏、卡片网格可见。
+    // 断言锁定 [data-slot="library-cards"]，锁定 card grid 视图不被后续重构破坏。
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto('/library')
+    const cards = page.locator('[data-slot="library-cards"]')
+    await expect(page.locator('[data-slot="library-table"]')).toBeHidden()
+    await expect(cards).toBeVisible()
+    // 卡片视图字段可见性：书名、徽标（Placeholder/Set）、套装候选链接、作者、ISBN、来源。
+    await expect(cards.getByText('小说A', { exact: true })).toBeVisible()
+    await expect(cards.getByText('Placeholder', { exact: true })).toBeVisible()
+    await expect(cards.getByText('Set', { exact: true })).toHaveCount(2)
+    await expect(cards.getByRole('link', { name: '合成书目052', exact: true })).toBeVisible()
+    await expect(cards.getByText('作者A', { exact: true }).first()).toBeVisible()
+    await expect(cards.getByText('9780000000001', { exact: true })).toBeVisible()
+    await expect(cards.getByText('测试图书馆', { exact: true })).toHaveCount(4)
   })
 })

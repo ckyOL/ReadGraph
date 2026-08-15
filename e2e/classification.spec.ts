@@ -59,8 +59,11 @@ test.describe('classification hierarchy — library badge', () => {
 
   test('J238.2 芯片: 完整 5 段面包屑（含漫画）+ 最深类名，无细分未收录提示', async ({ page }) => {
     await page.goto('/library')
+    // 桌面视口（默认 1280px ≥ lg）断言限定表格容器：卡片网格（lg:hidden）与表格同挂 DOM
+    // （CSS 断点切换），未限定的 [data-slot="badge"] 命中两份。
+    const table = page.locator('[data-slot="library-table"]')
     // 等树懒加载完成：芯片从一级类目升级为深层路径（title 含面包屑分隔符）。
-    const badge = page.locator('[data-slot="badge"]', { hasText: 'J238.2' })
+    const badge = table.locator('[data-slot="badge"]', { hasText: 'J238.2' })
     await expect(badge).toHaveCount(1, { timeout: 10000 })
     await expect(badge).toHaveAttribute(
       'title',

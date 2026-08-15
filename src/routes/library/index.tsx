@@ -291,8 +291,9 @@ function LibraryPage() {
           </div>
 
           {/* 桌面表格（≥1024px，ui-navigation §3）：table-fixed 显式列宽防长文本驱动漂移；
-              书名列 sticky left 冻结（横向滚动锚点不丢，不透明背景防透字）。 */}
-          <div className="hidden lg:block">
+              书名列 sticky left 冻结（横向滚动锚点不丢，不透明背景防透字）。
+              data-slot 供 E2E 按容器限定断言——卡片网格与表格同挂 DOM（CSS 断点切换）。 */}
+          <div className="hidden lg:block" data-slot="library-table">
             <Table className="mt-4 table-fixed">
               <TableHeader>
                 <TableRow>
@@ -337,8 +338,9 @@ function LibraryPage() {
             </Table>
           </div>
           {/* 卡片网格（平板 2 列 / 移动 1 列，<1024px，ui-navigation §3）：信息完整、无隐藏列、
-              无横向滚动；与表格共享同一 filtered/排序状态。 */}
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+              无横向滚动；与表格共享同一 filtered/排序状态。
+              data-slot 供 E2E 按容器限定断言（375px 移动端用例锁定本视图）。 */}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden" data-slot="library-cards">
             {filtered.map((r) => (
               <LibraryCardView
                 key={r.book.id}
