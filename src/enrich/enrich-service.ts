@@ -119,6 +119,7 @@ export type SingleEnrichOutcome =
 /**
  * 单条抓取（详情页唯一路径）：成功 → 建议改动上下文（零写入，落详情页组件态）；
  * not_found/failed → 回写状态（含 providerId）并返回对应 kind；aborted 不回写。
+ * 状态回写失败不逸出：记日志后仍返回 failed（enrichOneRecord 不抛错契约）。
  */
 export async function enrichOneRecord(
   db: ReadGraphDB,
@@ -158,7 +159,13 @@ export async function enrichOneRecord(
     }
   } catch (e) {
     if (!(e instanceof OpacFetchError) || e.reason !== 'aborted') {
-      await writeEnrichmentStatus(db, record, 'failed', provider.id)
+      try {
+        await writeEnrichmentStatus(db, record, 'failed', provider.id)
+      } catch (writeErr) {
+        // 状态回写失败不逸出（enrichOneRecord 不抛错契约）：记日志，仍返回 failed。
+        // eslint-disable-next-line no-console
+        console.error('[enrich] failed to write enrichment status:', writeErr)
+      }
     }
     return { kind: 'failed' }
   }

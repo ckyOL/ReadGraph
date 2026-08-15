@@ -218,6 +218,10 @@ function BookDetailPage() {
           text: outcome.kind === 'not_found' ? te('notFound') : te('failed'),
         })
       }
+    } catch {
+      // 双保险：enrichOneRecord 意外抛错 → 失败提示（契约上不抛错，见 enrich-service；
+      // 此处仅设提示，不重复 setEnrichingId——finally 统一复位）。
+      setEnrichMsg({ recordId: cr.id, text: te('failed') })
     } finally {
       setEnrichingId(null)
     }

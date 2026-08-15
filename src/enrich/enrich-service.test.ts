@@ -227,6 +227,33 @@ describe('单条抓取 enrichOneRecord', () => {
     expect((await db.catalogRecords.get('cr-2'))?.opacEnrichment).toBeNull()
   })
 
+  it('状态回写失败（Dexie 写抛错）→ 返回 { kind: "failed" } 且不抛异常（不逸出契约）', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    const putSpy = vi.spyOn(db.catalogRecords, 'put').mockRejectedValue(new Error('dexie write failed'))
+    try {
+      await expect(enrichOneRecord(db, record, book, source, { backoffMs: 1 })).resolves.toEqual({
+        kind: 'failed',
+      })
+      // 写失败未落库：实体与 opacEnrichment 均未变更
+      expect((await db.catalogRecords.get('cr-1'))?.opacEnrichment).toBeNull()
+    } finally {
+      putSpy.mockRestore()
+    }
+  })
+
+  it('not_found 状态回写失败 → 不抛异常，返回 { kind: "failed" }（不逸出契约）', async () => {
+    stubFetchText(JSON.stringify(EMPTY_PAYLOAD))
+    const putSpy = vi.spyOn(db.catalogRecords, 'put').mockRejectedValue(new Error('dexie write failed'))
+    try {
+      await expect(enrichOneRecord(db, record, book, source, { backoffMs: 1 })).resolves.toEqual({
+        kind: 'failed',
+      })
+      expect((await db.catalogRecords.get('cr-1'))?.opacEnrichment).toBeNull()
+    } finally {
+      putSpy.mockRestore()
+    }
+  })
+
   it('失败两次后成功 → 第 3 次尝试成功，不写状态', async () => {
     let calls = 0
     const fn = vi.fn(async () => {
