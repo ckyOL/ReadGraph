@@ -30,6 +30,8 @@ pnpm verify                       # frozen install + supply-chain re-check
 pnpm audit --audit-level=high     # security audit
 ```
 
+CI (GitHub Actions, `.github/workflows/ci.yml`): gates are verify/lint/build/test/e2e/audit — all must be green before merge.
+
 Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv sync && uv run szlib_scraper.py`
 
 ## Conventions
