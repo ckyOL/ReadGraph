@@ -18,12 +18,14 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm verify
 
@@ -31,12 +33,14 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm lint
 
@@ -44,12 +48,14 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
 
@@ -57,12 +63,14 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm test
 
@@ -70,12 +78,14 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
@@ -84,11 +94,13 @@ jobs:
     name: Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: corepack enable && corepack prepare pnpm@11.9.0 --activate
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm audit --audit-level=high
