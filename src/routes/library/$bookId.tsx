@@ -6,11 +6,13 @@ import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from 'lucide-re
 import { z } from 'zod'
 
 import { db } from '@/db/db-instance'
+import { bookSchema, catalogRecordSchema } from '@/db/schemas'
 import { readPreferences } from '@/lib/preferences'
 import { formatDateInTz } from '@/lib/display-time'
 import { reviewKindOf } from '@/lib/book-status'
 import { parseTitle } from '@/lib/title'
 import { buildLibraryRows, filterAndSortRows, adjacentBookIds } from '@/lib/library-view'
+import { parseOrDefault } from '@/lib/parse-or-default'
 import { getProvider } from '@/enrich/opac-provider'
 import { enrichOneRecord, hasLookupKey, type EnrichmentContext } from '@/enrich/enrich-service'
 import type { CatalogRecord } from '@/types/entities'
@@ -115,13 +117,17 @@ function BookDetailPage() {
   )
 
   const loading = data === undefined
-  const [books, allCatalogRecords, allBorrowCycles, sources, rawRecords] = data ?? [
+  const [rawBooks, rawCatalogRecords, allBorrowCycles, sources, rawRecords] = data ?? [
     [],
     [],
     [],
     [],
     [],
   ]
+  // 读路径归一（Q-6）：旧导出记录缺 schema 默认字段（parallelTitles/materialType/volume 等），
+  // 直读渲染前按 schema 默认值补齐，防 undefined 字段渲染崩溃（M1 classCodes 同类）。
+  const books = rawBooks.map((b) => parseOrDefault(bookSchema, b))
+  const allCatalogRecords = rawCatalogRecords.map((cr) => parseOrDefault(catalogRecordSchema, cr))
   const book = books.find((b) => b.id === bookId)
 
   // 全量集合仅供翻页派生；页面本体只消费当前书的数据（过滤派生，防串书）。
