@@ -115,6 +115,29 @@ describe('parseSzlibDetail', () => {
     expect(r).toEqual({ ok: false, reason: 'not_found' })
   })
 
+  it('{} 负载（title/isbn/districtList 全缺键）→ not_found（缺键视为空）', () => {
+    expect(parseSzlibDetail('{}', SOURCE_URL)).toEqual({ ok: false, reason: 'not_found' })
+  })
+
+  it('缺 title 键（isbn 空）→ not_found', () => {
+    expect(parseSzlibDetail(JSON.stringify({ isbn: '' }), SOURCE_URL)).toEqual({
+      ok: false,
+      reason: 'not_found',
+    })
+  })
+
+  it('缺 isbn 键（title 空）→ not_found', () => {
+    expect(parseSzlibDetail(JSON.stringify({ title: '' }), SOURCE_URL)).toEqual({
+      ok: false,
+      reason: 'not_found',
+    })
+  })
+
+  it('缺 title 键但 isbn 有值 → 非 not_found（防御过度匹配）', () => {
+    const r = parseSzlibDetail(JSON.stringify({ isbn: '978-7-5217-4823-9' }), SOURCE_URL)
+    expect(r.ok).toBe(true)
+  })
+
   it('非法 JSON → parse_error，不抛异常', () => {
     expect(() => parseSzlibDetail('not json {', SOURCE_URL)).not.toThrow()
     expect(parseSzlibDetail('not json {', SOURCE_URL)).toEqual({ ok: false, reason: 'parse_error' })

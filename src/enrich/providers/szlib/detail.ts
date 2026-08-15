@@ -33,7 +33,7 @@ function rawAbstract(json: Record<string, unknown>): string | null {
  */
 function isNotFound(json: Record<string, unknown>): boolean {
   const districtList = Array.isArray(json.districtList) ? json.districtList : []
-  return json.title === '' && json.isbn === '' && districtList.length === 0
+  return (json.title ?? '') === '' && (json.isbn ?? '') === '' && districtList.length === 0
 }
 
 /**
