@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { buildTheme } from '@/lib/echarts-theme'
 
-// shadcn CSS 变量样本（对照 §11.3：palette/坐标轴/tooltip 取自对应变量）
+// 主题 CSS 变量样本（对照 §11.3：palette/坐标轴/tooltip 取自对应变量）
 const LIGHT_VARS: Record<string, string> = {
   '--background': '#ffffff',
   '--foreground': '#0a0a0a',

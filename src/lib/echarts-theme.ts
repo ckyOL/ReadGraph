@@ -1,4 +1,4 @@
-// ECharts 薄适配：shadcn CSS 变量 → echarts theme（§11.3）。
+// ECharts 薄适配：主题 CSS 变量 → echarts theme（§11.3）。
 // 不在模块顶层读 DOM；由消费方在 .dark 切换时重建并 setOption 重应用。
 
 /** ECharts theme 对象片段（仅覆盖本页所需项；未列字段沿用 echarts 默认）。 */
@@ -21,7 +21,7 @@ const CHART_KEYS = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart
 
 /**
  * 组装 ECharts theme。纯函数：不读 DOM、不读时钟。
- * @param cssVars shadcn CSS 变量键值（消费方从 :root/.dark 读取后注入）
+ * @param cssVars 主题 CSS 变量键值（消费方从 :root/.dark 读取后注入）
  * @param isDark 仅语义标记，不读全局主题；实际配色完全由 cssVars 决定
  */
 export function buildTheme(

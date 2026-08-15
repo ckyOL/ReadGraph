@@ -37,6 +37,9 @@ Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv sync && uv run szlib_scrap
 - Stack: TS strict, React 19, Tailwind + shadcn/ui, Dexie + Zod. pnpm 11 with
   `minimumReleaseAge: 10080` is the version guard; `--force`/`--shamefully-hoist` forbidden;
   new deps need the supply-chain checklist (`docs/npm-supply-chain-security.md`).
+  The shadcn CLI is not a dependency: add new components on demand with
+  `pnpm dlx shadcn@latest add <name>` — ephemeral, records no dependency;
+  `components.json` is retained for component config.
 - Commits: Conventional Commits, short and scoped (e.g. `refactor(metadata): add metaIdKey`), subject and body written in English.
 - Parsers: implement `SourceParser` under `src/parsers/`, in-browser only (no Node-only APIs),
   built on real captured data — see `docs/metadata/parsers/contributing-parser.md`.

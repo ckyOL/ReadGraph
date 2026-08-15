@@ -2,6 +2,13 @@
 # 等价于旧 .npmrc 的 min-release-age，但 .npmrc 在 pnpm 11 下不再被读取
 # 见 docs/npm-supply-chain-security.md
 minimumReleaseAge: 10080  # 7 天冷却：拒绝安装发布不满 7 天的版本（含传递依赖）
+
+# audit 补丁 override（2026-08-15）：GHSA-2v37-7h3g-55p8（nanoid <3.3.18）、
+# GHSA-fxqj-rqcc-2cmp（postcss <=8.5.22）经 vite→postcss 传递链进入 lockfile；
+# 均为同 major 补丁升级，发布时间过 7 天冷却。新增 override 须经供应链审查。
+overrides:
+  nanoid: ^3.3.18
+  postcss: ^8.5.23
 minimumReleaseAgeExclude:
   - '@oxlint/binding-android-arm-eabi@1.72.0'
   - '@oxlint/binding-android-arm64@1.72.0'

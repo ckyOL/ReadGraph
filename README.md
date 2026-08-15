@@ -13,6 +13,7 @@ Import borrow/return exports from your public library or e-book platform, and tu
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![CI](https://github.com/ckyOL/ReadGraph/actions/workflows/ci.yml/badge.svg)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 **English** · [简体中文](./README-zh.md)
@@ -51,6 +52,8 @@ pnpm test                        # unit / integration tests (Vitest)
 pnpm test:e2e                    # end-to-end tests (Playwright)
 pnpm audit --audit-level=high    # security audit
 ```
+
+CI runs verify, lint, build, test, e2e, and audit on every push & PR to main — see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 ## Data Sources
 

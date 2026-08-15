@@ -59,6 +59,7 @@ pnpm install --frozen-lockfile --ignore-scripts   # CI 安装 + 整树供应链�
 pnpm audit --audit-level=high
 pnpm why <pkg>            # 查传递依赖
 pnpm view <pkg> time      # 发布时间（确认冷却期）
+pnpm dlx shadcn@latest add <name>   # 按需生成 shadcn 组件：dlx 临时下载 CLI，不入 lockfile/manifest
 
 # ❌ 禁止
 # pnpm install --force              # 跳过检查
@@ -66,6 +67,8 @@ pnpm view <pkg> time      # 发布时间（确认冷却期）
 # pnpm add <git+https://...>        # 异源安装（blockExoticSubdeps 默认已拦）
 # 设 dangerouslyAllowAllBuilds: true 或关闭 blockExoticSubdeps/strictDepBuilds
 ```
+
+> `pnpm dlx shadcn@latest add <name>` 只是临时下载 CLI、运行后即弃，不写入 `package.json` / `pnpm-lock.yaml`，因此新增组件**不是**依赖事件、无需走上方清单；但生成的组件源码仍按仓库规则人工审查。
 
 更新带构建脚本的受信任包时尤其谨慎（账户劫持投毒窗口，见 [nx 案例](https://socket.dev/blog/nx-packages-compromised)）。
 

@@ -13,6 +13,7 @@
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![CI](https://github.com/ckyOL/ReadGraph/actions/workflows/ci.yml/badge.svg)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 [English](./README.md) · **简体中文**
@@ -51,6 +52,8 @@ pnpm test                        # 单元/集成测试（Vitest）
 pnpm test:e2e                    # 端到端测试（Playwright）
 pnpm audit --audit-level=high    # 安全审计
 ```
+
+CI 在每次推送到 `main` 及每次 PR 时运行 verify、lint、build、test、e2e 与 audit — 见 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)。
 
 ## 数据来源
 

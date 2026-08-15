@@ -26,7 +26,6 @@ Regenerate with: `pnpm generate:notices`
 | `react` | 19.2.8 | MIT | Copyright (c) Meta Platforms, Inc. and affiliates. |
 | `react-dom` | 19.2.8 | MIT | Copyright (c) Meta Platforms, Inc. and affiliates. |
 | `react-i18next` | 17.0.11 | MIT | Copyright (c) 2015-present i18next |
-| `shadcn` | 4.14.0 | MIT | Copyright (c) 2023 shadcn |
 | `tailwind-merge` | 3.6.0 | MIT | Copyright (c) 2021 Dany Castillo |
 | `tw-animate-css` | 1.4.0 | MIT | Copyright (c) 2025 Wombosvideo |
 | `zod` | 4.4.3 | MIT | Copyright (c) 2025 Colin McDonnell |
