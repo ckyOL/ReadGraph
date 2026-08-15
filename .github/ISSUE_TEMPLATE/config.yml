@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing Guide
+    url: https://github.com/ckyOL/ReadGraph/blob/main/CONTRIBUTING.md
+    about: Read this before opening an issue or pull request.
+  - name: Parser Contribution Guide
+    url: https://github.com/ckyOL/ReadGraph/blob/main/docs/metadata/parsers/contributing-parser.md
+    about: How to contribute a parser for your library or e-book platform.

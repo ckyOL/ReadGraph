@@ -12,6 +12,7 @@ Pure-frontend personal reading archive: import library/Libby borrow-export files
 - Dedup physical copies by `sourceId + barcode`; merge books by `isbn13`, fallback title+author (flag for review).
 - UI text MUST go through `react-i18next` `t()` — never literal strings in JSX.
 - SDD + TDD: agree on a spec, write failing tests, then implement to green.
+- Open-source contributions follow the standard process: read `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` before opening issues/PRs; issue/PR templates live in `.github/`.
 - Privacy before commit: fixtures/samples from real captures must be desensitized — scrub
   reader `cardno` and IPs, and fictionalize titles/authors/branch names while keeping the
   structural features parsers exercise (subtitle/parallel-title/volume/author delimiters).

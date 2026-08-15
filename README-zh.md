@@ -13,6 +13,7 @@
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 [English](./README.md) · **简体中文**
 
@@ -80,6 +81,9 @@ pnpm audit --audit-level=high    # 安全审计
 | [docs/design-decisions.md](./docs/design-decisions.md) | 设计决策与约束（时间处理、去重、隐私） |
 | [DESIGN.md](./DESIGN.md) | 视觉设计规范（主题、排版、组件） |
 | [AGENTS.md](./AGENTS.md) | 仓库约定与命令（含面向 AI Agent 的说明） |
+| [CONTRIBUTING-zh.md](./CONTRIBUTING-zh.md) | 贡献指南：工作流、约定、PR 清单（简体中文） |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guide (English) |
+| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | 社区行为准则 |
 
 ## 隐私与安全
 
@@ -94,4 +98,10 @@ MIT —— 见 [LICENSE](./LICENSE)。运行时依赖的第三方许可声明见
 
 ## 参与贡献
 
-采用 SDD + TDD 工作流：先定规格（见 [docs/ai-agent-workflow-rules.md](./docs/ai-agent-workflow-rules.md)），再写失败测试，最后实现至绿灯。新增依赖须走供应链安全清单；PR 需引用对应规格，parser 相关改动附脱敏样本。
+欢迎一切贡献 —— bug 反馈、功能建议、为你的图书馆新增解析器、文档与翻译。
+
+- 请先阅读 **[CONTRIBUTING-zh.md](./CONTRIBUTING-zh.md)**（[English](./CONTRIBUTING.md)）：涵盖 SDD + TDD 工作流、编码约定、供应链安全规则、隐私要求与 PR 检查清单。
+- 所有社区互动遵循 [Code of Conduct](./CODE_OF_CONDUCT.md)（行为准则）。
+- 通过 [issue 模板](.github/ISSUE_TEMPLATE/) 提交 bug 报告与功能请求。
+
+尤其欢迎新增解析器（见 [contributing-parser.md](./docs/metadata/parsers/contributing-parser.md)）：把您所在图书馆的导出格式接入 ReadGraph。

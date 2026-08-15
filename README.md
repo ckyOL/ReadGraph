@@ -13,6 +13,7 @@ Import borrow/return exports from your public library or e-book platform, and tu
 ![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
 ![IndexedDB](https://img.shields.io/badge/IndexedDB-Dexie-02569B)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 **English** · [简体中文](./README-zh.md)
 
@@ -80,6 +81,9 @@ pnpm audit --audit-level=high    # security audit
 | [docs/design-decisions.md](./docs/design-decisions.md) | Design decisions & constraints (time handling, dedup, privacy) |
 | [DESIGN.md](./DESIGN.md) | Visual design system (theme, typography, components) |
 | [AGENTS.md](./AGENTS.md) | Repo conventions & commands (incl. notes for AI coding agents) |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guide: workflow, conventions, PR checklist (English) |
+| [CONTRIBUTING-zh.md](./CONTRIBUTING-zh.md) | 贡献指南：工作流、约定、PR 清单（简体中文） |
+| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | Community standards for all interactions |
 
 ## Privacy & Security
 
@@ -94,4 +98,10 @@ MIT — see [LICENSE](./LICENSE). Third-party notices for bundled runtime depend
 
 ## Contributing
 
-SDD + TDD workflow: agree on a spec (see [docs/ai-agent-workflow-rules.md](./docs/ai-agent-workflow-rules.md)), write failing tests, then implement. All new dependencies go through the supply-chain checklist. PRs reference the relevant spec and attach desensitized samples for parser work.
+Contributions are welcome — bug reports, feature requests, parsers for your library, docs, and translations.
+
+- Read **[CONTRIBUTING.md](./CONTRIBUTING.md)** first: it covers the SDD + TDD workflow, coding conventions, supply-chain rules, privacy requirements, and the pull request checklist.
+- All interactions follow our [Code of Conduct](./CODE_OF_CONDUCT.md).
+- Report bugs and request features via the [issue templates](.github/ISSUE_TEMPLATE/).
+
+New parsers (see [contributing-parser.md](./docs/metadata/parsers/contributing-parser.md)) are especially welcome: bring your library's export format into ReadGraph.
