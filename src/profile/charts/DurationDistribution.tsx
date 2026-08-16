@@ -104,7 +104,14 @@ function DurationDistributionImpl({
           {fmtDays(summary.medianDurationDays)}
         </span>
       </div>
-      <div ref={ref} className="h-[320px] w-full" lang={language} />
+      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
+      <div
+        ref={ref}
+        className="h-[320px] w-full"
+        lang={language}
+        role="img"
+        aria-label={t('profile.chart.duration.ariaLabel')}
+      />
     </div>
   )
 }

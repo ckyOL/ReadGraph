@@ -24,7 +24,7 @@ interface Props {
 }
 
 function PriceDistributionImpl({ data, currency, emptyTitle, emptyDescription }: Props) {
-  const { i18n } = useTranslation('pages')
+  const { t, i18n } = useTranslation('pages')
   const palette = useChartPalette()
   const language = i18n.language
 
@@ -83,7 +83,8 @@ function PriceDistributionImpl({ data, currency, emptyTitle, emptyDescription }:
     )
   }
 
-  return <div ref={ref} className="h-[360px] w-full" lang={language} />
+  // A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。
+  return <div ref={ref} className="h-[360px] w-full" lang={language} role="img" aria-label={t('profile.chart.price.ariaLabel')} />
 }
 
 export const PriceDistribution = memo(PriceDistributionImpl)

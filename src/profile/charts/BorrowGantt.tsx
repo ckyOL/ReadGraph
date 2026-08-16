@@ -273,11 +273,14 @@ function BorrowGanttImpl({ data, displayTimezone, emptyTitle, emptyDescription }
           {t('profile.chart.density')} · {collapsed}
         </span>
       )}
+      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
       <div
         ref={ref}
         className="w-full overflow-x-auto"
         style={{ height: viewport.height }}
         lang={i18n.language}
+        role="img"
+        aria-label={t('profile.chart.gantt.ariaLabel')}
       />
     </div>
   )

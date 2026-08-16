@@ -30,6 +30,11 @@ import { db } from '@/db/db-instance'
 import type { ClassificationSystem } from '@/types/entities'
 
 import { useECharts } from './use-echarts'
+import {
+  selectClassificationNodes,
+  canDrillClassification,
+  type ClassificationNode,
+} from './classification-nodes'
 
 interface Props {
   data: ProfileStatsResult['classification']
@@ -59,6 +64,11 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
   const deferredDrillPath = useDeferredValue(drillPath)
   const drill =
     deferredDrillPath.length > 0 ? deferredDrillPath[deferredDrillPath.length - 1] : null
+
+  // 视图切换（A-1 键盘等价路径）：canvas 交互仅鼠标可用，列表视图提供
+  // 键盘可导航的当前层级节点按钮；仅 clc 体系可下钻，故切换器仅 clc 显示。
+  const [view, setView] = useState<'canvas' | 'list'>('canvas')
+  const showList = system === 'clc' && view === 'list'
 
   // CLC 树懒加载（独立 chunk，与芯片共享模块级缓存）。
   const [treeData, setTreeData] = useState<{
@@ -129,14 +139,15 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
     [data, t],
   )
 
+  // 当前层级节点（canvas option 与列表视图同源，A-1）。
+  const listNodes = useMemo<ClassificationNode[]>(
+    () => selectClassificationNodes({ drill, drillChildren, topNodes }),
+    [drill, drillChildren, topNodes],
+  )
+
   const option = useMemo<EChartsOption | null>(() => {
     if (!hasData && !drill) return null
-    const nodes: TreemapDatum[] = drill
-      ? drillChildren && drillChildren.length > 0
-        ? drillChildren.map((c) => ({ name: c.name, code: c.code, value: c.value }))
-        : // 叶子/无子级：呈现下钻节点自身，不空白。
-          [{ name: drill.name, code: drill.code, value: drill.value }]
-      : topNodes
+    const nodes: ClassificationNode[] = listNodes
     if (nodes.length === 0) return null
     return {
       tooltip: {
@@ -162,16 +173,21 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
         },
       ],
     }
-  }, [hasData, drill, drillChildren, topNodes])
+  }, [hasData, listNodes])
 
   // 点击：clc 节点下钻一层（buildClassificationChildren 在查询侧完成分组）。
+  // 列表视图按钮与 canvas 点击共用同一判定（A-1 键盘等价路径）。
+  const drillNode = (node: ClassificationNode) => {
+    if (!canDrillClassification(node.code, { system, treeLoaded: !!treeData })) return
+    setDrillPath((prev) => [
+      ...prev,
+      { code: node.code, name: node.name, value: node.value },
+    ])
+  }
   const onClick = useMemo(
     () => (params: unknown) => {
       const p = params as { data?: TreemapDatum }
-      const code = p.data?.code
-      if (!code || code === '__unclassified__' || system !== 'clc' || !treeData) return
-      if (!/^[A-Z]/.test(code)) return
-      setDrillPath((prev) => [...prev, { code, name: p.data!.name, value: p.data!.value }])
+      if (p.data) drillNode(p.data)
     },
     [system, treeData],
   )
@@ -191,6 +207,38 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
 
   return (
     <div>
+      {system === 'clc' && (
+        <div
+          role="group"
+          aria-label={t('classification.viewToggleLabel')}
+          className="mb-1 flex items-center gap-1 text-xs"
+        >
+          <button
+            type="button"
+            aria-pressed={view === 'canvas'}
+            onClick={() => setView('canvas')}
+            className={`rounded-none border px-1.5 ${
+              view === 'canvas'
+                ? 'bg-muted-foreground/20 text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t('classification.viewCanvas')}
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'list'}
+            onClick={() => setView('list')}
+            className={`rounded-none border px-1.5 ${
+              view === 'list'
+                ? 'bg-muted-foreground/20 text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t('classification.viewList')}
+          </button>
+        </div>
+      )}
       {drillPath.length > 0 && (
         <nav
           aria-label={t('classification.drillBreadcrumb')}
@@ -219,7 +267,35 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
           ))}
         </nav>
       )}
-      <div ref={ref} className="h-[480px] w-full" lang={i18n.language} />
+      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）；列表视图时隐藏而非
+          卸载，避免 echarts re-init 闪烁（profile.spec 每 tab 恰 1 canvas 断言不变）。 */}
+      <div
+        ref={ref}
+        className="h-[480px] w-full"
+        lang={i18n.language}
+        role="img"
+        aria-label={t('profile.chart.classification.ariaLabel')}
+        hidden={showList}
+      />
+      {showList && (
+        <ul
+          aria-label={t('classification.listLabel')}
+          className="max-h-[480px] w-full divide-y overflow-y-auto border-y border-border text-xs"
+        >
+          {listNodes.map((node) => (
+            <li key={node.code}>
+              <button
+                type="button"
+                onClick={() => drillNode(node)}
+                className="flex w-full items-center justify-between gap-2 px-1.5 py-1.5 text-left text-foreground hover:text-foreground"
+              >
+                <span>{node.name}</span>
+                <span className="text-muted-foreground">{node.value}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
