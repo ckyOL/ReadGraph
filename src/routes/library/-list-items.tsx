@@ -32,7 +32,7 @@ export function LibraryRowView({ row, badge, viewSearch, displayTimezone }: Libr
             to="/library/$bookId"
             params={{ bookId: row.book.id }}
             search={viewSearch}
-            className="line-clamp-2 min-w-0 hover:underline"
+            className="-my-0.5 line-clamp-2 min-w-0 py-0.5 hover:underline"
           >
             {row.book.title}
           </Link>
@@ -42,6 +42,7 @@ export function LibraryRowView({ row, badge, viewSearch, displayTimezone }: Libr
               params={{ bookId: row.book.id }}
               search={{ ...viewSearch, edit: true }}
               aria-label={`${badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')} ${row.book.title}`}
+              className="-m-0.5 p-0.5"
             >
               <Badge variant={badge === 'placeholder' ? 'destructive' : 'outline'}>
                 {badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')}
@@ -97,7 +98,7 @@ export function LibraryCardView({ row, badge, viewSearch, displayTimezone }: Lib
           to="/library/$bookId"
           params={{ bookId: row.book.id }}
           search={viewSearch}
-          className="font-display line-clamp-2 min-w-0 text-base leading-snug font-semibold hover:underline"
+          className="-my-0.5 font-display line-clamp-2 min-w-0 py-0.5 text-base leading-snug font-semibold hover:underline"
         >
           {row.book.title}
         </Link>
@@ -107,7 +108,7 @@ export function LibraryCardView({ row, badge, viewSearch, displayTimezone }: Lib
             params={{ bookId: row.book.id }}
             search={{ ...viewSearch, edit: true }}
             aria-label={`${badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')} ${row.book.title}`}
-            className="shrink-0"
+            className="-m-0.5 shrink-0 p-0.5"
           >
             <Badge variant={badge === 'placeholder' ? 'destructive' : 'outline'}>
               {badge === 'placeholder' ? t('library.badge.placeholder') : t('library.set')}

@@ -154,7 +154,7 @@ function LibraryPage() {
     <button
       type="button"
       onClick={() => toggleSort(key)}
-      className="inline-flex items-center gap-1 hover:text-foreground"
+      className="-my-0.5 inline-flex items-center gap-1 py-0.5 hover:text-foreground"
       aria-label={label}
     >
       {label}

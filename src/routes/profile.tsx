@@ -313,12 +313,12 @@ function ProfilePage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="classification">
+            <TabsContent value="classification" aria-busy={isPending || computing}>
               {isPending || computing ? (
                 <Skeleton className="h-[480px] w-full" />
               ) : (
                 <ErrorBoundary title={errorTitle} description={errorDesc}>
-                  <Suspense fallback={<Skeleton className="h-[480px] w-full" />}>
+                  <Suspense fallback={<Skeleton className="h-[480px] w-full" aria-busy />}>
                     <ClassificationTreemap
                       data={result?.classification ?? []}
                       system={effectiveSystem}
@@ -330,12 +330,12 @@ function ProfilePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="gantt">
+            <TabsContent value="gantt" aria-busy={isPending || computing}>
               {isPending || computing ? (
                 <Skeleton className="h-[624px] w-full" />
               ) : (
                 <ErrorBoundary title={errorTitle} description={errorDesc}>
-                  <Suspense fallback={<Skeleton className="h-[624px] w-full" />}>
+                  <Suspense fallback={<Skeleton className="h-[624px] w-full" aria-busy />}>
                     <BorrowGantt
                       data={result?.gantt ?? []}
                       displayTimezone={displayTimezone}
@@ -347,12 +347,12 @@ function ProfilePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="volume">
+            <TabsContent value="volume" aria-busy={isPending || computing}>
               {isPending || computing ? (
                 <Skeleton className="h-[360px] w-full" />
               ) : (
                 <ErrorBoundary title={errorTitle} description={errorDesc}>
-                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" aria-busy />}>
                     <BorrowVolumeBar
                       data={result?.borrowVolume ?? []}
                       emptyTitle={partialTitle}
@@ -363,12 +363,12 @@ function ProfilePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="duration">
+            <TabsContent value="duration" aria-busy={isPending || computing}>
               {isPending || computing ? (
                 <Skeleton className="h-[360px] w-full" />
               ) : (
                 <ErrorBoundary title={errorTitle} description={errorDesc}>
-                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" aria-busy />}>
                     <DurationDistribution
                       data={result?.durationDistribution ?? []}
                       summary={result?.summary ?? EMPTY_SUMMARY}
@@ -380,12 +380,12 @@ function ProfilePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="price">
+            <TabsContent value="price" aria-busy={isPending || computing}>
               {isPending || computing ? (
                 <Skeleton className="h-[360px] w-full" />
               ) : (
                 <ErrorBoundary title={errorTitle} description={errorDesc}>
-                  <Suspense fallback={<Skeleton className="h-[360px] w-full" />}>
+                  <Suspense fallback={<Skeleton className="h-[360px] w-full" aria-busy />}>
                     <PriceDistribution
                       data={result?.money.distribution ?? []}
                       currency={result?.money.dominantCurrency ?? null}
@@ -430,7 +430,12 @@ const SummaryCards = memo(function SummaryCards({
     { label: t('profile.summary.avgDuration'), value: fmtDays(s.avgDurationDays) },
   ]
   return (
-    <div className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div
+      className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-4"
+      data-slot="profile-summary"
+      aria-busy={pending}
+      aria-live="polite"
+    >
       {pending && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
           <Progress value={50} className="w-32" />
@@ -487,7 +492,12 @@ const MoneyCards = memo(function MoneyCards({
     },
   ]
   return (
-    <div className="relative mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+    <div
+      className="relative mt-3 grid grid-cols-2 gap-3 md:grid-cols-3"
+      data-slot="profile-money"
+      aria-busy={pending}
+      aria-live="polite"
+    >
       {pending && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
           <Progress value={50} className="w-32" />
@@ -522,7 +532,7 @@ type MoneyAmountArr = ProfileStatsResult['money']['collectionValue']
 
 function ProfileSkeleton() {
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-4" aria-busy>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-20 w-full" />
