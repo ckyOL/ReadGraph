@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog'
 import { cleanIsbn, normalizeIsbn } from '@/lib/isbn'
 import { splitPersons } from '@/lib/title'
+import { formatList } from '@/lib/format-list'
 import { formatDateInTz } from '@/lib/display-time'
 import { catalogTitleByRecord, reviewBadgeOf } from '@/lib/book-status'
 import { parseVolumeFromTitle } from '@/lib/volume'
@@ -150,7 +151,7 @@ export function EditForm({
   onSaved,
   enrichment,
 }: EditDialogProps) {
-  const { t } = useTranslation('edit')
+  const { t, i18n } = useTranslation('edit')
   const titles = catalogTitleByRecord(book.id, catalogRecords, rawRecords)
   const sourceById = new Map(sources.map((s) => [s.id, s]))
   const badge = reviewBadgeOf(book, book.id, catalogRecords)
@@ -374,10 +375,11 @@ export function EditForm({
 
   // —— OPAC 补全对照/恢复（§5.4：保存=采纳、恢复=拒绝） ——
 
-  /** 表单同构值 → 对照/恢复字符串形态（数组顿号、价格 amount+currency）。 */
+  /** 表单同构值 → 只读展示文本（数组按当前语言分隔符、价格 amount+currency）。
+   *  仅用于展示（对照/恢复文本）；可编辑输入内容另走 restoreField 的 '，' 数据格式。 */
   const displayValue = (value: unknown): string => {
     if (value == null) return ''
-    if (Array.isArray(value)) return value.join('，')
+    if (Array.isArray(value)) return formatList(i18n.language, value)
     if (typeof value === 'object' && 'amount' in value && 'currency' in value) {
       const p = value as { amount: number; currency: string }
       return `${p.amount} ${p.currency}`
@@ -385,9 +387,11 @@ export function EditForm({
     return String(value)
   }
 
-  /** 恢复某字段为现有值（conflict 字段；classifications 由编目行内处理）。 */
+  /** 恢复某字段为现有值（conflict 字段；classifications 由编目行内处理）。
+   *  数组字段写回可编辑输入：保持规范分隔符 '，'（splitPersons round-trip），
+   *  展示文本（displayValue）才用 formatList 本地化分隔。 */
   const restoreField = (field: EnrichmentChange['field'], current: unknown): void => {
-    const text = displayValue(current)
+    const text = Array.isArray(current) ? current.join('，') : displayValue(current)
     switch (field) {
       case 'title': setTitle(text); break
       case 'subtitle': setSubtitle(text); break
@@ -414,7 +418,10 @@ export function EditForm({
 
   interface FieldDecor {
     badge?: EnrichmentChange['kind']
+    /** 只读展示文本（数组按当前语言分隔符）。 */
     currentText?: string | null
+    /** 数据格式文本（数组 '，'），供恢复按钮可见性对照（输入框内容为数据格式）。 */
+    currentDataText?: string | null
     onRestore?: () => void
   }
 
@@ -424,6 +431,12 @@ export function EditForm({
     return {
       badge: kindByField.get(field),
       currentText: current === undefined ? undefined : displayValue(current),
+      currentDataText:
+        current === undefined
+          ? undefined
+          : Array.isArray(current)
+            ? current.join('，')
+            : displayValue(current),
       onRestore:
         current === undefined ? undefined : () => restoreField(field, current),
     }
@@ -472,7 +485,7 @@ export function EditForm({
             className={cn(extra?.mono && 'font-mono', decor?.onRestore && 'min-w-0 flex-1')}
             aria-invalid={err !== undefined}
           />
-          {decor?.onRestore && value !== decor.currentText && (
+          {decor?.onRestore && value !== decor.currentDataText && (
             <Button
               variant="outline"
               size="sm"
@@ -640,7 +653,7 @@ export function EditForm({
                 rows={3}
                 className={cn(descDecor.onRestore && 'min-w-0 flex-1')}
               />
-              {descDecor.onRestore && description !== descDecor.currentText && (
+              {descDecor.onRestore && description !== descDecor.currentDataText && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -674,7 +687,7 @@ export function EditForm({
                 : undefined
               const classCurrent = classChange?.current as ClassificationEntry[] | undefined
               const classCurrentText = classCurrent
-                ? classCurrent.map((e) => e.code).join('，')
+                ? formatList(i18n.language, classCurrent.map((e) => e.code))
                 : ''
               // 恢复仅在有现有值可回退时出现（纯 fill 无对照无恢复）
               const classDirty = Boolean(
