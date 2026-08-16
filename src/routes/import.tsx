@@ -6,6 +6,7 @@ import { FileUpIcon } from 'lucide-react'
 
 import { db } from '@/db/db-instance'
 import { detectAndDecode, IMPORT_MAX_FILE_SIZE } from '@/lib/encoding'
+import { classifyError, type ErrorMessage } from '@/lib/error-messages'
 import { SOURCE_TEMPLATES, ensureSourceFromTemplate } from '@/lib/source-templates'
 import { getParser } from '@/parsers/registry'
 import { executeImport } from '@/import/run-import'
@@ -65,7 +66,7 @@ function ImportPage() {
   const [fileError, setFileError] = useState<string | null>(null)
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null)
   const [running, setRunning] = useState(false)
-  const [runError, setRunError] = useState<string | null>(null)
+  const [runError, setRunError] = useState<ErrorMessage | null>(null)
   const [result, setResult] = useState<PipelineResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -129,7 +130,9 @@ function ImportPage() {
       })
       setResult(res)
     } catch (e) {
-      setRunError((e as Error).message)
+      // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
+      console.error('[import] executeImport failed:', e)
+      setRunError(classifyError(e))
     } finally {
       setRunning(false)
     }
@@ -276,9 +279,9 @@ function ImportPage() {
               <p className="text-sm font-medium text-destructive">
                 {t('import.execute.failed')}
               </p>
-              <p className="text-sm text-destructive/80">{runError}</p>
+              <p className="text-sm text-destructive/80">{t(runError.messageKey)}</p>
               <p className="text-xs text-muted-foreground">
-                {t('import.execute.failedDesc')}
+                {t(runError.suggestionKey)}
               </p>
             </div>
           ) : result ? (

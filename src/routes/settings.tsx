@@ -7,6 +7,7 @@ import { db } from '@/db/db-instance'
 import { useLocale } from '@/hooks/use-locale'
 import { useTheme } from '@/hooks/use-theme'
 import { readPreferences, writePreferences, type Theme } from '@/lib/preferences'
+import { classifyError, type ErrorMessage } from '@/lib/error-messages'
 import { importDatabase, type ImportMode } from '@/db/export-import'
 import { resetDatabase } from '@/db/reset'
 import { parseExportText } from '@/db/backup'
@@ -119,7 +120,7 @@ function DataSection() {
   const [importFile, setImportFile] = useState<ImportFile | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('snapshot')
   const [importState, setImportState] = useState<ImportState>('idle')
-  const [importError, setImportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<ErrorMessage | null>(null)
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
@@ -149,7 +150,9 @@ function DataSection() {
       await importDatabase(db, data, { mode: importMode })
       setImportState('done')
     } catch (e) {
-      setImportError((e as Error).message)
+      // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
+      console.error('[settings] import backup failed:', e)
+      setImportError(classifyError(e))
       setImportState('error')
     }
   }
@@ -241,12 +244,14 @@ function DataSection() {
           {importState === 'done' && (
             <p className="text-sm text-primary">{t('settings.data.import.done')}</p>
           )}
-          {importState === 'error' && (
+          {importState === 'error' && importError && (
             <div role="alert" className="space-y-1">
               <p className="text-sm font-medium text-destructive">
-                {t('settings.data.import.invalid')}
+                {t(importError.messageKey)}
               </p>
-              {importError && <p className="text-xs text-destructive/80">{importError}</p>}
+              <p className="text-xs text-muted-foreground">
+                {t(importError.suggestionKey)}
+              </p>
             </div>
           )}
         </div>
@@ -265,7 +270,7 @@ function ResetSection() {
   const [clearPrefs, setClearPrefs] = useState(false)
   const [running, setRunning] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ErrorMessage | null>(null)
   const [done, setDone] = useState(false)
 
   const handleExport = async () => {
@@ -287,7 +292,9 @@ function ResetSection() {
       setDone(true)
       setOpen(false)
     } catch (e) {
-      setError((e as Error).message)
+      // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
+      console.error('[settings] reset failed:', e)
+      setError(classifyError(e))
     } finally {
       setRunning(false)
     }
@@ -351,9 +358,14 @@ function ResetSection() {
               {t('settings.reset.confirm.clearPrefs')}
             </label>
             {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {t('settings.reset.failed')}
-              </p>
+              <div role="alert" className="space-y-1">
+                <p className="text-sm font-medium text-destructive">
+                  {t('settings.reset.failed')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t(error.suggestionKey)}
+                </p>
+              </div>
             )}
           </div>
 
