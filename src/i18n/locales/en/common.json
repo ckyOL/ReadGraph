@@ -1,3 +1,8 @@
 {
-  "app.name": "ReadGraph"
+  "app.name": "ReadGraph",
+  "dialog.close": "Close",
+  "sheet.close": "Close",
+  "sidebar.toggle": "Toggle Sidebar",
+  "sidebar.mobileTitle": "Sidebar",
+  "sidebar.mobileDescription": "Displays the mobile sidebar."
 }

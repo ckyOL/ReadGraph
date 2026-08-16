@@ -1,3 +1,8 @@
 {
-  "app.name": "ReadGraph"
+  "app.name": "ReadGraph",
+  "dialog.close": "关闭",
+  "sheet.close": "关闭",
+  "sidebar.toggle": "切换侧边栏",
+  "sidebar.mobileTitle": "侧边栏",
+  "sidebar.mobileDescription": "显示移动端侧边栏"
 }
