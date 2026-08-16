@@ -139,6 +139,7 @@
   "profile.toolbar.range.custom": "Custom",
   "profile.toolbar.range.from": "From",
   "profile.toolbar.range.to": "To",
+  "profile.toolbar.range.invalid": "End date is earlier than start date. Please adjust.",
   "profile.toolbar.timezone": "Timezone",
   "profile.summary.totalBooks": "Books",
   "profile.summary.totalCycles": "Borrow cycles",

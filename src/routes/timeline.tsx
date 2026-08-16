@@ -121,7 +121,7 @@ function TimelinePage() {
                 {t('timeline.filter.source')}
               </span>
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger className="h-8 w-44 text-xs">
+                <SelectTrigger className="h-8 w-44 text-xs" aria-label={t('timeline.filter.source')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -142,7 +142,7 @@ function TimelinePage() {
                 value={statusFilter}
                 onValueChange={(v) => setStatusFilter(v as StatusFilter)}
               >
-                <SelectTrigger className="h-8 w-36 text-xs">
+                <SelectTrigger className="h-8 w-36 text-xs" aria-label={t('timeline.filter.status')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

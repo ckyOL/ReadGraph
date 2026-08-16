@@ -15,6 +15,7 @@ import { db } from '@/db/db-instance'
 import { readPreferences } from '@/lib/preferences'
 import { formatTimeZoneDisplay } from '@/lib/timezones'
 import { useProfileStats } from '@/profile/use-profile-stats'
+import { isDateRangeInverted } from '@/profile/date-range'
 import { resolveSystem } from '@/lib/profile-stats'
 import type { ProfileStatsResult } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
@@ -90,6 +91,10 @@ function ProfilePage() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [isPending, startTransition] = useTransition()
+
+  // 日期范围倒置校验（A-2，WCAG 3.3.1）：纯派生，随输入即时更新（validate-on-change），
+  // 不改动下方 range 的数据逻辑。
+  const rangeInvalid = isDateRangeInverted(customFrom, customTo)
 
   // 工具条可用分类体系：来自实际 Source（仅列数据中出现的体系）。
   const sources = useLiveQuery(() => db.sources.toArray(), [])
@@ -187,7 +192,7 @@ function ProfilePage() {
             value={rangeKey}
             onValueChange={(v) => startTransition(() => setRangeKey(v as RangeKey))}
           >
-            <SelectTrigger className="h-7 w-32 text-xs">
+            <SelectTrigger className="h-7 w-32 text-xs" aria-label={t('profile.toolbar.range')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -205,25 +210,54 @@ function ProfilePage() {
           </Select>
         </div>
         {rangeKey === 'custom' && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <label className="text-muted-foreground">
-              {t('profile.toolbar.range.from')}
-            </label>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="h-7 rounded-md border border-border bg-background px-1.5 text-xs"
-            />
-            <label className="text-muted-foreground">
-              {t('profile.toolbar.range.to')}
-            </label>
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="h-7 rounded-md border border-border bg-background px-1.5 text-xs"
-            />
+          <div>
+            <div className="flex items-center gap-1.5 text-xs">
+              <label
+                htmlFor="profile-range-from"
+                className="text-muted-foreground"
+              >
+                {t('profile.toolbar.range.from')}
+              </label>
+              <input
+                id="profile-range-from"
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-invalid={rangeInvalid || undefined}
+                aria-describedby={rangeInvalid ? 'profile-range-error' : undefined}
+                className={
+                  'h-7 rounded-md border bg-background px-1.5 text-xs' +
+                  (rangeInvalid ? ' border-destructive' : ' border-border')
+                }
+              />
+              <label
+                htmlFor="profile-range-to"
+                className="text-muted-foreground"
+              >
+                {t('profile.toolbar.range.to')}
+              </label>
+              <input
+                id="profile-range-to"
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-invalid={rangeInvalid || undefined}
+                aria-describedby={rangeInvalid ? 'profile-range-error' : undefined}
+                className={
+                  'h-7 rounded-md border bg-background px-1.5 text-xs' +
+                  (rangeInvalid ? ' border-destructive' : ' border-border')
+                }
+              />
+            </div>
+            {rangeInvalid && (
+              <p
+                id="profile-range-error"
+                role="alert"
+                className="mt-1 text-xs text-destructive"
+              >
+                {t('profile.toolbar.range.invalid')}
+              </p>
+            )}
           </div>
         )}
         <span className="ml-auto text-xs text-muted-foreground">

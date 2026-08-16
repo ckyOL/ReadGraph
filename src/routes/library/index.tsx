@@ -207,7 +207,7 @@ function LibraryPage() {
                 value={sourceFilter}
                 onValueChange={(v) => patchSearch({ source: v === 'all' ? undefined : v })}
               >
-                <SelectTrigger className="h-8 w-44 text-xs">
+                <SelectTrigger className="h-8 w-44 text-xs" aria-label={t('library.filter.source')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -232,7 +232,7 @@ function LibraryPage() {
                   })
                 }
               >
-                <SelectTrigger className="h-8 w-36 text-xs">
+                <SelectTrigger className="h-8 w-36 text-xs" aria-label={t('library.filter.status')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

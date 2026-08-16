@@ -137,6 +137,7 @@
   "profile.toolbar.range.custom": "自定义",
   "profile.toolbar.range.from": "起",
   "profile.toolbar.range.to": "止",
+  "profile.toolbar.range.invalid": "结束日期早于开始日期，请调整。",
   "profile.toolbar.timezone": "时区",
   "profile.summary.totalBooks": "藏书数",
   "profile.summary.totalCycles": "借阅周期",
