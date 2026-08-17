@@ -51,6 +51,13 @@ async function interceptClassification(page: import('@playwright/test').Page): P
   await page.route('**/classification/clc-auxiliary.json', (route) => route.fulfill({ json: {} }))
 }
 
+/** 中断分类数据请求（树/表不可用 → 加载器 catch 降级空树 → 一级表路径）。 */
+async function abortClassification(page: import('@playwright/test').Page): Promise<void> {
+  await page.route('**/classification/clc-tree.json', (route) => route.abort())
+  await page.route('**/classification/clc-overlay.json', (route) => route.abort())
+  await page.route('**/classification/clc-auxiliary.json', (route) => route.abort())
+}
+
 test.describe('classification hierarchy — library badge', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
@@ -108,5 +115,37 @@ test.describe('classification hierarchy — treemap drill-down', () => {
     // 面包屑回退一级：点根按钮 → 面包屑消失，回到一级分布。
     await breadcrumb.getByRole('button', { name: /全部分类|All classes/ }).click()
     await expect(breadcrumb).toBeHidden()
+  })
+})
+
+test.describe('classification hierarchy — degraded tree', () => {
+  // 树/表数据源中断（route.abort → fetch 网络失败）→ 加载器降级空树：
+  // 芯片落一级表路径（tooltip 仅一级段），treemap 一级类目分布照常渲染。
+  test.beforeEach(async ({ page }) => {
+    await seed(page)
+    await abortClassification(page)
+  })
+
+  test('J238.2 芯片: 树不可用降级一级类目, 无细分面包屑/未收录提示', async ({ page }) => {
+    await page.goto('/library')
+    const table = page.locator('[data-slot="library-table"]')
+    const badge = table.locator('[data-slot="badge"]', { hasText: 'J238.2' })
+    await expect(badge).toHaveCount(1, { timeout: 10000 })
+    // 一级表兜底: tooltip 仅一级段（无 › 分隔的多段面包屑）。
+    await expect(badge).toHaveAttribute('title', 'J 艺术')
+    // 树未加载: 绝不升级为深层路径, 也无「细分未收录」提示（en/zh 兼容）。
+    await expect(badge).not.toHaveAttribute('title', /›/)
+    await expect(badge).not.toHaveAttribute('title', /细分未收录|subdivision not covered/)
+    // 主文本 = 一级类目名（降级展示）。
+    await expect(badge).toContainText('艺术')
+  })
+
+  test('treemap: 树不可用仍渲染一级类目分布', async ({ page }) => {
+    await page.goto('/profile')
+    // 概览卡片出现（数据已灌入）。
+    await expect(page.getByText(/Books|藏书数/).first()).toBeVisible({ timeout: 10000 })
+    // 一级表路径不依赖树 JSON：canvas 照常渲染一级类目。
+    const treemap = page.locator('canvas').first()
+    await expect(treemap).toBeVisible({ timeout: 10000 })
   })
 })
