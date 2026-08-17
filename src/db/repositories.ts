@@ -105,6 +105,11 @@ export class CatalogRecordRepository implements Repository<CatalogRecord> {
     const valid = entities.map((e) => deriveClassCodes(validate(catalogRecordSchema, e)))
     await this.db.catalogRecords.bulkPut(valid)
   }
+  // classCodes 为 multiEntry 索引字段：本查询只能命中已写该字段的记录。
+  // 启动回填（backfillClassCodes）失败时存量记录缺该字段 → 索引查询天然漏掉它们；
+  // 自愈需全表扫描，渲染路径禁扫（roadmap 性能规则），故此处不可自愈。可诊断性由
+  // 启动回填的 console.error 兜底；已物化到内存的记录由 withClassCodes 读侧归一兜底
+  // （见 src/lib/with-class-codes.ts）。
   findClassCodes(code: string): Promise<CatalogRecord[]> {
     return this.db.catalogRecords
       .where('classCodes')

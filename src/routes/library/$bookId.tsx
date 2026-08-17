@@ -13,6 +13,7 @@ import { reviewKindOf } from '@/lib/book-status'
 import { parseTitle } from '@/lib/title'
 import { buildLibraryRows, filterAndSortRows, adjacentBookIds } from '@/lib/library-view'
 import { parseOrDefault } from '@/lib/parse-or-default'
+import { withClassCodesAll } from '@/lib/with-class-codes'
 import { getProvider } from '@/enrich/opac-provider'
 import { enrichOneRecord, hasLookupKey, type EnrichmentContext } from '@/enrich/enrich-service'
 import type { CatalogRecord } from '@/types/entities'
@@ -107,7 +108,9 @@ function BookDetailPage() {
       Promise.all([
         // 翻页需全量书库视图派生（library-view 内存管线，与列表页同查询面，§13）。
         db.books.toArray(),
-        db.catalogRecords.toArray(),
+        // H-5 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
+        // 一次派生补回（缺字段才补、全有零分配），分类芯片等读取不丢分类。
+        db.catalogRecords.toArray().then(withClassCodesAll),
         db.borrowCycles.toArray(),
         db.sources.toArray(),
         // rawRecords 无 bookId 索引（data-layer §3），单书溯源用 filter。

@@ -38,6 +38,7 @@ import {
   type SortKey,
 } from '@/lib/library-view'
 import { LibraryCardView, LibraryRowView } from './-list-items'
+import { withClassCodesAll } from '@/lib/with-class-codes'
 
 // 书库筛选/排序状态 URL 化（ui-navigation §3）：全 optional + Zod 校验，默认值不写 URL
 // （干净的 /library）；变更经 navigate replace 回写，不产生历史条目，返回/刷新/直达均保留筛选。
@@ -70,7 +71,9 @@ function LibraryPage() {
     () =>
       Promise.all([
         db.books.toArray(),
-        db.catalogRecords.toArray(),
+        // H-5 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
+        // 一次派生补回（缺字段才补、全有零分配），分类列/后续 classCodes 读取不丢书。
+        db.catalogRecords.toArray().then(withClassCodesAll),
         db.borrowCycles.toArray(),
         db.sources.toArray(),
       ]),
