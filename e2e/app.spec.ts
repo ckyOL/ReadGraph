@@ -2,6 +2,8 @@ import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
 import { buildDesensitizedFixture } from './fixtures'
+import { szlibParser } from '@/parsers/szlib'
+import type { Source } from '@/types/entities'
 
 /**
  * 阶段 3 E2E（ui-navigation §8 / G-6）：
@@ -11,6 +13,33 @@ import { buildDesensitizedFixture } from './fixtures'
  */
 
 const SEED_KEY = 'readgraph:e2e-seed'
+
+/**
+ * H-6 数据耦合：从样本夹具实时推导导入产出的期望统计（books/borrowCycles），
+ * 样本行数/书目变动无需改断言。与导入共用同一 szlibParser（空库导入时
+ * newBooks/newBorrowCycles 即 parse 产物，已由 run-import 单测验证）。
+ * 注意：import critical path 测试未调用 seed()（全新上下文空库导入），
+ * 故总数 = 样本产物本身；若将来给本测试加 seed，需在此累加
+ * buildDesensitizedFixture() 的 books/borrowCycles 数量。
+ */
+function sampleImportStats(buffer: Buffer): { books: number; cycles: number } {
+  const source: Source = {
+    id: 'src-e2e-import',
+    type: 'library',
+    name: '深圳图书馆',
+    parserId: 'szlib',
+    parserVersion: null,
+    timezone: 'Asia/Shanghai',
+    library: null,
+    notes: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    lastImportAt: null,
+    totalImportedRecords: 0,
+  }
+  const rows = JSON.parse(buffer.toString('utf-8')) as unknown[]
+  const parsed = szlibParser.parse(rows, source)
+  return { books: parsed.books.length, cycles: parsed.borrowCycles.length }
+}
 
 async function seed(page: Page): Promise<void> {
   const payload = JSON.stringify(buildDesensitizedFixture())
@@ -184,10 +213,11 @@ test.describe('import critical path (G-5)', () => {
     await expect(page.getByRole('link', { name: '合成书目001' })).toBeVisible()
     await expect(page.getByText('深圳图书馆').first()).toBeVisible()
 
-    // Dashboard 统计卡片。
+    // Dashboard 统计卡片：期望值从样本夹具实时派生（H-6），样本行数变动不碎。
     await page.goto('/')
-    await expect(page.locator('[data-stat="books"]')).toContainText('11')
-    await expect(page.locator('[data-stat="cycles"]')).toContainText('12')
+    const expected = sampleImportStats(buffer)
+    await expect(page.locator('[data-stat="books"]')).toContainText(String(expected.books))
+    await expect(page.locator('[data-stat="cycles"]')).toContainText(String(expected.cycles))
     // 最近借阅列表出现导入的书。
     await expect(page.getByText('合成书目001').first()).toBeVisible()
   })
