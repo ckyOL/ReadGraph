@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { db } from '@/db/db-instance'
 import { bookSchema, catalogRecordSchema } from '@/db/schemas'
 import { readPreferences } from '@/lib/preferences'
-import { formatDateInTz } from '@/lib/display-time'
+import { normalizePublishDate } from '@/lib/publish-date'
 import { reviewKindOf } from '@/lib/book-status'
 import { parseTitle } from '@/lib/title'
 import { buildLibraryRows, filterAndSortRows, adjacentBookIds } from '@/lib/library-view'
@@ -321,11 +321,7 @@ function BookDetailPage() {
     )
 
   // 旧导出/夹具中 publishDate 可能被 revive 为 Date（e2e-seed DATE_KEYS）；统一归一为字符串。
-  const publishDateRaw = book.publishDate
-  const publishDate =
-    publishDateRaw != null && typeof publishDateRaw === 'object'
-      ? formatDateInTz(publishDateRaw as Date, 'UTC')
-      : publishDateRaw
+  const publishDate = normalizePublishDate(book.publishDate)
 
   return (
     <div className="flex flex-col p-6">

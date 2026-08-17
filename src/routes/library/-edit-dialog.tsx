@@ -29,7 +29,7 @@ import {
 import { cleanIsbn, normalizeIsbn } from '@/lib/isbn'
 import { splitPersons } from '@/lib/title'
 import { formatList } from '@/lib/format-list'
-import { formatDateInTz } from '@/lib/display-time'
+import { normalizePublishDate } from '@/lib/publish-date'
 import { catalogTitleByRecord, reviewBadgeOf } from '@/lib/book-status'
 import { parseVolumeFromTitle } from '@/lib/volume'
 import { cn } from '@/lib/utils'
@@ -206,12 +206,8 @@ export function EditForm({
     prefill?.bookPrefill.translators?.join('，') ?? book.translators.join('，'),
   )
   const [publisher, setPublisher] = useState(prefill?.bookPrefill.publisher ?? book.publisher ?? '')
-  // 旧导出/夹具中 publishDate 可能被 revive 为 Date（e2e-seed DATE_KEYS）；归一为字符串（与详情页同款逻辑）。
-  const publishDateRaw = book.publishDate
-  const publishDateInit =
-    publishDateRaw != null && typeof publishDateRaw === 'object'
-      ? formatDateInTz(publishDateRaw as Date, 'UTC')
-      : publishDateRaw
+  // 旧导出/夹具中 publishDate 可能被 revive 为 Date（e2e-seed DATE_KEYS）；归一为字符串（详情页共用实现）。
+  const publishDateInit = normalizePublishDate(book.publishDate)
   const [publishDate, setPublishDate] = useState(
     prefill?.bookPrefill.publishDate ?? publishDateInit ?? '',
   )
