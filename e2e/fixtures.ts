@@ -306,3 +306,37 @@ export function buildLargeFixture(): FixturePayload {
   }
 }
 
+/**
+ * 书库编辑 E2E 夹具（book-editing §7.6）：四类书覆盖——普通（book-1）、
+ * 占位（book-2：needsReview && 无 ISBN）、套装候选（book-3：needsReview && 有 ISBN）、
+ * 已确认套装（book-4：两个 volume 编目，cat-4a 已补全 fetched → 详情页 Re-fetch，
+ * cat-4b 未补全 → Enrich）。source 保留 library 嵌套 + parserVersion。
+ */
+export function buildEditingFixture(): FixturePayload {
+  const src = source()
+  const books: FixtureBook[] = [
+    { ...book(1, '小说A', '9780000000001', 'I', src.id), authors: ['作者A'] },
+    { ...book(2, '福田图书馆读者自选图书', null, 'I', src.id, true), authors: ['作者A'] },
+    { ...book(3, '合成书目052', '9787574012745', 'I', src.id, true), authors: ['作者A'] },
+    { ...book(4, '历史C', '9780000000003', 'I', src.id), authors: ['作者A'] },
+  ]
+  const cats: FixtureCatalogRecord[] = [
+    catalog(1, 'book-1', src.id, 'BC1', 'I'),
+    catalog(2, 'book-2', src.id, 'BC2', 'I'),
+    catalog(3, 'book-3', src.id, 'BC3', 'I'),
+    catalog(4, 'book-4', src.id, 'BC4', 'I', '3', {
+      providerId: 'szlib',
+      status: 'fetched',
+      fetchedAt: null,
+      sourceUrl: 'https://example.test/',
+    }),
+    catalog(5, 'book-4', src.id, 'BC5', 'I', '4'),
+  ]
+  const base = Date.UTC(2024, 0, 10)
+  const cycles: FixtureBorrowCycle[] = [
+    cycle(1, 'book-1', src.id, 'BC1', base, base + 5 * DAY, 'returned'),
+    cycle(2, 'book-2', src.id, 'BC2', base, base + 5 * DAY, 'returned'),
+    cycle(3, 'book-3', src.id, 'BC3', base, base + 5 * DAY, 'returned'),
+  ]
+  return { sources: [src], books, catalogRecords: cats, borrowCycles: cycles }
+}
