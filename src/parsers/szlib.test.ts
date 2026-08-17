@@ -310,3 +310,24 @@ describe('szlibParser — L7/L6 回归', () => {
     expect(a!.borrowedAt!.getTime()).toBeLessThan(b!.borrowedAt!.getTime())
   })
 })
+
+describe('szlibParser — ArrayBuffer 入口', () => {
+  // 独立调用入口（预览/测试/validate 探测）走 TextDecoder 解码；
+  // pipeline 走行数组入口（L4）。本组覆盖 ArrayBuffer 分支的解码正确性。
+
+  it('编码正确（UTF-8）：validate 命中，parse 与字符串入口深等价', () => {
+    const buf = new TextEncoder().encode(JSON.stringify(sample)).buffer
+    expect(szlibParser.validate(buf)).toBe(true)
+    // parse 返回值含 Date（borrowedAt/returnedAt），用 toEqual 深比较。
+    expect(szlibParser.parse(buf, source)).toEqual(
+      szlibParser.parse(JSON.stringify(sample), source),
+    )
+  })
+
+  it('编码错误（无效 UTF-8 字节）：validate 返回 false，parse 抛错', () => {
+    const bad = new Uint8Array([0xff, 0xfe, 0xfd]).buffer
+    // fatal:false 将坏字节替换为 U+FFFD → 非 JSON → validate false / parse 抛错。
+    expect(szlibParser.validate(bad)).toBe(false)
+    expect(() => szlibParser.parse(bad, source)).toThrow(/not valid JSON/)
+  })
+})
