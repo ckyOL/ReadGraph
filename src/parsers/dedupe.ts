@@ -2,7 +2,6 @@
 // existing 由调用方显式传入；本模块只做映射、不读写存储、不带时钟。
 import type { Book, BorrowCycle, CatalogRecord, MaterialType, ParseWarning } from '@/types/entities'
 import { normalize } from '@/lib/normalize'
-import type { SourceParser } from './types'
 
 /** 期间状态：existing 与本次输入的合并去重结果。 */
 export interface DedupeState {
@@ -50,7 +49,6 @@ export function dedupeCatalogsAndBooks(
   candidates: CandidateCatalog[],
   barcodes: string[],
   existing: DedupeState,
-  _parser: SourceParser,
 ): {
   state: DedupeState
   bookIdByBarcode: Map<string, string>
