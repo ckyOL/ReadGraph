@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 
-import type { RawRecord, Source } from '@/types/entities'
+import type {
+  Book,
+  BorrowCycle,
+  CatalogRecord,
+  RawRecord,
+  Source,
+} from '@/types/entities'
+import type { SourceParser } from './types'
 import { importPipeline, type ExistingState, type ImportMeta } from './pipeline'
 import { szlibParser } from './szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
@@ -545,5 +552,65 @@ describe('importPipeline — L8/L9 回归', () => {
     // 管线产物 rawRecords 是回填后的克隆（bookId/parseStatus 已填），非入参引用。
     expect(r.rawRecords).not.toBe(rows)
     expect(r.rawRecords.some((x) => x.bookId != null)).toBe(true)
+  })
+})
+
+describe('importPipeline — 瞬态字段缺失警告（H-3）', () => {
+  // 模拟「按指南实现、但未设置瞬态字段」的第三方 parser：复用 szlib 的真实
+  // 解析产出，仅剥掉 _rowIndexes/_bookKey（raw partials 绕过 szlib 装配路径）。
+  // 展开 szlibParser 以携带接口全字段，合并后 H-1 移除 supportedFormats/stats
+  // 时本字面量仍类型自洽（不显式声明被删字段）。
+  const rawParser: SourceParser = {
+    ...szlibParser,
+    id: 'raw-partial',
+    name: 'raw partials (no transient fields)',
+    validate: () => false,
+    parse(rawData, src) {
+      const res = szlibParser.parse(rawData, src)
+      const strip = (o: Record<string, unknown>) => {
+        delete o._rowIndexes
+        delete o._bookKey
+        return o
+      }
+      return {
+        ...res,
+        books: res.books.map(
+          (b) => strip(b as Record<string, unknown>) as Partial<Book>,
+        ),
+        catalogRecords: res.catalogRecords.map(
+          (c) => strip(c as Record<string, unknown>) as Partial<CatalogRecord>,
+        ),
+        borrowCycles: res.borrowCycles.map(
+          (c) => strip(c as Record<string, unknown>) as Partial<BorrowCycle>,
+        ),
+      }
+    },
+    filterRows: (rows) => rows,
+  }
+  const runRaw = () => importPipeline(buildRows(), source, rawParser, empty, meta)
+
+  it('borrowCycle 候选缺 _rowIndexes → missing_field 警告，rawRecordIds 装配降级为空', () => {
+    const r = runRaw()
+    const warn = r.warnings.find(
+      (w) => w.type === 'missing_field' && w.message.includes('_rowIndexes'),
+    )
+    expect(warn).toBeDefined()
+    expect(warn!.recordRef).toMatch(/^barcode:/)
+    // 降级路径：无行号可查，周期 rawRecordIds 为空（szlib 路径恒有行号，不为空）。
+    expect(r.borrowCycles.some((c) => c.rawRecordIds.length === 0)).toBe(true)
+  })
+
+  it('catalogRecord 候选缺 _bookKey → missing_field 警告（无法与 Book 候选对齐）', () => {
+    const r = runRaw()
+    const warn = r.warnings.find(
+      (w) => w.type === 'missing_field' && w.message.includes('_bookKey'),
+    )
+    expect(warn).toBeDefined()
+    expect(warn!.recordRef).toMatch(/^barcode:/)
+  })
+
+  it('szlib 恒设置瞬态字段 → 全量基线不产生 missing_field 警告', () => {
+    const r = importPipeline(buildRows(), source, szlibParser, empty, meta)
+    expect(r.warnings.filter((w) => w.type === 'missing_field')).toEqual([])
   })
 })

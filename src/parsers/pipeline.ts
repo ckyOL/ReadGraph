@@ -90,7 +90,7 @@ export function importPipeline(
   for (let i = 0; i < parseRes.catalogRecords.length; i++) {
     const cr = parseRes.catalogRecords[i]!
     const barcode = (cr.barcodes?.[0] ?? '') as string
-    const bookPartial = findBookForCatalog(parseRes.books, cr)
+    const bookPartial = findBookForCatalog(parseRes.books, cr, warnings)
     const isPlaceholder =
       bookPartial?.needsReview === true && (bookPartial.isbn13 ?? null) === null
     candidates.push({
@@ -266,6 +266,15 @@ export function importPipeline(
     const rowIndexes = (cyc as Record<string, unknown>)._rowIndexes as
       | number[]
       | undefined
+    // H-3：parser 未按瞬态契约标注 _rowIndexes 时显式警告（旧版静默产出
+    // rawRecordIds=[] 的空壳周期，溯源与 metaid 消歧静默失效）。
+    if (rowIndexes == null) {
+      warnings.push({
+        type: 'missing_field',
+        message: `BorrowCycle 候选缺少瞬态字段 _rowIndexes（消费行文件行号），rawRecordIds 无法装配，周期溯源与 metaid 消歧降级：barcode=${cyc.barcode ?? ''} borrowedAt=${cyc.borrowedAt ? cyc.borrowedAt.toISOString() : ''}`,
+        recordRef: cyc.barcode ? `barcode:${cyc.barcode}` : null,
+      })
+    }
     const rawIds: string[] = []
     for (const ri of rowIndexes ?? []) {
       const r = rowByIdx.get(ri)
@@ -474,12 +483,21 @@ export function importPipeline(
 function findBookForCatalog(
   books: Partial<Book>[],
   cr: Partial<CatalogRecord>,
+  warnings: ParseWarning[],
 ): Partial<Book> | undefined {
   // 按 szlib 注入的瞬态 _bookKey 对齐（非类型字段，仅解析器内部约定）。
   const key = (cr as Record<string, unknown>)._bookKey
   if (typeof key === 'string') {
     const hit = books.find((b) => (b as Record<string, unknown>)._bookKey === key)
     if (hit) return hit
+  } else {
+    // H-3：parser 未按瞬态契约标注 _bookKey 时显式警告（旧版静默回退
+    // bookPartial={}，占位判定/书目对齐静默失效）。
+    warnings.push({
+      type: 'missing_field',
+      message: `编目候选缺少瞬态字段 _bookKey（书目对齐键），无法定位对应 Book 候选：barcode=${cr.barcodes?.[0] ?? ''} metaId=${cr.metaId ?? ''}`,
+      recordRef: cr.barcodes?.[0] ? `barcode:${cr.barcodes[0]}` : null,
+    })
   }
   return undefined
 }

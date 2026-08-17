@@ -32,7 +32,21 @@ export interface SourceParser {
   filterRows(rows: Record<string, unknown>[]): Record<string, unknown>[]
 }
 
-/** 解析结果：候选实体的「部分」描述（id 等由 pipeline 派生补全）。 */
+/**
+ * 瞬态字段契约（H-3）：以下字段**不是类型化字段**，由 parser 经
+ * `as Record<string, unknown>` 附加在产出 partial 上，供 pipeline 装配对齐用；
+ * 它们**不入库、不持久化、不进入最终实体**（szlib 为唯一生产方，见其
+ * pushCycle / book/catalogRecord 装配处）。第三方 parser 必须照此约定设置，
+ * 否则 pipeline 发出 `missing_field` 警告并降级（见 pipeline.ts 步骤 2/5）：
+ * - `_rowIndexes: number[]` — 标注在 `borrowCycles[]` partial 上，值为该周期
+ *   消费的原始行文件行号（1-based，与 RawRecord.rowIndex / buildRawRecords 一致）。
+ *   pipeline 装配候选周期时按行号取 `rawRecordIds` 并做 metaid 消歧；缺失时
+ *   rawRecordIds 为空、周期溯源与消歧降级（警告）。
+ * - `_bookKey: string` — 标注在 `books[]` / `catalogRecords[]` partial 上，值为
+ *   去重后的书目键（`isbn:` / `noisbn:` / `ph:` 前缀）。pipeline 用它在批次内把
+ *   编目候选与 Book 候选对齐（findBookForCatalog）；缺失时无法定位对应
+ *   Book 候选，占位/合并判定降级（警告）。
+ */
 export interface ParseResult {
   books: Partial<Book>[]
   catalogRecords: Partial<CatalogRecord>[]
