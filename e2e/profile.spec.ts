@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-import { buildDesensitizedFixture } from './fixtures'
+import { buildDesensitizedFixture, buildLargeFixture } from './fixtures'
 
 /**
  * 阅读画像页 E2E（reading-profile §7，C-7）。
@@ -103,84 +103,9 @@ test.describe('profile page — charts with seeded data', () => {
 
 test.describe('profile page — gantt multi-lane render (performance baseline)', () => {
   test('large fixture renders gantt without crashing', async ({ page }) => {
-    // 多 lane 夹具：150 lane × 2 周期，验证高 lane 数下甘特 canvas 渲染不崩。
-    const base = buildDesensitizedFixture()
-    const bigBooks: typeof base.books = []
-    const bigCats: typeof base.catalogRecords = []
-    const bigCycles: typeof base.borrowCycles = []
-    for (let i = 0; i < 150; i++) {
-      const bid = `big-${i}`
-      bigBooks.push({
-        id: bid,
-        isbn13: `9789${String(i).padStart(9, '0')}`,
-        isbn10: null,
-        title: `书${i}`,
-        subtitle: null,
-        authors: ['作者'],
-        translators: [],
-        publisher: '出版社',
-        publishDate: '2020-01-01',
-        edition: null,
-        pages: 100,
-        price: { amount: 20, currency: 'CNY' },
-        subjects: [],
-        tags: [],
-        coverUrl: null,
-        description: null,
-        parallelTitles: [],
-        needsReview: false,
-        sourceIds: [base.sources[0].id],
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      })
-      bigCats.push({
-        id: `cat-big-${i}`,
-        bookId: bid,
-        sourceId: base.sources[0].id,
-        metaId: 2000 + i,
-        metaIdKey: 'metaid',
-        barcodes: [`BB${i}`],
-        classifications: [{ system: 'clc', code: 'I' }],
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      })
-      bigCycles.push({
-        id: `c-big-${i}`,
-        bookId: bid,
-        catalogRecordId: `cat-big-${i}`,
-        sourceId: base.sources[0].id,
-        borrowedAt: new Date(Date.UTC(2024, 0, 1) + i * 86_400_000).toISOString(),
-        returnedAt: new Date(Date.UTC(2024, 0, 8) + i * 86_400_000).toISOString(),
-        status: 'returned',
-        borrowLocation: null,
-        returnLocation: null,
-        rawRecordIds: [],
-        barcode: `BB${i}`,
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      })
-      bigCycles.push({
-        id: `c-big2-${i}`,
-        bookId: bid,
-        catalogRecordId: `cat-big-${i}`,
-        sourceId: base.sources[0].id,
-        borrowedAt: new Date(Date.UTC(2024, 1, 1) + i * 86_400_000).toISOString(),
-        returnedAt: null,
-        status: 'borrowed',
-        borrowLocation: null,
-        returnLocation: null,
-        rawRecordIds: [],
-        barcode: `BB${i}`,
-        createdAt: '2024-02-01T00:00:00.000Z',
-        updatedAt: '2024-02-01T00:00:00.000Z',
-      })
-    }
-    const payload = JSON.stringify({
-      sources: base.sources,
-      books: [...base.books, ...bigBooks],
-      catalogRecords: [...base.catalogRecords, ...bigCats],
-      borrowCycles: [...base.borrowCycles, ...bigCycles],
-    })
+    // 多 lane 夹具：fixtures.buildLargeFixture（150 lane × 2 周期），验证高 lane 数下
+    // 甘特 canvas 渲染不崩。
+    const payload = JSON.stringify(buildLargeFixture())
     await page.addInitScript(([key, value]) => {
       try {
         localStorage.setItem(key, value)
