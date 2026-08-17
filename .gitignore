@@ -53,6 +53,7 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+.pytest_cache/
 
 # Local pnpm store (should not be committed)
 .pnpm-store/

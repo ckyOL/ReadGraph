@@ -6,3 +6,12 @@ requires-python = ">=3.10"
 dependencies = [
     "requests>=2.34.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
