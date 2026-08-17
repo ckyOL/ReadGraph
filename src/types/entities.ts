@@ -78,7 +78,8 @@ export interface CatalogRecord {
   opacEnrichment: OpacEnrichment | null
   /** 原文卷号（如 "3"/"上"）；套装候选由用户在详情页编辑表单结构化。 */
   volume: string | null
-  /** classCodes multiEntry 索引派生字段：存储前由 deriveClassCodes 补写（schema 不校验；存量缺失由启动回填）。 */
+  /** classCodes multiEntry 索引派生字段：存储前由 deriveClassCodes 补写（schema 不校验；存量缺失由启动回填）。
+   *  回填失败时内存物化读路径经 withClassCodes 自愈；索引查询（where('classCodes')）不可自愈，仅 console.error 暴露。 */
   classCodes?: string[]
   createdAt: Date
   updatedAt: Date

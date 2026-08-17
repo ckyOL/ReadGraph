@@ -90,6 +90,10 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
 
   // 下钻数据链（UI 层）：按当前下钻 code 前缀直查 DB（classCodes multiEntry 索引），
   // 每本书取首条 clc 命中码（与 computeProfileStats 的 first-record 语义一致）。
+  // 局限（H-5）：索引查询只能命中已写 classCodes 字段的记录——启动回填失败时存量
+  // 缺该字段，此处会漏书；自愈需全表扫描，渲染路径禁扫（roadmap 性能规则），故
+  // 不可自愈。内存物化路径由 withClassCodes 读侧归一兜底，诊断由启动回填的
+  // console.error 兜底（见 src/db/startup-backfills.ts）。
   const drillQuery = useLiveQuery<{ code: string; children: ClassificationChild[] } | null>(
     async () => {
       if (!drill || system !== 'clc' || !treeData) return null
