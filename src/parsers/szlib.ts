@@ -79,7 +79,6 @@ function szlibToUtc(date: string, time: string, timezone: string): Date {
 export const szlibParser: SourceParser = {
   id: 'szlib',
   name: 'Shenzhen Library',
-  supportedFormats: ['json'],
   validate(rawData) {
     if (rawData == null) return false
     let text: string
@@ -284,7 +283,7 @@ if (!catalogByKey.has(catKey)) {
   catalogRecords.push(crPartial)
 }
     }
-    const stats = { totalRawRecords: rows.length, parsedBooks: books.length, parsedCatalogRecords: catalogRecords.length, parsedCycles: borrowCycles.length, skippedRecords: skippedFiltered }
+    const stats = { totalRawRecords: rows.length, skippedRecords: skippedFiltered }
     return { books, catalogRecords, borrowCycles, warnings, stats }
   },
   filterRows(rows) {

@@ -118,7 +118,6 @@ export function importPipeline(
     candidates,
     candidateBarcodes,
     dedupeInput,
-    parser,
   )
   warnings.push(...ddWarnings)
 

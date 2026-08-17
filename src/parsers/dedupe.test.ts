@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 
 import type { Book, CatalogRecord } from '@/types/entities'
 import { dedupeCatalogsAndBooks, dedupeBorrowCycles } from './dedupe'
-import { szlibParser } from './szlib'
 
 type DedupeState = {
   books: Book[]
@@ -71,7 +70,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B1'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('B1')).toBe('bk-A')
     expect(r.warnings).toEqual([])
@@ -93,7 +91,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B9'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('B9')).toBe('bk-ISBN')
   })
@@ -116,7 +113,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['BX'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('BX')).toBe('bk-fuzzy')
     // H2 回归：模糊合并必须置待审（design-decisions §4）——候选 reviewFlags 与
@@ -139,7 +135,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['PH1', 'PH2'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('PH1')).not.toBe('bk-ph-old')
     expect(r.bookIdByBarcode.get('PH2')).not.toBe('bk-ph-old')
@@ -157,7 +152,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['C1', 'C2', 'C3', 'C4', 'C5'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     // bookIds 与候选逐位对齐：同 ISBN 两副本同一 token，不同 ISBN 不同 token，
     // 无 ISBN 同题同著者同一 token。
@@ -202,7 +196,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B4'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('B4')).toBe('bk-set')
     expect(r.reviewFlags).toEqual([true])
@@ -231,7 +224,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['A2'],
       existing,
-      szlibParser,
     )
     expect(r.reviewFlags).toEqual([false])
     expect(r.state.books.find((b) => b.id === 'bk-copy')!.needsReview).toBe(false)
@@ -257,7 +249,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B1'],
       existing,
-      szlibParser,
     )
     expect(diff.reviewFlags).toEqual([true])
     expect(diff.state.books.find((b) => b.id === 'bk-cross')!.needsReview).toBe(true)
@@ -272,7 +263,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B2'],
       existing,
-      szlibParser,
     )
     expect(same.reviewFlags).toEqual([false])
     expect(same.state.books.find((b) => b.id === 'bk-cross')!.needsReview).toBe(false)
@@ -286,7 +276,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['V3', 'V4'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     expect(r.bookIds).toEqual(['new:isbn:9787574012745', 'new:isbn:9787574012745'])
     // 置标传播到组首候选（pipeline 在组首建 Book 时置 needsReview）。
@@ -304,7 +293,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['C1', 'C2'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     expect(r.reviewFlags).toEqual([false, false])
     expect(r.warnings).toEqual([])
@@ -318,7 +306,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['F1', 'F2'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     expect(r.bookIds).toEqual(['new:noisbn:合成无码书|合成著者x', 'new:noisbn:合成无码书|合成著者x'])
     // 置标传播到组首候选（pipeline 在组首建 Book 时置 needsReview）。
@@ -333,7 +320,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['F1', 'F2'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     expect(r.reviewFlags).toEqual([false, false])
     expect(r.warnings).toEqual([])
@@ -363,7 +349,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       [''],
       existing,
-      szlibParser,
     )
     expect(r.bookIds).toEqual(['bk-B'])
     expect(r.bookIdByBarcode.get('')).toBe('bk-B')
@@ -391,7 +376,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['DEV1'],
       existing,
-      szlibParser,
     )
     // 不挂到图书 Book：独立 token。隔离是正常行为（设备/图书不同材料类型），不记警告。
     expect(r.bookIds).not.toEqual(['bk-book'])
@@ -415,7 +399,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B1'],
       existing,
-      szlibParser,
     )
     expect(r.bookIds[0]!.startsWith('new:')).toBe(true)
   })
@@ -442,7 +425,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['DEV2'],
       existing,
-      szlibParser,
     )
     expect(r.bookIds[0]).toBe('bk-dev')
   })
@@ -471,7 +453,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['04400790006607'],
       existing,
-      szlibParser,
     )
     expect(r.bookIdByBarcode.get('04400790006607')).toBe('bk-dev')
     expect(r.existingCrIds).toEqual(['cr-dev'])
@@ -486,7 +467,6 @@ describe('dedupeCatalogsAndBooks', () => {
       ],
       ['B1', 'DEV1'],
       { books: [], catalogRecords: [], borrowCycles: [] },
-      szlibParser,
     )
     expect(r.bookIds).toEqual(['new:noisbn:合成书目036|合成著者36', 'new:u:1'])
   })
