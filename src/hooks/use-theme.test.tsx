@@ -8,9 +8,7 @@ import {
   resolveTheme,
   applyThemeClass,
   resetThemeStore,
-  useEChartsTheme,
 } from './use-theme'
-import type { EChartsTheme } from '@/lib/echarts-theme'
 import type { ThemeContextValue } from './use-theme'
 import { STORAGE_KEY } from '@/lib/locale'
 
@@ -165,19 +163,6 @@ function renderProbe() {
   return api
 }
 
-function renderEChartsProbe(cssVars: Record<string, string>) {
-  let theme: EChartsTheme | undefined
-  function Probe() {
-    theme = useEChartsTheme(cssVars)
-    return null
-  }
-  renderToStaticMarkup(
-    createElement(ThemeProvider, null, createElement(Probe)),
-  )
-  if (!theme) throw new Error('Probe failed to capture useEChartsTheme')
-  return theme
-}
-
 beforeEach(() => {
   resetThemeStore()
   installMocks()
@@ -322,56 +307,5 @@ describe('useTheme outside Provider', () => {
     expect(() => renderToStaticMarkup(createElement(Probe))).toThrow(
       'useTheme must be used within a ThemeProvider',
     )
-  })
-})
-
-// ---------------------------------------------------------------------------
-describe('useEChartsTheme', () => {
-  const lightVars: Record<string, string> = {
-    '--chart-1': '#27477A',
-    '--chart-2': '#61764B',
-    '--chart-3': '#576D79',
-    '--chart-4': '#AD3140',
-    '--chart-5': '#998D86',
-    '--border': '#E8E4DC',
-    '--muted-foreground': '#666F68',
-    '--popover': '#FFFFFF',
-    '--popover-foreground': '#2A2A2A',
-  }
-
-  const darkVars: Record<string, string> = {
-    '--chart-1': '#73B3C1',
-    '--chart-2': '#A9C087',
-    '--chart-3': '#8A9DA8',
-    '--chart-4': '#D96A75',
-    '--chart-5': '#B0A89E',
-    '--border': '#3A3A38',
-    '--muted-foreground': '#A99F96',
-    '--popover': '#2A2A2A',
-    '--popover-foreground': '#F0EDE5',
-  }
-
-  it('rebuilds light theme from resolved light', () => {
-    installMocks({ theme: 'light' })
-    const theme = renderEChartsProbe(lightVars)
-    expect(theme.color).toEqual([
-      '#27477A',
-      '#61764B',
-      '#576D79',
-      '#AD3140',
-      '#998D86',
-    ])
-  })
-
-  it('rebuilds dark theme from resolved dark', () => {
-    installMocks({ theme: 'dark' })
-    const theme = renderEChartsProbe(darkVars)
-    expect(theme.color).toEqual([
-      '#73B3C1',
-      '#A9C087',
-      '#8A9DA8',
-      '#D96A75',
-      '#B0A89E',
-    ])
   })
 })

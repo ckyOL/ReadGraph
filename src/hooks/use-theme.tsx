@@ -8,7 +8,6 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import { buildTheme, type EChartsTheme } from '@/lib/echarts-theme'
 import {
   DEFAULT_PREFERENCES,
   readPreferences,
@@ -145,21 +144,4 @@ export function useTheme(): ThemeContextValue {
     throw new Error('useTheme must be used within a ThemeProvider')
   }
   return ctx
-}
-
-// ---------------------------------------------------------------------------
-// ECharts theme adapter (P0-2)
-// ---------------------------------------------------------------------------
-
-/**
- * Rebuilds the ECharts theme whenever the resolved theme changes.
- * The caller supplies the current CSS variables (e.g. from `getComputedStyle`);
- * the hook only watches the theme Provider signal and calls `buildTheme`.
- */
-export function useEChartsTheme(cssVars: Record<string, string>): EChartsTheme {
-  const { resolved } = useTheme()
-  return useMemo(
-    () => buildTheme(resolved === 'dark', cssVars),
-    [resolved, cssVars],
-  )
 }
