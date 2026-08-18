@@ -49,3 +49,23 @@ Scraper (Python ≥3.10, uv): `cd szlib_scraper && uv sync && uv run szlib_scrap
   `docs/ai-agent-workflow-rules.md` (SDD+TDD, process/port hygiene), `docs/app-spec.md` (§4 scripts, §5 security, §6 spec index).
 - PRs: reference the spec, describe the data flow, attach desensitized samples for parser work;
   never weaken `.npmrc` (registry/`strict-ssl`) or `pnpm-workspace.yaml` (`minimumReleaseAge`).
+
+## Release
+
+Releases are cut from the merged `main` branch only, after full verification:
+
+1. **Bump version** — set `version` in `package.json` to the new SemVer (e.g. `1.1.0`).
+   The version is not recorded in `pnpm-lock.yaml`; do not regenerate the lockfile for
+   a bump alone.
+2. **Update `CHANGELOG.md`** — move the corresponding entries out of `[Unreleased]`
+   into a dated, versioned section (Keep a Changelog + SemVer).
+3. **Gates green** — on the release branch run, in order:
+   `pnpm test`, `pnpm build`, `pnpm test:e2e`, `pnpm audit`. All must pass before tagging.
+4. **Commit & tag** — commit the bump (Conventional Commits, e.g.
+   `chore(release): bump to 1.0.0`), then:
+   `git tag -a v1.0.0 -m "v1.0.0"` (annotated tag on the release commit).
+5. **Push tag** — `git push origin main --tags`.
+6. **Create release** — `gh release create v1.0.0 --notes-file CHANGELOG.md`.
+
+The tag must be annotated, the release notes must come from `CHANGELOG.md`, and the
+tag version must match the `package.json` version.
