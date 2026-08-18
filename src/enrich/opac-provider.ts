@@ -45,7 +45,9 @@ export interface OpacProvider {
   shortName?: string
   /** 候选键：以什么实体字段反查本来源 OPAC */
   lookupKey: 'metaId' | 'isbn13'
-  /** 用户可访问的详情页外链（降级/溯源）；无 → null */
+  /** 用户可访问的详情页外链（降级/溯源）；无 → null。
+   *  仅返回 https: URL 或 null——渲染层（$bookId.tsx）有 scheme 白名单守卫，
+   *  非 https 一律不渲染，provider 不得从外部数据构造 javascript: 等非 https URL。 */
   detailUrl(record: CatalogRecord, book: Book): string | null
   /** 传输 + 响应解析 + 未找到判定（来源特有）；经传输基元 opac-client 发网络 */
   fetchDetail(
