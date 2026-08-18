@@ -4,7 +4,7 @@
 
 **A personal reading archive & analytics dashboard for your library borrowing history.**
 
-Import borrow/return exports from your public library or e-book platform, and turn them into a reading profile with charts — pure frontend, your data stays in the browser, works fully offline.
+Import borrow/return exports from your public library or e-book platform, and turn them into a reading profile with charts — pure frontend, your data is stored offline in the browser's IndexedDB; offline availability depends on the host's caching policy, and this repo ships no Service Worker.
 
 ![React](https://img.shields.io/badge/React-19-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6)
@@ -91,7 +91,7 @@ CI runs verify, lint, build, test, e2e, and audit on every push & PR to main —
 ## Privacy & Security
 
 - **Pure frontend** — all data lives in your browser's IndexedDB; nothing is uploaded to any server.
-- **Offline-capable** — statically deployable, works without network.
+- **Offline data** — records live in browser IndexedDB; offline availability depends on the host's caching policy; this repo ships no Service Worker.
 - **Supply-chain hardening** — pnpm 11 with 7-day release cooldown (`minimumReleaseAge`), frozen lockfile, strict SSL; see [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md).
 - **No real personal data in the repo** — reader card numbers / IPs must never be committed; fixtures are desensitized.
 
