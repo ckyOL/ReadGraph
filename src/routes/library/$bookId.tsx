@@ -14,6 +14,7 @@ import { parseTitle } from '@/lib/title'
 import { buildLibraryRows, filterAndSortRows, adjacentBookIds } from '@/lib/library-view'
 import { parseOrDefault } from '@/lib/parse-or-default'
 import { withClassCodesAll } from '@/lib/with-class-codes'
+import { isSafeExternalUrl } from '@/lib/is-safe-external-url'
 import { getProvider } from '@/enrich/opac-provider'
 import { enrichOneRecord, hasLookupKey, type EnrichmentContext } from '@/enrich/enrich-service'
 import type { CatalogRecord } from '@/types/entities'
@@ -259,7 +260,10 @@ function BookDetailPage() {
       )
     }
     const isFetched = cr.opacEnrichment?.status === 'fetched'
+    // 外链 scheme 白名单守卫（defense-in-depth）：szlib provider 恒返回 https，
+    // 此处防止未来新 provider 从数据构造 URL 引入 javascript: 等注入面。
     const detailUrl = provider.detailUrl(cr, currentBook)
+    const safeDetailUrl = isSafeExternalUrl(detailUrl) ? detailUrl : null
     return (
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -274,9 +278,9 @@ function BookDetailPage() {
               ? te('refetch')
               : te('fetch', { provider: provider.displayName })}
         </Button>
-        {detailUrl && (
+        {safeDetailUrl && (
           <a
-            href={detailUrl}
+            href={safeDetailUrl}
             target="_blank"
             rel="noreferrer"
             className="text-xs text-muted-foreground underline-offset-2 hover:underline"
