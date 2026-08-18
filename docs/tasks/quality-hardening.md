@@ -27,7 +27,7 @@
 | WCAG 2.2 | 无障碍 | 适用（纯前端 SPA 全量适用） | 未达 AA（3 项 A 级失败） | 阶段 2 |
 | EN 301 549 / Section 508 | 无障碍法规 | 等价基线 | 随 WCAG 2.2 AA 覆盖 | 阶段 2 |
 | OWASP Top 10 / ASVS 子集 | Web 安全 | 适用（无后端 SPA 子集） | 无 CSP；XSS 面窄（无 `dangerouslySetInnerHTML`，React 转义兜底） | SEC-1 / SEC-2 |
-| Core Web Vitals（LCP/INP/CLS） | 性能 | 适用（前端性能基线） | 无基线测量；图表懒加载已做 | SEC-4 |
+| Core Web Vitals（LCP/INP/CLS） | 性能 | 适用（前端性能基线） | 基线已建：LCP 4.12s 超标（立项）、CLS 0/TBT 0ms 达标；图表懒加载已做 | SEC-4 + 衍生任务 |
 | ISO 8601 / RFC 3339 + IANA tz | 时间 | 适用 | **已达标**（design-decisions §2 UTC 存储 + @vvo/tzdb） | — |
 | ISO 2108（ISBN） | 书目域 | 适用 | **已达标**（`src/lib/isbn.ts` 校验/转换 + 测试） | — |
 | CLC / DDC / UDC / LCC | 分类法域 | 适用 | 已达标 CLC/DDC；UDC/LCC 预留（design-decisions §5） | — |
@@ -395,6 +395,7 @@
 
 ## 状态
 
+- 2026-08-18 **SEC-4 完成**：Lighthouse 本地一次测量（`--preset=perf` 移动 3G 档；production build + `pnpm preview --port 4178`，空库首页 `http://127.0.0.1:4178`；lh.json 19:12 生成）。基线：**LCP 4.12s（预算 ≤2.5s → 超标，已立项）**、**CLS 0（≤0.1 达标）**、**TBT 0ms**（lab INP 审计本次 notApplicable，以 TBT 作交互响应代理，预算 200ms 达标）、性能分 0.79（FCP 4.1s）。超标立项：**「首屏 LCP 优化」（SEC-4 衍生）**——现状主 chunk 262KB（gzip 83KB）、图表懒加载已做；候选：路由级 code-split 核查、关键 CSS/字体预加载；Lighthouse CI 列为可选后续。偏差：测量/记录任务无 Red 阶段；INP 无 lab 值以 TBT 代理，均已注明。
 - 2026-08-17 **阶段 4（H-1~H-6）完成**：6 任务并行落地（one-task-per-agent，独立 worktree），全量验证绿：单测 **731**（720 −2 H-1 删 2 个 useEChartsTheme 测试 +4 H-2 +3 H-3 +6 H-5）、`pnpm build` 绿、E2E **58/58 全绿**、`szlib_scraper` pytest **12/12** 绿。提交 9 个任务 commit + 6 个 --no-ff merge（共享文件自动合并零冲突：types.ts/pipeline.ts H-1×H-3、$bookId.tsx H-2×H-5 区域不重叠）+ 本文档。
 - 2026-08-17 **H-1 完成**：删 `useEChartsTheme`（仅自身测试引用，use-echarts.ts 成主题唯一实现）、`SourceParser.supportedFormats`、`ParseResult.stats` 三字段（parsedBooks/parsedCatalogRecords/parsedCycles——仅 totalRawRecords/skippedRecords 有消费）、`rowRef`/`rawRef`、`dedupeCatalogsAndBooks` 第 4 参 `_parser`（dedupe.test.ts 19 处调用点同步删）；净删 124 行，grep 归零。偏差：纯删除任务无 Red 阶段，以 test+build+grep 验证。
 - 2026-08-17 **H-2 完成**：`normalizePublishDate` 下沉 `src/lib/publish-date.ts`，`$bookId.tsx`/`-edit-dialog.tsx` 两处引用；语义逐位一致（null/undefined 透传、Date 对象→formatDateInTz UTC、字符串透传）；+4 单测。
