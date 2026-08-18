@@ -4,7 +4,7 @@
 
 **个人阅读智能档案系统 — 把图书馆借阅历史变成你的阅读画像。**
 
-从公共图书馆或电子借阅平台导出借阅/归还数据（JSON/CSV），导入后生成个性化阅读画像与可视化图表。纯前端，数据只存浏览器，可完全离线使用。
+从公共图书馆或电子借阅平台导出借阅/归还数据（JSON/CSV），导入后生成个性化阅读画像与可视化图表。纯前端，数据离线存储于浏览器 IndexedDB；断网可用性取决于托管方缓存策略，本仓库不提供 Service Worker。
 
 ![React](https://img.shields.io/badge/React-19-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6)
@@ -91,7 +91,7 @@ CI 在每次推送到 `main` 及每次 PR 时运行 verify、lint、build、test
 ## 隐私与安全
 
 - **纯前端** — 所有数据存于浏览器 IndexedDB，不上传任何服务器。
-- **可离线** — 静态部署即可使用，无需网络。
+- **离线数据** — 记录存于浏览器 IndexedDB；断网可用性取决于托管方缓存策略；本仓库不提供 Service Worker。
 - **供应链加固** — pnpm 11 强制 7 天发布冷却（`minimumReleaseAge`）、锁定 lockfile、强制 HTTPS；见 [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md)。
 - **仓库不含真实个人数据** — 读者证号 / IP 一律不得提交，测试夹具均已脱敏。
 
