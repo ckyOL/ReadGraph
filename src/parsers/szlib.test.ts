@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import type { Source } from '@/types/entities'
-import { szlibParser, isDeviceCirtype } from './szlib'
+import { szlibParser } from './szlib'
 import sample from '@/tests/fixtures/szlib-sample.json'
 
 const source: Source = {
@@ -241,14 +241,6 @@ describe('设备借阅（device-borrows 规格）', () => {
     barcode: '04400790006608',
     callno: 'TP311/1',
   }
-
-  it('isDeviceCirtype：精确匹配，undefined/空串/其它值/前缀均 false', () => {
-    expect(isDeviceCirtype('电子设备外借')).toBe(true)
-    expect(isDeviceCirtype(undefined)).toBe(false)
-    expect(isDeviceCirtype('')).toBe(false)
-    expect(isDeviceCirtype('中文图书外借')).toBe(false)
-    expect(isDeviceCirtype('电子设备外借测试')).toBe(false)
-  })
 
   it('设备行产出 materialType=device 的 Book，普通行缺省不带字段', () => {
     const rows = [deviceRow('读者借出', '16:25:29'), deviceRow('读者还回文献', '17:17:09')]

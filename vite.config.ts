@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import tanRouterPlugin from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 
 /**
  * SEC-1 CSP meta 注入（docs/tasks/quality-hardening.md §阶段5 SEC-1）：
@@ -35,10 +37,39 @@ function cspMetaPlugin(): Plugin {
   }
 }
 
+/**
+ * P-1 入口 CSS 内联（docs/tasks/quality-hardening.md §阶段5 衍生 P-1）：
+ * 首屏 CSS（Tailwind 86KB raw / 14KB gz）是 render-blocking 关键请求，独立请求在
+ * Fast 3G 下增加 RTT + 传输往返（Lighthouse render-blocking 浪费 ~870ms）。
+ * 内联进 HTML `<style>` 消除该关键请求——CSP `style-src 'unsafe-inline'` 已允许
+ * （ECharts/Radix 内联样式同源）。仅 build 生效；watch 重建幂等（每次匹配当前
+ * stylesheet link 替换）。独立 CSS 产物文件保留（无害，HTML 不再引用）。
+ */
+function inlineEntryCssPlugin(): Plugin {
+  return {
+    name: 'inline-entry-css',
+    apply: 'build',
+    closeBundle() {
+      const htmlPath = path.resolve('dist/index.html')
+      const html = readFileSync(htmlPath, 'utf8')
+      const linkRe = /<link[^>]*rel="stylesheet"[^>]*>/i
+      const m = html.match(linkRe)
+      if (!m) return
+      const hrefMatch = /href="([^"]+)"/.exec(m[0])
+      if (!hrefMatch) return
+      const cssPath = path.resolve('dist', hrefMatch[1]!.replace(/^\//, ''))
+      const css = readFileSync(cssPath, 'utf8')
+      const inlined = html.replace(m[0], `<style data-inlined="entry-css">${css}</style>`)
+      writeFileSync(htmlPath, inlined)
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     cspMetaPlugin(),
+    inlineEntryCssPlugin(),
     tanRouterPlugin({
       target: 'react',
       autoCodeSplitting: true,

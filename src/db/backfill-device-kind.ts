@@ -10,11 +10,12 @@
 // 限定条件：仅当 Book 尚未标记（materialType !== 'device'）时回写，不覆盖
 // 其它材料类型。幂等：重复调用无副作用（无候选即返回 0）。
 import type { ReadGraphDB } from './db'
-import { isDeviceCirtype } from '@/parsers/szlib'
+import { isDeviceCirtype } from '@/parsers/device-cirtype'
 
 /**
  * 回填设备 Book 材料类型。返回回填条数。幂等：重复调用无副作用。
- * 判定与 szlib parser 共用 isDeviceCirtype（单一事实来源，device-borrows 规格 §2）。
+ * 判定与 szlib parser 共用 isDeviceCirtype（单一事实来源，device-borrows 规格 §2，
+ * 独立模块避免 parser 主逻辑进入启动入口链）。
  */
 export async function backfillDeviceKind(db: ReadGraphDB): Promise<number> {
   const raws = await db.rawRecords.toArray()

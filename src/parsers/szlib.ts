@@ -6,9 +6,8 @@ import { normalizeIsbn } from '@/lib/isbn'
 import { decodeHtmlEntities } from '@/lib/encoding'
 import { parseTitle } from '@/lib/title'
 import type { SourceParser } from './types'
+import { isDeviceCirtype } from './device-cirtype'
 const PLACEHOLDER_TITLE = '福田图书馆读者自选图书'
-/** 非书设备流通类型（device-borrows 规格 §2）：精确匹配，参照占位题名检测约定。 */
-const DEVICE_CIRTYPES = new Set(['电子设备外借'])
 /** 与借阅状态无关、须在解析与预览阶段一并剔除的操作类型（szlib-parser §1）。 */
 const IGNORED_OPTYPES = new Set(['自助查询', '读者续借'])
 /** 参与借还周期合成的合法操作类型（szlib-parser §1）。 */
@@ -58,15 +57,6 @@ export function filterSzlibRows(rows: Record<string, unknown>[]): Record<string,
     (row): row is Record<string, unknown> =>
       row != null && typeof row === 'object' && VALID_OPTYPES.has(row.optype as string),
   )
-}
-
-/**
- * 非书设备借阅判定（device-borrows 规格 §2）：cirtype 精确匹配「电子设备外借」。
- * 设备以普通编目进入 OPAC（如 metaid=5952182），借还记录与图书同构；此标记
- * 使其 Book 材料类型可区分，阅读画像统计不纳入设备。parse 与回填共用。
- */
-export function isDeviceCirtype(cirtype: string | undefined): boolean {
-  return cirtype != null && DEVICE_CIRTYPES.has(cirtype)
 }
 
 function szlibToUtc(date: string, time: string, timezone: string): Date {

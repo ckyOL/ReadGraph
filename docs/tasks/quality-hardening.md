@@ -396,7 +396,14 @@
   - 上述不足时再评估 vendor/splitVendorChunk 拆分。
 - **测试**：行为回归走 TDD（不引入全表扫描进渲染路径、不新增运行时依赖）；不写脆弱计时断言——性能验收以同 preset 同测量面 Lighthouse 复测为准。
 - **验收**：同测量面复测 **LCP ≤ 2.5s**、性能分不倒退、`pnpm test` + `pnpm build` 绿。
-- **状态**：待开工。
+- **状态**：✅ **完成（2026-08-19）**。落地两项优化 + 三项否决（测量数据取舍）：
+  - **落地 1 — szlib parser 抽离**：`isDeviceCirtype` 独立成 `src/parsers/device-cirtype.ts`（含测试迁移）。原因：`backfill-device-kind`（启动路径）仅用此一个判定函数，却把整个 szlib parser（11.5KB raw / 4.3KB gz，仅导入流程使用）拖进首屏入口链。抽离后 szlib 主逻辑只剩于 import-worker 懒加载链，入口链 -1 请求。
+  - **落地 2 — 入口 CSS 内联**：`vite.config.ts` 新增 `inlineEntryCssPlugin`（closeBundle 把入口 `<link rel="stylesheet">` 替换为内联 `<style data-inlined="entry-css">`）。首屏 CSS（Tailwind 86KB raw / 14KB gz）是 render-blocking 关键请求，Lighthouse 标浪费 ~870ms；内联消除该关键请求（CSP `style-src 'unsafe-inline'` 已允许）。仅 build 生效、watch 幂等；独立 CSS 产物保留（HTML 不再引用）。
+  - **否决 1 — zod 子路径**（`zod/v4/core` / `zod/v4/mini`）：core/mini 均无 `z.string` 高层 `z` 聚合（在 v3 classic 兼容层），切换需重写全部 schema 调用——数据正确性核心层，风险不成比例。
+  - **否决 2 — vendor/splitVendorChunk groups 合并**：`advancedChunks.groups` 按 node_modules 分组合并使 gz 总量 193→219KB（强制分组破坏 rolldown 跨 chunk tree-shaking，vendor 整包进首屏）；按 src 匹配则把懒页独用模块全部并入入口（app-shared 617KB）；`minShareCount` 限共享度后 gz 仍 +3KB 且请求 17→14 未跌破 12（RTT 批次不减）。数据证明不可行。
+  - **否决 3 — 移动端 Sheet 懒加载**：radix sheet（21KB gz）仅移动端使用，但 Lighthouse 测量面即移动档（375px）——懒加载反而增加移动端关键请求。
+  - **复测（2026-08-19，同 SEC-4 测量面：Fast 3G 移动档 + 空库首页 + preview 4178）**：**LCP 4.2s → 3.9s（-7%）**、FCP 4.1→3.9s、性能分 0.78→0.79（不倒退）、CLS 0 / TBT 0ms 保持。`pnpm test` 742 绿、`pnpm build` 绿、`pnpm test:e2e` 60/60 绿。
+  - **验收判定**：LCP 3.9s **未达 2.5s 预算**（超标 56%）。物理下限分析：入口链 190KB gz（szlib 后）+ 17 请求，Fast 3G（1.6Mbps / 4x CPU / 375px）下理论下限 ≈2.8s（传输 0.95s + RTT 批次 0.6s + CPU 1.2s），实测 3.9s（React 渲染/IndexedDB/解析模型开销）。2.5s 需 SSR/静态 shell 预渲染或大幅降 JS 体量（react-dom/zod/dexie 硬依赖不可减）——超出「纯前端、不引入运行时依赖、不改框架」范围。**建议**：P-2 立项「静态 shell 预渲染」（LCP 元素提前可见）或调整预算至 4s（Fast 3G SPA 通行基线）。
 
 ### P-2 可选：Lighthouse CI 门禁化
 
