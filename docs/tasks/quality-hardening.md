@@ -27,7 +27,7 @@
 | WCAG 2.2 | 无障碍 | 适用（纯前端 SPA 全量适用） | 未达 AA（3 项 A 级失败） | 阶段 2 |
 | EN 301 549 / Section 508 | 无障碍法规 | 等价基线 | 随 WCAG 2.2 AA 覆盖 | 阶段 2 |
 | OWASP Top 10 / ASVS 子集 | Web 安全 | 适用（无后端 SPA 子集） | 无 CSP；XSS 面窄（无 `dangerouslySetInnerHTML`，React 转义兜底） | SEC-1 / SEC-2 |
-| Core Web Vitals（LCP/INP/CLS） | 性能 | 适用（前端性能基线） | 基线已建：LCP 4.12s 超标（立项）、CLS 0/TBT 0ms 达标；图表懒加载已做 | SEC-4 + 衍生任务 |
+| Core Web Vitals（LCP/INP/CLS） | 性能 | 适用（前端性能基线） | 基线已建：LCP 4.12s 超标（P-1 立项）、CLS 0/TBT 0ms 达标；图表懒加载已做 | SEC-4 → P-1 |
 | ISO 8601 / RFC 3339 + IANA tz | 时间 | 适用 | **已达标**（design-decisions §2 UTC 存储 + @vvo/tzdb） | — |
 | ISO 2108（ISBN） | 书目域 | 适用 | **已达标**（`src/lib/isbn.ts` 校验/转换 + 测试） | — |
 | CLC / DDC / UDC / LCC | 分类法域 | 适用 | 已达标 CLC/DDC；UDC/LCC 预留（design-decisions §5） | — |
@@ -379,6 +379,38 @@
 - **现状**：version 0.0.0；无 tag/release/changelog（Conventional Commits 已就位）。
 - **改动**：阶段 0–2 完成后首个发布 v1.0.0：`package.json` version、git tag、GitHub Release + changelog（首版手写，后续可引入 conventional-changelog）；AGENTS.md 补发布流程段。
 - **验收**：tag + release 存在；AGENTS.md 发布流程可执行。
+
+---
+
+## 阶段 5 衍生任务（SEC-4 超标立项）
+
+> 阶段 5 落地后由测量催生的任务。P-1 为必做（CWV 预算超标），P-2/P-3 为可选后续。
+
+### P-1 首屏 LCP 优化（SEC-4 超标立项，必做）
+
+- **现状**：SEC-4 基线（2026-08-18，3G 移动档、空库首页 `http://127.0.0.1:4178`）LCP **4.12s**，预算 ≤2.5s 超标约 65%；FCP 4.1s 同步拖累，性能分 0.79。主 chunk `index-*.js` 262KB（gzip 83KB）；图表懒加载 chunk 259KB 已按需，未混入入口链（待核查确认）。
+- **改动**（落地时按测量数据取舍）：
+  - 路由级 code-split 核查：确认 ECharts/重型依赖未经模块图混入首屏入口链（TanStack Router autoCodeSplitting 已开）；
+  - 关键资源预加载：首屏 CSS/字体 `rel="preload"`，LCP 元素 `fetchpriority="high"`；
+  - ECharts 子包按需拆分（避免整包进入非懒加载路径）；
+  - 上述不足时再评估 vendor/splitVendorChunk 拆分。
+- **测试**：行为回归走 TDD（不引入全表扫描进渲染路径、不新增运行时依赖）；不写脆弱计时断言——性能验收以同 preset 同测量面 Lighthouse 复测为准。
+- **验收**：同测量面复测 **LCP ≤ 2.5s**、性能分不倒退、`pnpm test` + `pnpm build` 绿。
+- **状态**：待开工。
+
+### P-2 可选：Lighthouse CI 门禁化
+
+- **现状**：CWV 基线仅本地测量（SEC-4），无 CI 回归护栏。
+- **改动**：将 LCP/INP/CLS 预算接入 CI（lighthouse-ci 或等效 Action），超标即红。
+- **验收**：CI 含 CWV 门禁。
+- **状态**：依赖 P-1 达标后启用（避免门禁常红）。
+
+### P-3 可选：Service Worker（PWA）
+
+- **现状**：README 已如实声明「不提供 Service Worker」；静态资源依赖托管方缓存策略。
+- **改动**：`vite-plugin-pwa` 离线优先；新 devDep 须走 [npm-supply-chain-security](../npm-supply-chain-security.md) 审查（SEC-3 依赖面共识已声明可选）。
+- **验收**：SW 生效且 README 撤回「不提供 SW」声明；审查清单通过。
+- **状态**：待评估。
 
 ---
 
