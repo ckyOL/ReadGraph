@@ -113,6 +113,13 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(libraryTable(page).getByText('Set', { exact: true })).toHaveCount(1)
   })
 
+  test('structured set detail hides empty more menu', async ({ page }) => {
+    // book-4 为已结构化套装（needsReview=false、2 卷编目）：菜单无可用项
+    // （拆分为套装候选专属），按钮整体隐藏，不渲染空菜单（book-editing §4.3）。
+    await page.goto('/library/book-4')
+    await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
+  })
+
   test('placeholder detail exposes merge action in more menu', async ({ page }) => {
     await page.goto('/library/book-2')
     await page.getByRole('button', { name: 'More' }).click()

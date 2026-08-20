@@ -319,6 +319,10 @@ function BookDetailPage() {
   const currentBook = book
 
   const kind = reviewKindOf(book)
+  // 「更多」按钮可见性 = 菜单项显示条件的并集（book-editing §4.3）：无可用动作
+  // （如套装结构化保存后 needsReview=false）时隐藏，避免渲染空菜单按钮。
+  const hasMoreActions =
+    book.needsReview || kind === 'placeholder' || (kind === 'set' && catalogRecords.length >= 2)
   const metaField = (label: string, value: ReactNode) =>
     value == null || value === '' ? null : (
       <div className="flex gap-2 text-sm">
@@ -366,7 +370,7 @@ function BookDetailPage() {
           >
             {t('bookDetail.edit')}
           </Button>
-          {(book.needsReview || kind !== null || catalogRecords.length >= 2) && (
+          {hasMoreActions && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" aria-label={t('bookDetail.more')}>

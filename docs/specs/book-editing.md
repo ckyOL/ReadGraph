@@ -134,6 +134,9 @@
 | 合并到已有书目 | 占位书（`reviewKindOf === 'placeholder'`） | 沿用合并语义：搜索 Dialog（`searchMergeTargets`，排除自身）→ 选中 → AlertDialog 确认 → `mergePlaceholderInto`（编目与借阅重挂、占位 Book 删除） |
 | 拆为独立 Book | 套装候选（`reviewKindOf === 'set'`） | 沿用拆书语义：AlertDialog 二次确认 → `splitSetBook`（按 metaIdKey 分组） |
 
+「更多」按钮整体可见性 = 上表菜单项显示条件的并集：无任何可用菜单项时隐藏
+（典型：套装结构化保存后 `needsReview=false`，菜单无项 → 按钮不渲染，不出现空菜单）。
+
 删除操作本期不做（非目标）。
 
 ## 5. 书库列表承载待完善标记与过滤
