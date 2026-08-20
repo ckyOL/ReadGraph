@@ -67,19 +67,22 @@ test.describe('classification hierarchy — library badge', () => {
   test('J238.2 芯片: 完整 5 段面包屑（含漫画）+ 最深类名，无细分未收录提示', async ({ page }) => {
     await page.goto('/library')
     // 桌面视口（默认 1280px ≥ lg）断言限定表格容器：卡片网格（lg:hidden）与表格同挂 DOM
-    // （CSS 断点切换），未限定的 [data-slot="badge"] 命中两份。
+    // （CSS 断点切换），未限定的 [data-slot="tooltip-trigger"] 命中两份。
     const table = page.locator('[data-slot="library-table"]')
-    // 等树懒加载完成：芯片从一级类目升级为深层路径（title 含面包屑分隔符）。
-    const badge = table.locator('[data-slot="badge"]', { hasText: 'J238.2' })
-    await expect(badge).toHaveCount(1, { timeout: 10000 })
-    await expect(badge).toHaveAttribute(
-      'title',
-      /J 艺术 › J2 绘画 › J23 各国绘画作品 › J238 各种画：按用途分 › J238\.2 漫画/,
-      { timeout: 20000 },
-    )
-    await expect(badge).not.toHaveAttribute('title', /细分未收录|subdivision not covered/)
+    // 芯片经 Radix TooltipTrigger asChild 渲染 → 元素 slot 为 tooltip-trigger（原 badge slot 被覆盖）。
+    const trigger = table.locator('[data-slot="tooltip-trigger"]', { hasText: 'J238.2' })
+    await expect(trigger).toHaveCount(1, { timeout: 10000 })
     // 主文本 = 最深段类名「漫画」（fixture 已收录，§11 修正）。
-    await expect(badge).toContainText('漫画')
+    await expect(trigger).toContainText('漫画')
+    // Radix tooltip：悬停后内容挂载，完整面包屑逐行呈现（无原生 title 属性）。
+    await expect(trigger).not.toHaveAttribute('title', /./)
+    await trigger.hover()
+    const tooltip = page.locator('[data-slot="tooltip-content"]')
+    await expect(tooltip).toBeVisible({ timeout: 5000 })
+    for (const row of ['J 艺术', 'J2 绘画', 'J23 各国绘画作品', 'J238 各种画：按用途分', 'J238.2 漫画']) {
+      await expect(tooltip).toContainText(row)
+    }
+    await expect(tooltip).not.toContainText(/细分未收录|subdivision not covered/)
   })
 })
 
@@ -129,15 +132,18 @@ test.describe('classification hierarchy — degraded tree', () => {
   test('J238.2 芯片: 树不可用降级一级类目, 无细分面包屑/未收录提示', async ({ page }) => {
     await page.goto('/library')
     const table = page.locator('[data-slot="library-table"]')
-    const badge = table.locator('[data-slot="badge"]', { hasText: 'J238.2' })
-    await expect(badge).toHaveCount(1, { timeout: 10000 })
+    const trigger = table.locator('[data-slot="tooltip-trigger"]', { hasText: 'J238.2' })
+    await expect(trigger).toHaveCount(1, { timeout: 10000 })
     // 一级表兜底: tooltip 仅一级段（无 › 分隔的多段面包屑）。
-    await expect(badge).toHaveAttribute('title', 'J 艺术')
+    await trigger.hover()
+    const tooltip = page.locator('[data-slot="tooltip-content"]')
+    await expect(tooltip).toBeVisible({ timeout: 5000 })
+    await expect(tooltip).toContainText('J 艺术')
     // 树未加载: 绝不升级为深层路径, 也无「细分未收录」提示（en/zh 兼容）。
-    await expect(badge).not.toHaveAttribute('title', /›/)
-    await expect(badge).not.toHaveAttribute('title', /细分未收录|subdivision not covered/)
+    await expect(tooltip).not.toContainText('›')
+    await expect(tooltip).not.toContainText(/细分未收录|subdivision not covered/)
     // 主文本 = 一级类目名（降级展示）。
-    await expect(badge).toContainText('艺术')
+    await expect(trigger).toContainText('艺术')
   })
 
   test('treemap: 树不可用仍渲染一级类目分布', async ({ page }) => {

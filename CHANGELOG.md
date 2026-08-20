@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Classification badge tooltip** — replaced the native `title` tooltip with a
+  Radix-powered styled tooltip (paper-ink: square corners, theme popover colors,
+  per-line breadcrumb with mono codes; partial-tree hint and auxiliary segment
+  kept, now visually distinct).
+
 ### Planned
 
 - Full PWA support: installable app manifest and offline-first data layer (service

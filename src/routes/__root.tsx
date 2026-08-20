@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/sidebar'
 
 import { ThemeProvider } from '@/hooks/use-theme'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { db } from '@/db/db-instance'
 const navItems = [
   { to: '/', key: 'dashboard' as const, Icon: LayoutDashboardIcon },
@@ -75,20 +76,22 @@ function RootLayout() {
   const { t } = useTranslation('nav')
   return (
     <ThemeProvider>
-      <SidebarProvider>
-        <Sidebar>
-          <SidebarHeader>
-            <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
-          </SidebarHeader>
-          <SidebarNav />
-        </Sidebar>
-        <SidebarInset>
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-            <SidebarTrigger className="-ml-1" />
-          </div>
-          <Outlet />
-        </SidebarInset>
-      </SidebarProvider>
+      <TooltipProvider>
+        <SidebarProvider>
+          <Sidebar>
+            <SidebarHeader>
+              <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
+            </SidebarHeader>
+            <SidebarNav />
+          </Sidebar>
+          <SidebarInset>
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+              <SidebarTrigger className="-ml-1" />
+            </div>
+            <Outlet />
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
     </ThemeProvider>
   )
 }
