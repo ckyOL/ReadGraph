@@ -403,7 +403,8 @@
   - **否决 2 — vendor/splitVendorChunk groups 合并**：`advancedChunks.groups` 按 node_modules 分组合并使 gz 总量 193→219KB（强制分组破坏 rolldown 跨 chunk tree-shaking，vendor 整包进首屏）；按 src 匹配则把懒页独用模块全部并入入口（app-shared 617KB）；`minShareCount` 限共享度后 gz 仍 +3KB 且请求 17→14 未跌破 12（RTT 批次不减）。数据证明不可行。
   - **否决 3 — 移动端 Sheet 懒加载**：radix sheet（21KB gz）仅移动端使用，但 Lighthouse 测量面即移动档（375px）——懒加载反而增加移动端关键请求。
   - **复测（2026-08-19，同 SEC-4 测量面：Fast 3G 移动档 + 空库首页 + preview 4178）**：**LCP 4.2s → 3.9s（-7%）**、FCP 4.1→3.9s、性能分 0.78→0.79（不倒退）、CLS 0 / TBT 0ms 保持。`pnpm test` 742 绿、`pnpm build` 绿、`pnpm test:e2e` 60/60 绿。
-  - **验收判定**：LCP 3.9s **未达 2.5s 预算**（超标 56%）。物理下限分析：入口链 190KB gz（szlib 后）+ 17 请求，Fast 3G（1.6Mbps / 4x CPU / 375px）下理论下限 ≈2.8s（传输 0.95s + RTT 批次 0.6s + CPU 1.2s），实测 3.9s（React 渲染/IndexedDB/解析模型开销）。2.5s 需 SSR/静态 shell 预渲染或大幅降 JS 体量（react-dom/zod/dexie 硬依赖不可减）——超出「纯前端、不引入运行时依赖、不改框架」范围。**建议**：P-2 立项「静态 shell 预渲染」（LCP 元素提前可见）或调整预算至 4s（Fast 3G SPA 通行基线）。
+  - **测量面更正（2026-08-19，用户反馈核实）**：SEC-4/P-1 使用的 `--preset=perf` 是 **Lighthouse 移动预设**（1.6Mbps / 150ms RTT / 4x CPU，命名 "Fast 3G"）——对应 Google CWV 官方保守预算面（「中端手机 + 慢速 4G 弱信号」），**并非 3G 网络技术**（3G 已大面积退网：中国联通/移动 2020、电信 CDMA 2023；美国三大运营商 2022 全关）。本项目为**纯前端本地部署**（localhost/局域网宽带 + 桌面 CPU），真实场景不匹配移动模拟面。真实场景实测：**本机不节流 LCP 0.2s**；**desktop 宽带预设（--preset=desktop）LCP 0.7s / 性能分 1.0**——**均达标（≤2.5s）**。「超标 65%」系移动模拟面的伪超标，P-1 立项依据就此更正。
+  - **验收判定（更正后）**：真实部署场景（本地/桌面宽带）LCP 0.2–0.7s **达标**；Fast 3G 移动面 3.9s 作为**移动托管场景的保守预算参考**保留（若未来公网托管且目标手机弱信号用户，LCP 3.9s 未达 2.5s，物理下限 ≈2.8s——入口链 190KB gz + 17 请求下需 SSR/静态 shell 预渲染，超出纯前端范围，另立项）。P-1 两项改动（szlib 抽离 -4.3KB gz、CSS 内联消 render-blocking 请求）在两种场景下均净正向，保留。
 
 ### P-2 可选：Lighthouse CI 门禁化
 
