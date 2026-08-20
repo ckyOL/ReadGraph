@@ -418,7 +418,12 @@
 - **现状**：README 已如实声明「不提供 Service Worker」；静态资源依赖托管方缓存策略。
 - **改动**：`vite-plugin-pwa` 离线优先；新 devDep 须走 [npm-supply-chain-security](../npm-supply-chain-security.md) 审查（SEC-3 依赖面共识已声明可选）。
 - **验收**：SW 生效且 README 撤回「不提供 SW」声明；审查清单通过。
-- **状态**：待评估。
+- **状态**：❌ **关闭（2026-08-20，评估定案）**。维持 SEC-3 定案，不实施。理由：
+  - **部署形态否决收益面**：P-1 测量面更正已定性真实场景为纯前端本地部署（localhost/局域网 + 桌面 CPU）；仓库无公网部署配置（无 Pages job、无 `base`/`homepage`）。本地场景下静态资源与数据同机，SW 缓存 app shell 无收益。
+  - **数据层已离线**：书目数据全在 IndexedDB 本地持久化（README L7/L94 已如实声明）；SW 只缓存静态外壳、不缓存数据，解决的是「断网刷新不失效」——本地部署下不存在该问题。
+  - **成本不成比例**：新 devDep 须过供应链审查（`minimumReleaseAge` 冷却 + 清单）；SW 缓存版本/更新策略/失效生命周期持续维护；与 SEC-1 CSP（`script-src 'self'`）需重新核对。
+  - **收益条件未出现**：唯一真实收益场景 = 公网托管 + 手机弱信号/断网打开应用，P-1 已将该场景定性为「超出纯前端范围，另立项」——届时性能问题（LCP 3.9s、物理下限 2.8s 需 SSR/静态 shell 预渲染）先于 PWA 立项，两者捆绑评估而非现在单做。
+  - **触发条件**：仓库出现公网托管配置 + 目标用户含移动弱网场景 → 重开，与 app shell 预渲染捆绑立项。
 
 ---
 
@@ -435,6 +440,7 @@
 
 ## 状态
 
+- 2026-08-20 **P-3 关闭**：评估定案——不实施 Service Worker，维持 SEC-3 的「不提供 SW」声明。判据：① 真实部署场景为本地/局域网（P-1 更正），静态资源与数据同机，SW 无收益面；② 数据层（IndexedDB）已离线，SW 仅补 app shell，而断网刷新问题在本地部署下不存在；③ 新 devDep 供应链审查 + SW 生命周期维护成本不成比例；④ 唯一收益场景（公网托管 + 移动弱网）P-1 已定性为超纯前端范围、另立项，届时与 app shell 预渲染捆绑评估。P-3 条目状态改「关闭」并附理由与触发条件。
 - 2026-08-18 **阶段 5（SEC-1~SEC-5）完成**：5 任务并行落地（one-task-per-agent，独立 worktree + 端口协议），全量验证绿：单测 **741**（731 +10 SEC-2）、`pnpm build` 绿、E2E **60/60 全绿**（58 + 2 SEC-1 CSP）、`pnpm audit` 零漏洞、lint 通过。提交 7 个任务 commit + 5 个 --no-ff merge（零冲突：vite.config.ts/index.html/e2e、src/lib+$bookId.tsx+opac-provider.ts、双 README、quality-hardening.md、package.json+CHANGELOG+AGENTS.md 各不重叠）+ 本文档。偏差：SEC-4 子代理在 lh.json 生成后卡死无收尾，由 Main 接手记录基线（LCP 4.12s 超标已立项、CLS 0/TBT 0ms 达标）；SEC-5 的 push/tag/release 由 Main 合并验证后统一执行。
 - 2026-08-18 **SEC-1 完成**：vite 内联插件 `apply:'build'` + `transformIndexHtml` 注入 CSP meta（`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.szlib.org.cn; font-src 'self'; object-src 'none'; base-uri 'self'`；注释记 style-src 为 ECharts/Radix 内联样式保留、frame-ancestors meta 无效→自有托管加 `X-Frame-Options: DENY` header）；index.html 加 referrer-policy `strict-origin-when-cross-origin`；新 `e2e/csp.spec.ts` 2 例（生产 HTML CSP meta 实体解码断言 + 主流程 `/`、`/library`、`/profile`、`/settings` console 无 violation，Worker 路径注明超出 e2e 覆盖）；dev 手验无 CSP meta（react-refresh 内联脚本不受影响）；e2e 全量 60/60。
 - 2026-08-18 **SEC-2 完成**：新 `src/lib/is-safe-external-url.ts`（`new URL` 解析，仅 `https:` scheme 放行，type guard）+ 10 单测（Red→Green 验证：`javascript:`/`data:`/`http:`/`ftp:`/protocol-relative/空值拒绝）；`$bookId.tsx` detailUrl 渲染守卫（szlib 恒 https，行为零变化，防新 provider 数据构造 URL 引入注入面）；`OpacProvider.detailUrl` JSDoc 明示「仅 https: 或 null」。
