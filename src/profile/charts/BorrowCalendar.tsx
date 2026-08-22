@@ -136,13 +136,16 @@ function BorrowCalendarImpl({ data, bookIndex, emptyTitle, emptyDescription }: P
       grid: {
         left: 8,
         right: 16,
-        top: view === 'year' ? 24 : 12,
+        // x 轴移顶（星期/月名标签在上）后，顶部留标签空间；y 轴 inverse 使
+        // 第一周（星期首行）在顶部，符合常见日历自上而下的阅读方向。
+        top: view === 'year' ? 28 : 26,
         bottom: 16,
         containLabel: true,
       },
       xAxis: {
         type: 'category',
         data: xAxisData,
+        position: 'top',
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
@@ -155,6 +158,7 @@ function BorrowCalendarImpl({ data, bookIndex, emptyTitle, emptyDescription }: P
       yAxis: {
         type: 'category',
         data: grid.yLabels,
+        inverse: true,
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { color: palette.mutedForeground, fontSize: 10 },
