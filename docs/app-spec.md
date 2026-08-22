@@ -8,6 +8,7 @@
 | 主题 | 文档 |
 |------|------|
 | 数据模型 | [docs/metadata](./metadata) + [src/db/schemas.ts](../src/db/schemas.ts) |
+| 竞品调研 | [bookology-benchmark](./bookology-benchmark.md)（Bookology 借鉴分析：借阅日历/年度目标/年度回顾 P0，笔记/书单 P1，计时器/书架/同步 P2 不借鉴） |
 | 设计决策与约束 | [design-decisions](./design-decisions.md) |
 | 供应链安全 | [npm-supply-chain-security](./npm-supply-chain-security.md)（pnpm 等价映射见 §5） |
 | AI Agent 工作流 | [ai-agent-workflow-rules](./ai-agent-workflow-rules.md) |

@@ -33,7 +33,9 @@ src/
 │     ├─ ClassificationTreemap.tsx
 │     ├─ BorrowGantt.tsx
 │     ├─ BorrowVolumeBar.tsx
-│     └─ DurationDistribution.tsx
+│     ├─ DurationDistribution.tsx
+│     ├─ BorrowCalendar.tsx      # 借阅日历热力图（ECharts heatmap；年/月视图 + 导航）
+│     └─ calendar-grid.ts        # 日历网格纯函数：年/月视图产格、周序、配色、tooltip HTML
 └─ routes/
    └─ profile.tsx             # 阅读画像页（改造现有占位页为图表主导布局）
 ```
@@ -57,10 +59,12 @@ interface ProfileStatsInput {
 interface ProfileStatsOptions {
   /** 分类体系，缺省取各 Source 的 LibraryInfo.classificationSystem 多数票；仍空取 'clc' */
   classificationSystem: ClassificationSystem | null
-  /** 时间范围（UTC），null 表示不限；用于按月/按年/甘特的区间裁剪 */
+  /** 时间范围（UTC），null 表示不限；用于按月/按年/甘特/借阅日历的区间裁剪 */
   range: { from: Date | null; to: Date | null } | null
   /** displayTimezone（IANA），仅影响轴标签呈现，不影响桶归属 */
   displayTimezone: string
+  /** 借阅日历「今天」锚（调用方传入，纯函数不读 Date.now()）：开区间在借周期（returnedAt=null）的天区间收敛到该日；null 时在借周期只计入借出当日（单日口径，§2.6） */
+  calendarAnchor: Date | null
 }
 
 interface ProfileStatsResult {
@@ -70,6 +74,29 @@ interface ProfileStatsResult {
   durationDistribution: { range: string; count: number }[]                                     // 借阅时长直方图
   gantt: { laneKey: string; label: string; volume: string | null; intervals: { start: string; end: string | null; status: BorrowCycle['status'] }[] }[]
   money: MoneyStats                                                                           // 价值统计（§2.5）
+  calendar: CalendarStats                                                                     // 借阅日历（§2.6，bookology-benchmark §5.1）
+}
+
+/** 借阅日历单日格：当天处于在借期（`[borrowedAt, returnedAt)` 与该 UTC 日相交）的独立 Book。 */
+interface CalendarDay {
+  /** UTC 日桶键 'YYYY-MM-DD'（日起点；displayTimezone 不影响桶归属） */
+  date: string
+  /** 当天在借的独立 Book 数（bookId 去重，设备排除） */
+  count: number
+  /** 当天在借的独立 bookId，升序（图表 tooltip 列书名用） */
+  bookIds: string[]
+}
+
+interface CalendarStats {
+  /** 去重 UTC 天格（升序）；range 口径——仅 borrowedAt ∈ range 的非设备周期计入（与 gantt/borrowVolume 同） */
+  days: CalendarDay[]
+  /** 借阅天数（全量口径）：所有非设备周期的天区间并集去重计数，与 range 无关；概览行「借阅天数」卡 */
+  borrowDays: number
+  /** days 最早/最晚日 'YYYY-MM-DD'；无数据 → null（图表视图/导航边界） */
+  minDate: string | null
+  maxDate: string | null
+  /** days 中出现过的 bookId → 题名/封面（tooltip 列书名与封面缩略图；不携带整本 Book） */
+  bookIndex: Record<string, { title: string; coverUrl: string | null }>
 }
 
 /** 单币种金额聚合：整数「分」累计避免浮点误差；amount 为元，展示层格式化 */
@@ -99,7 +126,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 **各维度语义**：
 
-0. **设备排除总则**（[device-borrows 规格 §4](device-borrows.md#4-统计排除stats)）：`Book.materialType='device'`（电子书阅读器等非书实物，由 szlib parser 依 `cirtype="电子设备外借"` 标记）的 Book 与其全部 BorrowCycle **不进入任何维度**——`summary.*`、分类 treemap、借阅量柱图、时长分布、甘特带均排除；`inBorrow` 不计设备在借。排除在 `computeProfileStats` 内部完成（同步 `useMemo` 与 Worker 共用同一纯函数入口，两路径自动覆盖）；无设备数据时结果与旧语义等价。设备借阅历史仍由 `/timeline` 展示，本页仅统计排除。
+0. **设备排除总则**（[device-borrows 规格 §4](device-borrows.md#4-统计排除stats)）：`Book.materialType='device'`（电子书阅读器等非书实物，由 szlib parser 依 `cirtype="电子设备外借"` 标记）的 Book 与其全部 BorrowCycle **不进入任何维度**——`summary.*`、分类 treemap、借阅量柱图、时长分布、甘特带、借阅日历均排除；`inBorrow` 不计设备在借。排除在 `computeProfileStats` 内部完成（同步 `useMemo` 与 Worker 共用同一纯函数入口，两路径自动覆盖）；无设备数据时结果与旧语义等价。设备借阅历史仍由 `/timeline` 展示，本页仅统计排除。
 
 1. **分类法分布 treemap**（`classification`）
    - 体系取 `opts.classificationSystem`；缺省度量为各 `Source.library.classificationSystem` 的多数票（无则 `'clc'`）。
@@ -129,6 +156,15 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
    - **范围语义**：`collectionValue`/`avgPrice`/`distribution` 为**全量**（与 time range 无关——馆藏价值是存量快照）；`borrowedValue` 随 range 裁剪（近 1 年/近 3 年/自定义区间只计区间内首次借出的书）。
    - **价格分布直方图**（`distribution`）：仅统计 `currency === dominantCurrency` 的有定价 Book（其余币种不入图，`multiCurrency` 标记由 UI 脚注说明）；固定分桶 `<20`/`20–50`/`50–100`/`100–200`/`>200`（主导币种单位，range 串不带货币符号，币种由图表上下文标注；分桶阈值与 `durationDistribution` 同为纯函数内常量）。零定价（amount=0）书仍计 `count`，不特殊排除。
 
+6. **借阅日历（`calendar`，bookology-benchmark §5.1 可借鉴点 P0）**
+   - **语义边界**：Bookology 的日历是「读过/在读」的**阅读行为**日历；ReadGraph 只有借阅周期，本维度是「手上有书」的**借阅日历**——文案一律「借阅」口径（`profile.calendar.*`/`profile.summary.borrowDays`），禁止「阅读」措辞。
+   - **单日格语义**：UTC 日 D（`[D 00:00, D+1 00:00)`）有在借周期，当且仅当存在非设备周期使 `[borrowedAt, returnedAt)` 与 D 相交（`borrowedAt < D+1 00:00` 且 `returnedAt` 为 null 或 `> D 00:00`）。借出日与归还日当天均计入（当天手上确实有书）；`returnedAt` 恰为某日 00:00:00.000 时该日不计（实现用 `dayNum(returnedAt - 1ms)` 退一天，跨年/跨月边界正确）。
+   - **天区间实现**：`dayNum(t) = floor(t / 86_400_000)`；周期覆盖 `[dayNum(borrowedAt), end]` 全部整日，其中 `end = returnedAt != null ? dayNum(returnedAt - 1) : dayNum(calendarAnchor ?? borrowedAt)`。开区间（`status='borrowed'`）收敛到锚点日；锚为 null 时收敛到借出当日（单日口径）；锚早于借出日（数据异常）→ 天区间为空，不计入、不抛错。
+   - **口径**：`days` 为 range 口径（仅 `borrowedAt ∈ range` 的周期计入，与 gantt/borrowVolume 一致，图表随工具条范围联动）；`borrowDays` 为全量口径（所有非设备周期天区间并集去重，与 range 无关——与概览行其余卡片全量口径一致，对照 money `collectionValue`/`borrowedValue` 的全量/range 双口径先例）。
+   - **每日去重**：同一天多个周期来自同一 bookId 只计一次（`count` 为独立 Book 数）；`bookIds` 升序。跨日叠加（同日两本书）各自展开到所属天。
+   - **呈现**：ECharts `heatmap` series（已选型，[design-decisions 图表选型](../design-decisions.md)），GitHub 贡献图式网格；年视图（x=周列，y=7 行星期）+ 月视图（x=7 列星期，y=月内周行）由 `src/profile/charts/calendar-grid.ts` 纯函数产格；格子以计数强度着色（`--chart-2` 松叶色 + alpha 阶），无数据日弱底格；tooltip 列当日题名（含 `Book.coverUrl` 封面缩略图，≤8 本 + 「另有 N 本」折叠）。封面无数据也成立（计数格恒有）。**无需新依赖**（heatmap 为 ECharts 内置图种）。
+   - **UTC 桶归属**：日键取 UTC getter，`displayTimezone` 不影响桶归属；周起始日随 locale（zh 周一 / en 周日），仅影响行列排布，不影响日→桶映射。
+
 ## 3. ECharts 主题与薄适配层
 
 `src/lib/echarts-theme.ts`（对照 [design-decisions](../design-decisions.md)「图表选型」薄适配约束）：
@@ -143,13 +179,14 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
   - 若使用 `axisName`（轴标题），显式设 `grid.outerBoundsMode: 'none'`（或对应轴 `nameMoveOverlap: false`），避免 v6 默认开启的外溢/重叠规避导致轴位微移。
 
 ## 4. UI 设计说明
-
 **布局**（单页全幅，方向 B 图谱语言）：
-- 顶部一行概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 平均借阅时长），等宽数字 + 标签；卡片窄、克制，不抢图谱视觉。
+- 顶部一行概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 平均借阅时长 / **借阅天数**），等宽数字 + 标签；卡片窄、克制，不抢图谱视觉。借阅天数取 `calendar.borrowDays`（全量口径，与其余概览卡一致；随 4 卡变 5 卡，栅格 `md:grid-cols-5`）。
 - 概览行下方为**价值统计卡行**（同款窄卡片，独立一行）：馆藏总价值 / 借阅图书价值 / 平均书价。金额用 `Intl.NumberFormat` 货币格式（等宽数字，符号随 locale）；馆藏总价值与平均书价不受时间范围影响，**借阅图书价值随 range 切换联动**（卡片标签标注当前 range，如「近 1 年」）；多币种时头条取 `dominantCurrency`，`multiCurrency=true` 时该卡下方加脚注（`其他币种：USD $… / JPY …`，一行灰字）。
-- 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅量 / 借阅时长分布 / 价格分布，标签键 `profile.chart.*.title`，新增 `profile.chart.price.title` 与 `profile.money.*` 键时按 [i18n-conventions](../i18n-conventions.md) 两语同时补齐）：
+- 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅量 / 借阅时长分布 / 价格分布 / **借阅日历**，标签键 `profile.chart.*.title`，新增 `profile.calendar.*` 与 `profile.summary.borrowDays` 键时按 [i18n-conventions](../i18n-conventions.md) 两语同时补齐）：
   - 每次仅激活一个图谱块，独占全幅宽度与视口高度，互不挤压（书多时甘特 lane 不再被压扁）；
-  - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）。
+  - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）→ 借阅日历（年视图 ~280px / 月视图 ~380px，heatmap 网格）。
+  - **借阅日历 tab 内部**：内容区顶部一行薄工具条（不抢图）：左「借阅天数」口径显示（当前可见月/年 `days` 内的去重天数，如「2026 年 · 借阅 45 天」）+ 视图切换 `SegmentedControl`（年视图 / 月视图，默认月视图，键 `profile.calendar.view.*`）+ 上一/下一导航按钮（`‹`/`›`，aria-label 随视图：上一年/下一年/上一月/下一月）；默认锚定 `maxDate` 所在月/年，导航不越界钳制（无数据期间渲染全弱底网格，不空态）。
+  - **热力图**：年视图 x 轴 = 周列（含月名标签，仅月初列标 `Intl` 月名）、y 轴 = 7 行星期短名（`Intl`，UTC）；月视图 x 轴 = 星期短名，y 轴无标签（月内周行）。格色 = `--chart-2` 松叶色按 count 分 alpha 阶（1–4+ 步进），count=0 弱底格（border 色低 alpha）；tooltip 为日期 + 在借本数 + 题名列表（封面缩略图 ≤8 本 + 「另有 N 本」），HTML 转义书名/URL（防注入）。容器 `role="img"` + aria-label（A-1）。
 - 图表是主角、全幅；无外层装饰卡片包裹图谱块（[ui-navigation §3](ui-navigation.md#3-各功能页布局与空状态) 禁卡片套卡片）；TabsList 即区块标题，内容区不重复标题。
 
 **交互**：
@@ -197,6 +234,10 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 11. 作为用户，藏书含外币计价书（如 USD/JPY）→ 头条显示主导币种合计，卡脚注列出其余币种金额，价格分布图仅主导币种且有脚注说明；不做任何隐式汇率换算。
 12. 作为用户，有书但全库无定价 → 价值卡金额显示 `—`，价格分布 tab 空态，整页不报错；不出现补全引导（补价与否自由抉择）。
 13. 作为用户，藏书中含设备书（电子书阅读器）与占位书 → 设备书不计入价值；占位书（无定价）不计值，无异常。
+14. 作为用户，导入数据后进入 `/profile` → 概览行第 5 卡「借阅天数」= 全量有在借周期的去重 UTC 天数（设备书不计）；切「近 1 年」后该卡不变（全量口径），借阅日历 tab 图内天格随 range 裁剪。
+15. 作为用户，打开借阅日历 tab → 默认月视图锚定最新有数据月份；当天格按在借 Book 数着色，无数据日弱底格；切「年视图」显示全年网格与月初月名标签；切中英 → 星期名、月名、tooltip 随 locale，周起始日切换（zh 周一 / en 周日）；上一/下一导航切换月/年，空期间全弱底网格不报错。
+16. 作为用户，同日借多本书（含同书重复借阅周期叠加）→ 该日格计数 = 独立 Book 数（不按周期数）；hover 该格 tooltip 列当日书名与封面缩略图（>8 本折叠「另有 N 本」），书名含 `<`/`&` 等字符正常显示不注入。
+17. 作为用户，存在 `status='borrowed'` 在借周期 → 其天格延续至今天（会话内锚点）；`returnedAt` 恰为某日 00:00（UTC）的周期不计归还当日；异常（锚早于借出日）周期不产生天格、页面不崩。
 
 ## 7. 测试清单
 
@@ -214,10 +255,17 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 纯函数性：`money` 同输入两次调用深等价（含整数分累计路径）；聚合层不产生 `Intl` 格式化（代码审计）。
 - 甘特：lane=`bookId+barcode`；无 barcode 退化；区间升序；`borrowed` 返回 `end=null`；套装书 lane 携带 `volume`（catalogRecordId 直查 / barcode 兜底 / 解析不到为 null），非套装恒 `null`。
 - 纯函数性：同输入两次调用深等价；无 `Date.now()`（代码审计/依赖检查）。
+- calendar 空态：空入参 `calendar.days=[]`、`borrowDays=0`、`minDate/maxDate=null`、`bookIndex={}`。
+- calendar 天区间：借出日与归还日均计入（相交语义）；`returnedAt` 恰为 UTC 日 00:00 → 该日不计；跨月/跨年（含闰年、`-1ms` 跨 1 月 1 日）边界正确。
+- calendar 开区间：`status='borrowed'` 天格收敛到 `calendarAnchor`；锚为 null → 仅借出当日；锚早于借出日 → 零天格不抛错。
+- calendar 去重：同日同书多周期计 1；`bookIds` 升序；同日多书 count=独立 Book 数；跨日叠加各自展开。
+- calendar 口径：`borrowDays` 全量（与 range 无关、含 range 外周期）；`days` 随 range 裁剪（`borrowedAt ∈ range` 左闭右开）；`minDate/maxDate` 取自 `days`。
+- calendar 排除：设备书周期不产生天格、不入 `borrowDays`；UTC 桶归属与 displayTimezone 无关；纯函数性（同输入含锚两次调用深等价、不读 `Date.now()`）。
+- calendar-grid 纯函数：年/月视图产格行列正确（周起始随 locale、月初列标签、月内周行）；格色 alpha 阶（0/1/2/3/4+）；`bookIndex` 缺失 bookId 不抛错；tooltip HTML 转义书名与 URL。
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
-- 脱敏数据下逐 tab 激活后 ECharts canvas 非空像素（treemap/柱图/甘特/价格分布分别校验；每次仅激活一个 canvas）。
+- 脱敏数据下逐 tab 激活后 ECharts canvas 非空像素（treemap/柱图/甘特/价格分布/借阅日历分别校验；每次仅激活一个图谱块 canvas——借阅日历例外：HeatmapView 内建分层渲染固定 2 个 canvas（主层 + HeatmapLayer），断言按 2 计）；借阅日历 tab 内切「年视图」后 canvas 重绘且月名标签随 locale。
 - 脱敏数据（含定价字段）下价值卡行：馆藏总价值/借阅图书价值/平均书价按 `Intl` 货币格式呈现；切 locale 后货币符号与标签切换；切「近 1 年」后借阅图书价值变化而馆藏总价值不变。
 - 分类体系 `SegmentedControl` 切换后 canvas 重绘、类目 tooltip 文本随 locale 切换。
 - 暗色切换 → 图表配色变化（canvas 像素采样差异），reload 仍为暗色。

@@ -30,10 +30,12 @@ export function initECharts(): Promise<EChartsCore> {
       charts.TreemapChart,
       charts.BarChart,
       charts.CustomChart,
+      charts.HeatmapChart,
       components.TooltipComponent,
       components.GridComponent,
       components.LegendComponent,
       components.DataZoomComponent,
+      components.VisualMapComponent,
       renderers.CanvasRenderer,
     ])
     return core

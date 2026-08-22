@@ -71,6 +71,11 @@ const PriceDistribution = lazy(() =>
     default: m.PriceDistribution,
   })),
 )
+const BorrowCalendar = lazy(() =>
+  import('@/profile/charts/BorrowCalendar').then((m) => ({
+    default: m.BorrowCalendar,
+  })),
+)
 
 export const Route = createFileRoute('/profile')({
   component: ProfilePage,
@@ -134,8 +139,8 @@ function ProfilePage() {
 
   // opts 经 hook 内 useDeferredValue 延迟重算；这里也 deferred 一份给派生显示。
   const opts = useMemo(
-    () => ({ classificationSystem, range, displayTimezone }),
-    [classificationSystem, range, displayTimezone],
+    () => ({ classificationSystem, range, displayTimezone, calendarAnchor: new Date(sessionNow) }),
+    [classificationSystem, range, displayTimezone, sessionNow],
   )
   const deferredOpts = useDeferredValue(opts)
 
@@ -311,6 +316,9 @@ function ProfilePage() {
               <TabsTrigger value="price">
                 {t('profile.chart.price.title')}
               </TabsTrigger>
+              <TabsTrigger value="calendar">
+                {t('profile.chart.calendar.title')}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="classification" aria-busy={isPending || computing}>
@@ -396,6 +404,23 @@ function ProfilePage() {
                 </ErrorBoundary>
               )}
             </TabsContent>
+
+            <TabsContent value="calendar" aria-busy={isPending || computing}>
+              {isPending || computing ? (
+                <Skeleton className="h-[380px] w-full" />
+              ) : (
+                <ErrorBoundary title={errorTitle} description={errorDesc}>
+                  <Suspense fallback={<Skeleton className="h-[380px] w-full" aria-busy />}>
+                    <BorrowCalendar
+                      data={result?.calendar.days ?? []}
+                      bookIndex={result?.calendar.bookIndex ?? {}}
+                      emptyTitle={partialTitle}
+                      emptyDescription={partialDesc}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </TabsContent>
           </Tabs>
         </>
       )}
@@ -415,11 +440,12 @@ const SummaryCards = memo(function SummaryCards({
   result,
   pending,
 }: {
-  result: ReturnType<typeof useProfileStats>['result']
+  result: ProfileStatsResult | null
   pending: boolean
 }) {
   const { t } = useTranslation('pages')
   const s = result?.summary ?? EMPTY_SUMMARY
+  const borrowDays = result?.calendar.borrowDays ?? 0
   const unit = t('profile.summary.days')
   const fmtDays = (v: number | null): string =>
     v === null ? '—' : `${v.toFixed(1)} ${unit}`
@@ -428,10 +454,11 @@ const SummaryCards = memo(function SummaryCards({
     { label: t('profile.summary.totalCycles'), value: String(s.totalCycles) },
     { label: t('profile.summary.inBorrow'), value: String(s.inBorrow) },
     { label: t('profile.summary.avgDuration'), value: fmtDays(s.avgDurationDays) },
+    { label: t('profile.summary.borrowDays'), value: String(borrowDays) },
   ]
   return (
     <div
-      className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-4"
+      className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-5"
       data-slot="profile-summary"
       aria-busy={pending}
       aria-live="polite"

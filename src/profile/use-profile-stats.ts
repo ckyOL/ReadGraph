@@ -29,6 +29,8 @@ export interface UseProfileStatsOptions {
   classificationSystem: ClassificationSystem | null
   range: { from: Date | null; to: Date | null } | null
   displayTimezone: string
+  /** 借阅日历「今天」锚（调用方传入，不读 Date.now()） */
+  calendarAnchor: Date | null
 }
 
 export interface ProfileStatsState {

@@ -47,15 +47,37 @@ test.describe('profile page — charts with seeded data', () => {
       /Borrow timeline|借阅甘特带/,
       /Borrow volume|借阅量/,
       /Borrow duration distribution|借阅时长分布/,
+      /Price distribution|价格分布/,
+      /Borrow calendar|借阅日历/,
     ]
     for (const name of chartTabs) {
       await page.getByRole('tab', { name }).click()
-      await expect(page.locator('canvas')).toHaveCount(1, { timeout: 10000 })
-      const box = await page.locator('canvas').boundingBox()
+      // 借阅日历为 ECharts heatmap：HeatmapView 内建分层渲染（主层 + HeatmapLayer），
+      // 单个图谱块固定产出 2 个 canvas；其余图种 1 个。
+      const expected = name.source.includes('calendar') ? 2 : 1
+      await expect(page.locator('canvas')).toHaveCount(expected, { timeout: 10000 })
+      const box = await page.locator('canvas').first().boundingBox()
       expect(box).not.toBeNull()
       expect(box!.width).toBeGreaterThan(10)
       expect(box!.height).toBeGreaterThan(10)
     }
+  })
+
+  test('borrow calendar renders heatmap and switches year/month views', async ({
+    page,
+  }) => {
+    await page.goto('/profile')
+    await page.getByRole('tab', { name: /Borrow calendar|借阅日历/ }).click()
+    // heatmap 分层渲染：主层 + HeatmapLayer 固定 2 个 canvas（见上）。
+    await expect(page.locator('canvas')).toHaveCount(2, { timeout: 10000 })
+    // 概览行「借阅天数」卡出现（fixtures 有借阅周期）。
+    await expect(page.getByText(/Borrow days|借阅天数/).first()).toBeVisible()
+    // 默认月视图 → 切「年视图」后 canvas 数不变且重绘。
+    await page.getByRole('radio', { name: /Year|年视图/ }).click()
+    await expect(page.locator('canvas')).toHaveCount(2, { timeout: 10000 })
+    const box = await page.locator('canvas').first().boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.width).toBeGreaterThan(10)
   })
 
   test('range switch re-renders charts', async ({ page }) => {

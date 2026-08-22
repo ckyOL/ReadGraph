@@ -65,12 +65,14 @@ const OPTS_CLC: UseProfileStatsOptions = {
   classificationSystem: 'clc',
   range: null,
   displayTimezone: 'UTC',
+  calendarAnchor: null,
 }
 
 const OPTS_DDC: UseProfileStatsOptions = {
   classificationSystem: 'ddc',
   range: null,
   displayTimezone: 'UTC',
+  calendarAnchor: null,
 }
 
 function renderHook(opts: UseProfileStatsOptions) {

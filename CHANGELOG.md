@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
+  (adaptation of the Bookology Stats calendar, see `docs/bookology-benchmark.md`
+  §5.1): each day cell counts distinct books held in borrow that day (UTC day
+  buckets, device borrows excluded); month/year views with navigation, borrow-day
+  summary in the overview row ("Borrow days", 5th card), and a per-day tooltip
+  listing titles with cover thumbnails. Aggregated by a new pure `calendar`
+  dimension in `computeProfileStats` (open-ended cycles anchored to a
+  caller-supplied "today"); rendered with the ECharts heatmap series — no new
+  dependencies.
 - **Classification badge tooltip** — replaced the native `title` tooltip with a
   Radix-powered styled tooltip (paper-ink: square corners, theme popover colors,
   per-line breadcrumb with mono codes; partial-tree hint and auxiliary segment

@@ -23,6 +23,8 @@ export interface ProfileStatsOptions {
   classificationSystem: ClassificationSystem | null
   range: { from: Date | null; to: Date | null } | null
   displayTimezone: string
+  /** 借阅日历「今天」锚（调用方传入，不读 Date.now()）：开区间在借周期收敛到该日；null → 仅借出当日 */
+  calendarAnchor: Date | null
 }
 
 interface ClassificationBucket {
@@ -69,6 +71,29 @@ export interface ProfileStatsResult {
   durationDistribution: DurationBucket[]
   gantt: GanttLane[]
   money: MoneyStats
+  calendar: CalendarStats
+}
+
+/** 借阅日历单日格：当天处于在借期的独立 Book（reading-profile §2.6）。 */
+export interface CalendarDay {
+  /** UTC 日桶键 'YYYY-MM-DD'（日起点；displayTimezone 不影响桶归属） */
+  date: string
+  /** 当天在借的独立 Book 数（bookId 去重，设备排除） */
+  count: number
+  /** 当天在借的独立 bookId，升序 */
+  bookIds: string[]
+}
+
+export interface CalendarStats {
+  /** 去重 UTC 天格（升序）；range 口径——仅 borrowedAt ∈ range 的非设备周期计入 */
+  days: CalendarDay[]
+  /** 借阅天数（全量口径）：所有非设备周期天区间并集去重计数，与 range 无关 */
+  borrowDays: number
+  /** days 最早/最晚日；无数据 → null */
+  minDate: string | null
+  maxDate: string | null
+  /** days 中出现过的 bookId → 题名/封面（tooltip 用） */
+  bookIndex: Record<string, { title: string; coverUrl: string | null }>
 }
 
 /** 单币种金额聚合：整数「分」累计避免浮点误差；amount 为元，展示层格式化 */
@@ -299,6 +324,63 @@ export function computeProfileStats(
   }
   const gantt = Array.from(laneMap.values())
 
+  // --- 借阅日历（bookology-benchmark §5.1 / reading-profile §2.6） ---
+  // 天区间相交语义：cycle 覆盖 [dayNum(borrowedAt), end] 全部 UTC 整日；
+  // end = dayNum(returnedAt - 1ms)（恰为日 00:00 时退一天）或锚点日（开区间）。
+  // days 为 range 口径，borrowDays 为全量口径（allDays 与 range 无关）。
+  const dayNum = (ts: number): number => Math.floor(ts / MS_PER_DAY)
+  const dateKeyOf = (n: number): string =>
+    new Date(n * MS_PER_DAY).toISOString().slice(0, 10)
+  const anchorDayNum = opts.calendarAnchor
+    ? dayNum(opts.calendarAnchor.getTime())
+    : null
+
+  const dayBooks = new Map<number, Set<string>>()
+  const allDays = new Set<number>()
+  const calendarBookIds = new Set<string>()
+
+  for (const c of borrowCycles) {
+    if (isDeviceCycle(c)) continue
+    const start = dayNum(c.borrowedAt.getTime())
+    const end =
+      c.returnedAt != null
+        ? dayNum(c.returnedAt.getTime() - 1)
+        : (anchorDayNum ?? start)
+    if (end < start) continue // 数据异常（锚早于借出日）：不产生天格
+    const inScope = inRange(c.borrowedAt, opts.range)
+    for (let d = start; d <= end; d++) {
+      allDays.add(d)
+      if (!inScope) continue
+      let ids = dayBooks.get(d)
+      if (!ids) {
+        ids = new Set<string>()
+        dayBooks.set(d, ids)
+      }
+      ids.add(c.bookId)
+    }
+    if (inScope) calendarBookIds.add(c.bookId)
+  }
+
+  const dayNums = Array.from(dayBooks.keys()).sort((a, b) => a - b)
+  const days: CalendarDay[] = dayNums.map((n) => {
+    const ids = Array.from(dayBooks.get(n) ?? []).sort()
+    return { date: dateKeyOf(n), count: ids.length, bookIds: ids }
+  })
+  const bookIndex: CalendarStats['bookIndex'] = {}
+  for (const id of calendarBookIds) {
+    const book = bookById.get(id)
+    if (!book) continue
+    bookIndex[id] = { title: book.title, coverUrl: book.coverUrl }
+  }
+  const calendar: CalendarStats = {
+    days,
+    borrowDays: allDays.size,
+    minDate: dayNums.length > 0 ? dateKeyOf(dayNums[0]) : null,
+    maxDate: dayNums.length > 0 ? dateKeyOf(dayNums[dayNums.length - 1]) : null,
+    bookIndex,
+  }
+
+
   // --- 概览汇总 ---
   let inBorrow = 0
   for (const c of borrowCycles) {
@@ -395,6 +477,7 @@ export function computeProfileStats(
     borrowVolume,
     durationDistribution,
     gantt,
+    calendar,
     money: {
       collectionValue,
       borrowedValue,

@@ -107,7 +107,7 @@ function makeSource(id: string, system: ClassificationSystem | null): Source {
   }
 }
 
-const NO_OP = { classificationSystem: null, range: null, displayTimezone: 'UTC' }
+const NO_OP = { classificationSystem: null, range: null, displayTimezone: 'UTC', calendarAnchor: null }
 
 describe('computeProfileStats - empty input', () => {
   it('空入参返回全零结构且不抛异常', () => {
@@ -157,7 +157,7 @@ describe('computeProfileStats - 分类体系缺省度量', () => {
     // 显式指定 ddc 时不再多数票
     const r2 = computeProfileStats(
       { books: [b], catalogRecords: [cr], borrowCycles: [], sources: [makeSource('s1', 'clc'), makeSource('s2', 'ddc')] },
-      { classificationSystem: 'ddc', range: null, displayTimezone: 'UTC' },
+      { classificationSystem: 'ddc', range: null, displayTimezone: 'UTC', calendarAnchor: null },
     )
     // DDC 一级归并输出 category 始终取内置一级类目名（spec §11.2「主类名」）
     expect(r2.classification).toContainEqual(
@@ -202,7 +202,7 @@ describe('computeProfileStats - CLC/DDC 一级归并 + 未分类', () => {
     })
     const r = computeProfileStats(
       { books: [b], catalogRecords: [cr], borrowCycles: [], sources: [makeSource('s1', 'ddc')] },
-      { classificationSystem: 'ddc', range: null, displayTimezone: 'UTC' },
+      { classificationSystem: 'ddc', range: null, displayTimezone: 'UTC', calendarAnchor: null },
     )
     expect(r.classification).toContainEqual(
       expect.objectContaining({ code: '0', category: 'Computer science, information & general works', value: 1 }),
@@ -280,7 +280,7 @@ describe('computeProfileStats - 借阅量桶', () => {
     ]
     const r = computeProfileStats(
       { books: [makeBook('b1'), makeBook('b2'), makeBook('b3')], catalogRecords: [], borrowCycles: cycles, sources: [] },
-      { classificationSystem: null, range: { from: U('2023-06-01T00:00:00Z'), to: U('2024-01-01T00:00:00Z') }, displayTimezone: 'UTC' },
+      { classificationSystem: null, range: { from: U('2023-06-01T00:00:00Z'), to: U('2024-01-01T00:00:00Z') }, displayTimezone: 'UTC', calendarAnchor: null },
     )
     const stayedI = r.borrowVolume.find((p) => p.bucket.startsWith('2023-09'))
     expect(stayedI?.count).toBe(1)
@@ -297,11 +297,11 @@ describe('computeProfileStats - 借阅量桶', () => {
     ]
     const rSH = computeProfileStats(
       { books: [makeBook('b1')], catalogRecords: [], borrowCycles: cycles, sources: [] },
-      { classificationSystem: null, range: null, displayTimezone: 'Asia/Shanghai' },
+      { classificationSystem: null, range: null, displayTimezone: 'Asia/Shanghai', calendarAnchor: null },
     )
     const rNY = computeProfileStats(
       { books: [makeBook('b1')], catalogRecords: [], borrowCycles: cycles, sources: [] },
-      { classificationSystem: null, range: null, displayTimezone: 'America/New_York' },
+      { classificationSystem: null, range: null, displayTimezone: 'America/New_York', calendarAnchor: null },
     )
     expect(rSH.borrowVolume).toEqual(rNY.borrowVolume)
     // UTC 桶应为 2023-01
@@ -691,6 +691,7 @@ describe('computeProfileStats - money 价值统计（reading-profile 规格 §2.
         classificationSystem: null,
         range: { from: U('2023-06-15T00:00:00Z'), to: U('2024-01-01T00:00:00Z') },
         displayTimezone: 'UTC',
+        calendarAnchor: null,
       },
     )
     expect(r.money.borrowedValue).toEqual([{ currency: 'CNY', amount: 30, count: 2 }])
@@ -763,5 +764,282 @@ describe('computeProfileStats - money 价值统计（reading-profile 规格 §2.
     expect(r.money.dominantCurrency).toBeNull()
     expect(r.money.distribution).toEqual([])
     expect(r.money.multiCurrency).toBe(false)
+  })
+})
+
+describe('computeProfileStats - 借阅日历（reading-profile 规格 §2.6）', () => {
+  const withAnchor = (anchor: Date) => ({ ...NO_OP, calendarAnchor: anchor })
+
+  it('空入参返回全零结构且不抛异常', () => {
+    const r = computeProfileStats(
+      { books: [], catalogRecords: [], borrowCycles: [], sources: [] },
+      withAnchor(Day1),
+    )
+    expect(r.calendar).toEqual({
+      days: [],
+      borrowDays: 0,
+      minDate: null,
+      maxDate: null,
+      bookIndex: {},
+    })
+  })
+
+  it('天区间：借出日与归还日均计入（相交语义）', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1', { title: 'book-one' })],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T10:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-17T23:00:00Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2023-03-01T00:00:00Z')),
+    )
+    expect(r.calendar.days.map((d) => d.date)).toEqual([
+      '2023-01-15',
+      '2023-01-16',
+      '2023-01-17',
+    ])
+    expect(r.calendar.borrowDays).toBe(3)
+    expect(r.calendar.minDate).toBe('2023-01-15')
+    expect(r.calendar.maxDate).toBe('2023-01-17')
+    expect(r.calendar.days[0]).toMatchObject({ count: 1, bookIds: ['b1'] })
+    expect(r.calendar.bookIndex).toEqual({ b1: { title: 'book-one', coverUrl: null } })
+  })
+
+  it('returnedAt 恰为 UTC 日 00:00 → 该日不计', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1')],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-17T00:00:00.000Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2023-03-01T00:00:00Z')),
+    )
+    expect(r.calendar.days.map((d) => d.date)).toEqual(['2023-01-15', '2023-01-16'])
+    expect(r.calendar.maxDate).toBe('2023-01-16')
+  })
+
+  it('returnedAt 恰为 1 月 1 日 00:00 → -1ms 跨年边界正确', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1')],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-12-31T08:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2024-01-01T00:00:00.000Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2024-03-01T00:00:00Z')),
+    )
+    expect(r.calendar.days.map((d) => d.date)).toEqual(['2023-12-31'])
+  })
+
+  it('闰年跨月：2 月 28 日借、3 月 1 日还 → 含 2 月 29 日', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1')],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2024-02-28T10:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2024-03-01T05:00:00Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2024-03-10T00:00:00Z')),
+    )
+    expect(r.calendar.days.map((d) => d.date)).toEqual([
+      '2024-02-28',
+      '2024-02-29',
+      '2024-03-01',
+    ])
+  })
+
+  it('开区间收敛到 calendarAnchor；锚为 null → 仅借出当日；锚早于借出日 → 零天格', () => {
+    const base = {
+      books: [makeBook('b1')],
+      catalogRecords: [],
+      borrowCycles: [
+        makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), { status: 'borrowed' }),
+      ],
+      sources: [],
+    }
+    const anchored = computeProfileStats(base, withAnchor(U('2023-01-20T00:00:00Z')))
+    expect(anchored.calendar.days.map((d) => d.date)).toEqual([
+      '2023-01-15',
+      '2023-01-16',
+      '2023-01-17',
+      '2023-01-18',
+      '2023-01-19',
+      '2023-01-20',
+    ])
+    expect(anchored.calendar.borrowDays).toBe(6)
+
+    const noAnchor = computeProfileStats(base, { ...NO_OP, calendarAnchor: null })
+    expect(noAnchor.calendar.days.map((d) => d.date)).toEqual(['2023-01-15'])
+
+    const past = computeProfileStats(
+      base,
+      withAnchor(U('2023-01-01T00:00:00Z')),
+    )
+    expect(past.calendar.days).toEqual([])
+    expect(past.calendar.borrowDays).toBe(0)
+  })
+
+  it('同日同书多周期只计 1；同日多书 count=独立 Book 数且 bookIds 升序', () => {
+    const r = computeProfileStats(
+      {
+        books: [makeBook('b1'), makeBook('b2')],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-20T00:00:00Z'),
+          }),
+          makeCycle('c2', 'b1', U('2023-01-17T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-22T00:00:00Z'),
+          }),
+          makeCycle('c3', 'b2', U('2023-01-18T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-20T00:00:00Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2023-02-01T00:00:00Z')),
+    )
+    const d18 = r.calendar.days.find((d) => d.date === '2023-01-18')
+    expect(d18).toMatchObject({ count: 2, bookIds: ['b1', 'b2'] })
+    const d16 = r.calendar.days.find((d) => d.date === '2023-01-16')
+    expect(d16).toMatchObject({ count: 1, bookIds: ['b1'] })
+    expect(Object.keys(r.calendar.bookIndex).sort()).toEqual(['b1', 'b2'])
+  })
+
+  it('口径：borrowDays 全量与 range 无关；days 随 range 裁剪（左闭右开）', () => {
+    const base = {
+      books: [makeBook('b1'), makeBook('b2')],
+      catalogRecords: [],
+      borrowCycles: [
+        makeCycle('c1', 'b1', U('2023-03-15T00:00:00Z'), {
+          status: 'returned',
+          returnedAt: U('2023-03-22T12:00:00Z'),
+        }),
+        makeCycle('c2', 'b2', U('2024-02-15T00:00:00Z'), {
+          status: 'returned',
+          returnedAt: U('2024-02-22T12:00:00Z'),
+        }),
+      ],
+      sources: [],
+    }
+    const range = {
+      from: U('2023-06-01T00:00:00Z'),
+      to: U('2024-01-01T00:00:00Z'),
+    }
+    const r = computeProfileStats(
+      base,
+      { ...NO_OP, calendarAnchor: U('2024-03-01T00:00:00Z'), range },
+    )
+    // days 仅 range 内周期（c2 的 borrowedAt 2024-02 不在 [2023-06, 2024-01)）
+    expect(r.calendar.days).toEqual([])
+    expect(r.calendar.minDate).toBeNull()
+    expect(r.calendar.maxDate).toBeNull()
+    // borrowDays 全量：c1 8 天 + c2 8 天
+    expect(r.calendar.borrowDays).toBe(16)
+  })
+
+  it('range 边界：borrowedAt 恰为 from 计入、恰为 to 不计', () => {
+    const base = {
+      books: [makeBook('b1'), makeBook('b2')],
+      catalogRecords: [],
+      borrowCycles: [
+        makeCycle('c1', 'b1', U('2023-06-15T00:00:00Z'), {
+          status: 'returned',
+          returnedAt: U('2023-06-16T12:00:00Z'),
+        }), // = from
+        makeCycle('c2', 'b2', U('2024-01-01T00:00:00Z'), {
+          status: 'returned',
+          returnedAt: U('2024-01-02T00:00:00Z'),
+        }), // = to
+      ],
+      sources: [],
+    }
+    const r = computeProfileStats(
+      base,
+      {
+        ...NO_OP,
+        calendarAnchor: U('2024-03-01T00:00:00Z'),
+        range: { from: U('2023-06-15T00:00:00Z'), to: U('2024-01-01T00:00:00Z') },
+      },
+    )
+    expect(r.calendar.days.map((d) => d.date)).toEqual(['2023-06-15', '2023-06-16'])
+  })
+
+  it('设备书周期不产生天格、不入 borrowDays', () => {
+    const r = computeProfileStats(
+      {
+        books: [
+          makeBook('b1'),
+          makeBook('b-dev', { materialType: 'device' }),
+        ],
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-15T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-20T12:00:00Z'),
+          }),
+          makeCycle('c2', 'b-dev', U('2023-01-10T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-30T00:00:00Z'),
+          }),
+        ],
+        sources: [],
+      },
+      withAnchor(U('2023-02-01T00:00:00Z')),
+    )
+    expect(r.calendar.borrowDays).toBe(6)
+    expect(r.calendar.days.every((d) => !d.bookIds.includes('b-dev'))).toBe(true)
+    expect(r.calendar.bookIndex).not.toHaveProperty('b-dev')
+  })
+
+  it('UTC 桶归属与 displayTimezone 无关；同输入两次调用深等价', () => {
+    const input = {
+      books: [makeBook('b1')],
+      catalogRecords: [],
+      borrowCycles: [
+        makeCycle('c1', 'b1', U('2023-01-31T23:00:00Z'), {
+          status: 'returned',
+          returnedAt: U('2023-02-07T00:00:00Z'),
+        }),
+      ],
+      sources: [],
+    }
+    const optsA = {
+      classificationSystem: null,
+      range: null,
+      displayTimezone: 'Asia/Shanghai',
+      calendarAnchor: U('2023-03-01T00:00:00Z'),
+    }
+    const optsB = { ...optsA, displayTimezone: 'America/New_York' }
+    const rA = computeProfileStats(input, optsA)
+    const rB = computeProfileStats(input, optsB)
+    const rA2 = computeProfileStats(input, optsA)
+    expect(rA.calendar).toEqual(rB.calendar)
+    expect(rA.calendar).toEqual(rA2.calendar)
   })
 })
