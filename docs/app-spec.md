@@ -235,7 +235,6 @@ pnpm install --ignore-scripts
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
-| 11 | 借阅画像增强（日历热力图 + 年度总结） | ✅ 已补 | [specs/reading-profile.md](./specs/reading-profile.md) | §2.6 `activityCalendar` 差分聚合契约 + §2.7 `/profile/$year` 年度总结路由与叙事指标 + Canvas 报告导出 — 规格已补/待 TDD；任务分解见 [tasks/borrow-profile-enhancement.md](./tasks/borrow-profile-enhancement.md) |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 

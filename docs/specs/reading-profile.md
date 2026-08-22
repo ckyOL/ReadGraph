@@ -25,9 +25,7 @@ src/
 ├─ lib/
 │  ├─ echarts-theme.ts        # 薄适配：shadcn CSS 变量 → echarts theme（palette/坐标轴/tooltip），随 .dark 重建
 │  ├─ profile-stats.ts         # 纯函数聚合：实体数组 → 各图表 dataset（无 Date.now()/无 DOM/无存储读）
-│  ├─ profile-stats.test.ts    # 聚合纯函数单测
-│  ├─ year-review.ts           # 年度总结切片纯函数（§2.7，独立于 profile-stats）
-│  └─ year-review.test.ts      # 年度切片单测
+│  └─ profile-stats.test.ts    # 聚合纯函数单测
 ├─ profile/
 │  ├─ stats-worker.ts          # Comlink 包装：大数据集下放 Worker 跑 profile-stats（≥阈值启用）
 │  ├─ use-profile-stats.ts     # Hook：useLiveQuery 取实体 → memo 派生 dataset（小数据同步/大数据走 Worker）
@@ -35,11 +33,9 @@ src/
 │     ├─ ClassificationTreemap.tsx
 │     ├─ BorrowGantt.tsx
 │     ├─ BorrowVolumeBar.tsx
-│     └─ BorrowCalendar.tsx    # 借阅日历热力图（§2.6，heatmap + calendar 坐标系）
+│     └─ DurationDistribution.tsx
 └─ routes/
-   └─ profile/                # 阅读画像页（TanStack 目录式路由）
-      ├─ index.tsx            # /profile 图表主导布局
-      └─ $year.tsx            # /profile/$year 年度总结页（§2.7）
+   └─ profile.tsx             # 阅读画像页（改造现有占位页为图表主导布局）
 ```
 
 ## 2. 统计维度与聚合契约
@@ -71,8 +67,8 @@ interface ProfileStatsResult {
   summary: { totalBooks: number; totalCycles: number; inBorrow: number; avgDurationDays: number | null; medianDurationDays: number | null }
   classification: { name: string; code: string; category: string | null; value: number }[]   // treemap
   borrowVolume: { bucket: string; count: number }[]                                          // 按月（或按年，按数据跨度自动切粒度）
+  durationDistribution: { range: string; count: number }[]                                     // 借阅时长直方图
   gantt: { laneKey: string; label: string; volume: string | null; intervals: { start: string; end: string | null; status: BorrowCycle['status'] }[] }[]
-  activityCalendar: { date: string; count: number }[]                       // 借阅日历热力图（§2.6）
   money: MoneyStats                                                                           // 价值统计（§2.5）
 }
 
@@ -133,26 +129,6 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
    - **范围语义**：`collectionValue`/`avgPrice`/`distribution` 为**全量**（与 time range 无关——馆藏价值是存量快照）；`borrowedValue` 随 range 裁剪（近 1 年/近 3 年/自定义区间只计区间内首次借出的书）。
    - **价格分布直方图**（`distribution`）：仅统计 `currency === dominantCurrency` 的有定价 Book（其余币种不入图，`multiCurrency` 标记由 UI 脚注说明）；固定分桶 `<20`/`20–50`/`50–100`/`100–200`/`>200`（主导币种单位，range 串不带货币符号，币种由图表上下文标注；分桶阈值与 `durationDistribution` 同为纯函数内常量）。零定价（amount=0）书仍计 `count`，不特殊排除。
 
-6. **借阅日历热力图**（`activityCalendar`，§2.6）
-   - 语义：某 UTC 日处于任意 `[borrowedAt, returnedAt]` 区间即计入；`count` = 当日有效在借册数（多周期重叠日叠加）。
-   - 聚合算法：单遍扫描 BorrowCycle 的差分数组——`borrowedAt` 所在 UTC 日 +1、`returnedAt` **次日** UTC 日 −1（借出当日与归还当日均计在借），前缀和还原逐日计数；避免 O(周期×天数) 展开长区间（对照 `js-combine-iterations`）。异常周期（`borrowedAt > returnedAt`）跳过不计。
-   - 开放区间：`status='borrowed'`（`returnedAt=null`）**不参与聚合**（纯函数无时钟）；组件层以 `useDeferredValue` 的 now 锚补齐当年视觉（对齐甘特带先例 §2.2），不回写聚合产物。
-   - 桶归属基于 UTC 日（对齐 §2 时间聚合一律 UTC）；输出按日期升序，仅含 count>0 的日期。
-   - `range` 不裁剪本维度：热力图自带年份切换视图语义，随全局 range 联动会与年份选择冲突；设备周期排除（§2.0 总则适用）。
-   - 组件形态定案：GitHub 式周列热力图（列=ISO 周、行=周一~周日），ECharts heatmap + `calendar` 坐标系；tab 内提供年份切换（数据跨度内可选年，默认最新有数据年份）。色阶沿用 `--chart-*` palette 单色渐变（visualMap continuous）；tooltip 显示日期 + 在借册数。
-
-7. **年度总结**（`/profile/$year`，§2.7）
-   - 路由形态定案：**独立路由 `/profile/$year`**（如 `/profile/2025`），不改 `/profile` 图表 Tabs；`/profile` 页头提供年度总结入口（年份选择跳转）。TanStack 目录式路由落地为 `src/routes/profile/index.tsx` + `src/routes/profile/$year.tsx`（`library/` 同构先例）；`profile.tsx → profile/index.tsx` 的机械移动由 Wave 0 协调者完成，URL 与行为不变。
-   - 数据口径：**年度切片纯函数 `src/lib/year-review.ts`**（独立落点，不扩展 `profile-stats.ts`）——从实体数组直取按 UTC 年切 BorrowCycle/Book，不复用 `computeProfileStats` 输出。设备周期排除（§2.0 总则同语义）。
-   - 叙事性指标定义：
-     - 本年借阅周期数 / 独立书目数（去重 Book）/ 在借天数合计（区间并集天数，重叠不重复计）；
-     - 本年首末借阅日期（无数据为 null）；
-     - 最长在借周期（与本年有交集的已归还周期按时长取最大；并列取首——按 borrowedAt 升序先到者）；
-     - 复借之最 Book（同 bookId 多年份周期计数最多者；并列取首——按书名升序）；
-     - 当年新增独立书目数（Book.createdAt 落在本 UTC 年内的去重 Book 数）。
-   - 视图构成：概览数字卡行 + 叙事指标区 + 复用既有图表组件按年传 range 切片（只 import 不修改既有图表组件）；空年返回结构完整（数值 0/null），UI 呈现 Empty。
-   - Canvas 报告导出（design-decisions 未来扩展 #3 首个落地场景）：纯前端渲染年度报告分享图（概览数字 + 分类分布缩略 + 年份标识），本地字体/无网络资源；下载文件名含年份（如 `readgraph-2025.png`）。
-
 ## 3. ECharts 主题与薄适配层
 
 `src/lib/echarts-theme.ts`（对照 [design-decisions](../design-decisions.md)「图表选型」薄适配约束）：
@@ -161,7 +137,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 不在模块顶层读 DOM 变量；提供 `buildTheme(isDark: boolean, cssVars: Record<string,string>): EChartsTheme`，由消费方在 `.dark` class 切换时重建并 `setOption` 重应用。
 - 主题随暗色切换：`use-profile-stats` 监听根 `.dark`（沿用 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架) theme Provider 信号），变化时重建 theme 并更新各图实例；旧实例 `dispose` 防泄漏。
 - 数据色（蓝宝石/青绿方向）**只在本页发力**，其余界面保持冷静灰（[design-decisions](../design-decisions.md) 阅读图谱方向 B）。
-- import 策略：`echarts` 核按需引入 `echarts/core` + 注册的图种（`TreemapChart`/`BarChart`/`CustomChart`/`HeatmapChart`）+ 组件（`TooltipComponent`/`GridComponent`/`LegendComponent`/`DataZoomComponent`/`VisualMapComponent`/`CalendarComponent`）+ `CanvasRenderer`，不走 `echarts` barrel；shadcn 组件按需 import（`bundle-barrel-imports`）。ECharts 初始化组件用 `lazy()`/动态 import 在 `/profile` 激活时加载（`bundle-dynamic-imports`、`bundle-conditional`）。注册清单（`use-echarts.ts` `initECharts`）归 B 线维护。
+- import 策略：`echarts` 核按需引入 `echarts/core` + 注册的图种（`TreemapChart`/`BarChart`/`CustomChart`）+ `CanvasRenderer`，不走 `echarts` barrel；shadcn 组件按需 import（`bundle-barrel-imports`）。ECharts 初始化组件用 `lazy()`/动态 import 在 `/profile` 激活时加载（`bundle-dynamic-imports`、`bundle-conditional`）。
 - **v6 实例化约束**（图表实例化落地时必须遵守，规避 v6 breaking）：
   - `option.legend.top`/`bottom` 显式声明锚定位置，不依赖 v6 默认（v6 legend 默认移到底部，与本页图谱块布局冲突）。
   - 若使用 `axisName`（轴标题），显式设 `grid.outerBoundsMode: 'none'`（或对应轴 `nameMoveOverlap: false`），避免 v6 默认开启的外溢/重叠规避导致轴位微移。
@@ -171,9 +147,9 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 **布局**（单页全幅，方向 B 图谱语言）：
 - 顶部一行概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 平均借阅时长），等宽数字 + 标签；卡片窄、克制，不抢图谱视觉。
 - 概览行下方为**价值统计卡行**（同款窄卡片，独立一行）：馆藏总价值 / 借阅图书价值 / 平均书价。金额用 `Intl.NumberFormat` 货币格式（等宽数字，符号随 locale）；馆藏总价值与平均书价不受时间范围影响，**借阅图书价值随 range 切换联动**（卡片标签标注当前 range，如「近 1 年」）；多币种时头条取 `dominantCurrency`，`multiCurrency=true` 时该卡下方加脚注（`其他币种：USD $… / JPY …`，一行灰字）。
-- 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅日历 / 借阅量 / 借阅时长分布 / 价格分布，标签键 `profile.chart.*.title`，新增 `profile.chart.price.title` 与 `profile.money.*` 键时按 [i18n-conventions](../i18n-conventions.md) 两语同时补齐）：
+- 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅量 / 借阅时长分布 / 价格分布，标签键 `profile.chart.*.title`，新增 `profile.chart.price.title` 与 `profile.money.*` 键时按 [i18n-conventions](../i18n-conventions.md) 两语同时补齐）：
   - 每次仅激活一个图谱块，独占全幅宽度与视口高度，互不挤压（书多时甘特 lane 不再被压扁）；
-  - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅日历热力图（GitHub 式周列，tab 内年份切换，见 §2.6）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）。
+  - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）。
 - 图表是主角、全幅；无外层装饰卡片包裹图谱块（[ui-navigation §3](ui-navigation.md#3-各功能页布局与空状态) 禁卡片套卡片）；TabsList 即区块标题，内容区不重复标题。
 
 **交互**：
@@ -182,7 +158,6 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 图表区 Tabs：切换 tab 时非激活图谱块卸载（echarts 实例随卸载 `dispose`，仅激活块占用 DOM/定时器；甘特 `nowTick` 定时器仅在激活时运行）；切回时按当前 option 重新 init，容器尺寸变化由 `useECharts` 的 ResizeObserver 自适应 `resize`。
 - treemap 块下钻（点一级类目展开子类）为可选增强；本里程碑要求一级呈现可交互高亮与 tooltip，子类下钻标 TODO。
 - 无破坏性操作：本页只读，不做任何写库或重置入口。
-- 年度总结入口：`/profile` 页头（标题行右侧）提供「年度总结」按钮 + 年份选择，跳转 `/profile/$year`；该挂接由 Wave 2 整合期完成（B-4 Tabs 接入与 C 线路由互不触碰对方文件）。
 
 **状态**：
 - 空态：无任何 Book/BorrowCycle 时，整页用 shadcn `Empty` + 导入入口（按钮跳 `/import`），图表区隐去占位（`rendering-conditional-render` 用三元，非 `&&`）。
@@ -195,7 +170,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 **响应式**：移动端 TabsList 允许横向滚动（`overflow-x-auto`）而非换行挤压标签；图表最小高度不塌缩；甘特带在窄屏启用横向滚动（`overflow-x-auto`）而非压缩 lane。所有可见文本经 `react-i18next` `t()`，namespace `pages`（`profile.*`），禁止硬编码中英文字面量（[i18n-conventions](../i18n-conventions.md)）。
 
 ## 5. 数据契约与边界
-- **空态/大库退化（§2.6/§2.7 同步）**：`activityCalendar` 空入参返回 `[]`，组件层 Empty 变体；`/profile/$year` 空年返回结构完整（0/null），UI 呈现 Empty。热力图数据量为有借阅日数（远小于原始记录），不单独退化；年度总结为 O(周期+书目) 单遍扫描，不单独退化。
+
 - **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。
 - **UTC 与 displayTimezone**：桶归属基于 UTC getter（`getUTCFullYear`/`getUTCMonth`），`displayTimezone` 仅用于轴标签（柱图 x 轴月份按 `Intl.DateTimeFormat` 用该时区呈现）。甘特区间的「在借」端点视觉锚由组件层以 `useDeferredValue` 的 now 补齐，**不改聚合产物**，保证可复现（对照 [import-pipeline §3](import-pipeline.md#3-纯函数-pipeline-契约) 确定性）。
 - **空数据**：`computeProfileStats` 对空入参返回结构完整但全零的 `ProfileStatsResult`（`classification=[]`/`gantt=[]`/...，`summary.*` 为 0 或 `null`，`money.*` 为空数组/`null`/0），UI 映射为整页 `Empty`；聚合函数不抛空异常。
@@ -222,8 +197,6 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 11. 作为用户，藏书含外币计价书（如 USD/JPY）→ 头条显示主导币种合计，卡脚注列出其余币种金额，价格分布图仅主导币种且有脚注说明；不做任何隐式汇率换算。
 12. 作为用户，有书但全库无定价 → 价值卡金额显示 `—`，价格分布 tab 空态，整页不报错；不出现补全引导（补价与否自由抉择）。
 13. 作为用户，藏书中含设备书（电子书阅读器）与占位书 → 设备书不计入价值；占位书（无定价）不计值，无异常。
-14. 作为用户，打开「借阅日历」tab → 看到当年 GitHub 式周列热力图，tooltip 显示日期与当日有效在借册数；切换年份 → 日历重绘对应年；在借中的周期以 now 锚补齐视觉（当日至今年内着色）。
-15. 作为用户，从 `/profile` 页头进入 `/profile/2025` → 看到年度总结数字卡与叙事指标（首末借阅、最长在借、复借之最、新增书目）；无数据年份呈现 Empty；点击导出 → 下载含年份文件名的报告图。
 
 ## 7. 测试清单
 
@@ -231,9 +204,6 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - `computeProfileStats` 空入参返回全零结构，不抛异常。
 - 分类体系缺省度量：多 Source 不同体系时取多数票；全空回退 `'clc'`。
 - CLC/DDC 一级归并正确（取首字母/首位 + 类名映射）；无分类号归入 `__unclassified__`。
-
-- **activityCalendar（§2.6）**：区间覆盖计数正确（单周期跨月/跨年、多周期重叠日 count 叠加）；`returnedAt=null` 不参与聚合；`range` 不裁剪本维度；异常周期（`borrowedAt > returnedAt`）跳过；空入参返回 `[]`；同输入深等价；无 `Date.now()`。
-- **年度总结切片（§2.7，`src/lib/year-review.test.ts`）**：按 UTC 年切 BorrowCycle/Book 正确；首末借阅日期、最长在借（含并列取首）、复借之最（并列取首）、在借天数并集、新增独立书目数各指标边界；空年返回 null/0 结构完整；设备周期排除；同输入深等价。
 - Book 计一次：多 CatalogRecord 同 ISBN 不同分类号时 treemap 按首选体系条目计一次，不翻倍。
 - 时间桶：月/年粒度切换阈值（≤ 2 年月、> 2 年年）正确；`range` 左闭右开裁剪生效；桶归属与 displayTimezone 无关（同输入不同 tz 桶相同）。
 - duration：`status='returned'` 计入，`borrowed/unknown` 不计；分桶边界（7/14/30/60 天）正确；空样本 `avg/median` 为 `null`。
@@ -243,11 +213,11 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - money 分布：`distribution` 仅主导币种（其余币种不入图）；分桶边界（20/50/100/200）与桶标签串格式正确；无定价 → `dominantCurrency=null`、`distribution=[]`、`collectionValue=[]`、`avgPrice=[]`、`multiCurrency=false`。
 - 纯函数性：`money` 同输入两次调用深等价（含整数分累计路径）；聚合层不产生 `Intl` 格式化（代码审计）。
 - 甘特：lane=`bookId+barcode`；无 barcode 退化；区间升序；`borrowed` 返回 `end=null`；套装书 lane 携带 `volume`（catalogRecordId 直查 / barcode 兜底 / 解析不到为 null），非套装恒 `null`。
-- **Playwright（E2E，§2.6/§2.7）**：脱敏夹具下 calendar tab canvas 非空像素；空库整页 Empty 不出现孤立 tab；暗色切换配色变化。`/profile/$year` 有数据年份渲染数字卡与叙事区；无数据年份空态；Canvas 导出触发 download 事件。
 - 纯函数性：同输入两次调用深等价；无 `Date.now()`（代码审计/依赖检查）。
 
 **Playwright（E2E）**
-- 脱敏数据下逐 tab 激活后 ECharts canvas 非空像素（treemap/柱图/甘特/日历/价格分布分别校验；每次仅激活一个 canvas）。
+- `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
+- 脱敏数据下逐 tab 激活后 ECharts canvas 非空像素（treemap/柱图/甘特/价格分布分别校验；每次仅激活一个 canvas）。
 - 脱敏数据（含定价字段）下价值卡行：馆藏总价值/借阅图书价值/平均书价按 `Intl` 货币格式呈现；切 locale 后货币符号与标签切换；切「近 1 年」后借阅图书价值变化而馆藏总价值不变。
 - 分类体系 `SegmentedControl` 切换后 canvas 重绘、类目 tooltip 文本随 locale 切换。
 - 暗色切换 → 图表配色变化（canvas 像素采样差异），reload 仍为暗色。
@@ -262,7 +232,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - `rerender-memo`：各图组件 `memo` 化，仅以自身 dataset 为依赖；概览卡片与价值卡行独立 memo，不被图表重算波及。
 - `rerender-transitions` / `rendering-usetransition-loading`：分类体系/时间范围切换用 `useTransition`，图表区配合 `Skeleton`；价值卡行随 range 联动重算走同一 transition，不单独闪断。
 - `rerender-use-deferred-value`：大数据/范围变化用 `useDeferredValue` 延迟聚合重算，保输入响应。
-- `js-combine-iterations` / `js-index-maps` / `js-set-map-lookups`：聚合单遍建 `Map`（catalog→classification、bookId→book、currency→minor-unit sum/count），避免重复线性查找；价值统计与既有维度共用同一次实体遍历（`js-combine-iterations`），不二次循环；`activityCalendar` 差分数组单遍扫描；年度总结切片单遍建 `Map`（bookId→count、并集区间合并）。
+- `js-combine-iterations` / `js-index-maps` / `js-set-map-lookups`：聚合单遍建 `Map`（catalog→classification、bookId→book、currency→minor-unit sum/count），避免重复线性查找；价值统计与既有维度共用同一次实体遍历（`js-combine-iterations`），不二次循环。
 - `js-min-max-loop`：duration 分桶用一遍扫描，`avg`/`median` 用单遍求和与选择，不 `sort`。
 - Intl 实例复用：`Intl.NumberFormat` 按 `locale + currency` 缓存复用（模块级 `Map` 或 `useMemo`），避免每次渲染新建格式化器（构建成本高）；聚合层不触 Intl。
 - `client-localstorage-schema`：本页只读 `readgraph:preferences`（displayTimezone），不写入；读侧仍受 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架) 的 Zod 校验保护。
