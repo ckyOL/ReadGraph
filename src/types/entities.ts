@@ -205,4 +205,5 @@ export interface UserPreferences {
   locale: Locale
   theme: Theme
   displayTimezone: string
+  ai: { enabled: boolean; baseUrl: string; model: string }
 }

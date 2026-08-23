@@ -74,10 +74,29 @@ describe('resetDatabase', () => {
     expect(store.get('readgraph:db-version')).toBeUndefined()
     expect(store.get('unrelated')).toBe('keep')
   })
-  it('preserves readgraph:* keys when clearPreferences is not set', async () => {
-    const store = new Map<string, string>([['readgraph:preferences', '{"locale":"en"}']])
+  it('clears the ai api key and ai preferences when clearPreferences is set', async () => {
+    const store = new Map<string, string>([
+      ['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' } })],
+      ['readgraph:ai-api-key', JSON.stringify('sk-secret')],
+      ['unrelated', 'keep'],
+    ])
+    ;(globalThis as unknown as { localStorage: Storage }).localStorage = makeStorage(store)
+    await resetDatabase(db, { clearPreferences: true })
+    expect(store.get('readgraph:preferences')).toBeUndefined()
+    expect(store.get('readgraph:ai-api-key')).toBeUndefined()
+    expect(store.get('unrelated')).toBe('keep')
+  })
+
+  it('preserves the ai api key and ai preferences when clearPreferences is not set', async () => {
+    const prefs = JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' } })
+    const key = JSON.stringify('sk-secret')
+    const store = new Map<string, string>([
+      ['readgraph:preferences', prefs],
+      ['readgraph:ai-api-key', key],
+    ])
     ;(globalThis as unknown as { localStorage: Storage }).localStorage = makeStorage(store)
     await resetDatabase(db, {})
-    expect(store.get('readgraph:preferences')).toBe('{"locale":"en"}')
+    expect(store.get('readgraph:preferences')).toBe(prefs)
+    expect(store.get('readgraph:ai-api-key')).toBe(key)
   })
 })

@@ -9,6 +9,11 @@ export const userPreferencesSchema = z.object({
   locale: z.enum(LOCALES),
   theme: z.enum(['light', 'dark', 'auto']),
   displayTimezone: z.string(),
+  ai: z.object({
+    enabled: z.boolean(),
+    baseUrl: z.string(),
+    model: z.string(),
+  }),
 })
 
 export type UserPreferencesInput = z.input<typeof userPreferencesSchema>
@@ -18,6 +23,7 @@ export const DEFAULT_PREFERENCES = {
   locale: 'zh-CN' as const,
   theme: 'auto' as const,
   displayTimezone: 'Asia/Shanghai',
+  ai: { enabled: false, baseUrl: '', model: '' },
 }
 
 export type Theme = 'light' | 'dark' | 'auto'
@@ -40,7 +46,7 @@ function readRawObject(): Record<string, unknown> | null {
 
 /**
  * 读取并校验用户偏好。locale 沿用 locale.ts 的 getStoredLocale()
- * （不重写，避免回归既有 i18n 测试）；theme 与 displayTimezone 由本函数从
+ * （不重写，避免回归既有 i18n 测试）；theme、displayTimezone 与 ai 由本函数从
  * localStorage 原始对象读取并补齐。safeParse 失败降级到默认。
  */
 export function readPreferences(): UserPreferencesParsed {
@@ -48,6 +54,7 @@ export function readPreferences(): UserPreferencesParsed {
   const locale = getStoredLocale()
   let theme: UserPreferencesParsed['theme'] = DEFAULT_PREFERENCES.theme
   let displayTimezone = DEFAULT_PREFERENCES.displayTimezone
+  let ai: UserPreferencesParsed['ai'] = DEFAULT_PREFERENCES.ai
 
   if (raw) {
     if (typeof raw.theme === 'string' && THEME_VALUES.includes(raw.theme)) {
@@ -56,9 +63,24 @@ export function readPreferences(): UserPreferencesParsed {
     if (typeof raw.displayTimezone === 'string' && raw.displayTimezone.length > 0) {
       displayTimezone = raw.displayTimezone
     }
+    // ai 缺失/非对象 → 默认 ai；字段逐类型校验（非 boolean/非 string → 降级默认，
+    // 与 theme/displayTimezone 同模式，zod .default 只处理缺失不处理错型）
+    const rawAi = raw.ai
+    if (rawAi && typeof rawAi === 'object') {
+      const aiObj = rawAi as Record<string, unknown>
+      ai = {
+        enabled:
+          typeof aiObj.enabled === 'boolean'
+            ? aiObj.enabled
+            : DEFAULT_PREFERENCES.ai.enabled,
+        baseUrl:
+          typeof aiObj.baseUrl === 'string' ? aiObj.baseUrl : DEFAULT_PREFERENCES.ai.baseUrl,
+        model: typeof aiObj.model === 'string' ? aiObj.model : DEFAULT_PREFERENCES.ai.model,
+      }
+    }
   }
 
-  const candidate = { locale, theme, displayTimezone }
+  const candidate = { locale, theme, displayTimezone, ai }
   const result = userPreferencesSchema.safeParse(candidate)
   if (!result.success) {
     return { ...DEFAULT_PREFERENCES, locale }
