@@ -1,0 +1,186 @@
+// AI 端点客户端（ai-features §5.4）：OpenAI 兼容端点 fetch 薄封装，纯函数可单测。
+// 职责边界：URL/headers/body 构造、超时与中止、HTTP 状态分级、SSE 兜底解析。
+// 不做 schema 校验 / Provider 抽象（C-2 波次2）。错误分级：网络失败/超时 → AbortError，
+// HTTP 非 2xx → AiHttpError（401/429 显式文案），响应结构非法 → 解析错误。
+
+/** 默认请求超时（ai-features §5.4：AbortController 15s 默认超时）。 */
+export const DEFAULT_TIMEOUT_MS = 15_000
+
+/** HTTP 非 2xx 响应错误：携带状态码；401/429 附显式文案。 */
+export class AiHttpError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'AiHttpError'
+    this.status = status
+  }
+}
+
+export interface AiChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface AiChatOptions {
+  baseUrl: string
+  apiKey?: string
+  model: string
+  messages: AiChatMessage[]
+  temperature?: number
+  signal?: AbortSignal
+}
+
+export interface AiTestConnectionOptions {
+  baseUrl: string
+  apiKey?: string
+  signal?: AbortSignal
+}
+
+/** HTTP 状态显式文案：401/429 给出可操作提示，其余走通用文案。 */
+const HTTP_STATUS_MESSAGES: Record<number, string> = {
+  401: '鉴权失败（401）：API Key 无效或缺失',
+  429: '请求过于频繁（429）：请稍后重试',
+}
+
+/** 校验并规范化 baseUrl：去尾斜杠；空/空白直接抛错（连接测试除外由调用方先行校验）。 */
+function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim()
+  if (!trimmed) {
+    throw new Error('AI 端点 baseUrl 不能为空')
+  }
+  return trimmed.replace(/\/+$/, '')
+}
+
+/** Authorization 仅在 apiKey 非空时携带（本地无鉴权端点支持）。 */
+function buildHeaders(apiKey?: string): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+  return headers
+}
+
+/**
+ * fetch + 超时/中止封装：内部 AbortController 兜底 15s 超时，外部 signal 透传；
+ * 超时或外部中止统一归一为 DOMException AbortError，其余网络错误透传原错误。
+ */
+async function request(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController()
+  if (externalSignal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const onOuterAbort = (): void => controller.abort()
+  externalSignal?.addEventListener('abort', onOuterAbort, { once: true })
+  const timer: ReturnType<typeof setTimeout> = setTimeout(
+    () => controller.abort(),
+    timeoutMs,
+  )
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+    externalSignal?.removeEventListener('abort', onOuterAbort)
+  }
+}
+
+/** 解析 chat/completions 响应结构：缺 choices[0].message.content（或非字符串）抛解析错误。 */
+function parseChatContent(payload: unknown): string {
+  const obj = payload as { choices?: Array<{ message?: { content?: unknown } }> }
+  const content = obj?.choices?.[0]?.message?.content
+  if (typeof content !== 'string') {
+    throw new Error('AI 响应结构非法：缺少 choices[0].message.content')
+  }
+  return content
+}
+
+/** SSE 兜底：body 非 JSON 时提取最后一条 `data: {...}` JSON（跳过空行与 [DONE]）。 */
+function extractLastSseData(body: string): unknown {
+  let last: unknown
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line.startsWith('data:')) continue
+    const data = line.slice('data:'.length).trim()
+    if (!data || data === '[DONE]') continue
+    try {
+      last = JSON.parse(data)
+    } catch {
+      // 忽略无法解析的数据行，仅保留最后一条合法 JSON。
+    }
+  }
+  if (last === undefined) {
+    throw new Error('AI 响应既非 JSON 也无有效 SSE data 行')
+  }
+  return last
+}
+
+/**
+ * chat/completions 调用（ai-features §3.1 ⑤：stream:false + response_format JSON 模式）。
+ * 返回 choices[0].message.content（string）；结构非法抛解析错误。
+ */
+export async function chat(opts: AiChatOptions): Promise<string> {
+  const base = normalizeBaseUrl(opts.baseUrl)
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages,
+    stream: false,
+    response_format: { type: 'json_object' },
+  }
+  if (opts.temperature !== undefined) {
+    body.temperature = opts.temperature
+  }
+  const res = await request(
+    `${base}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers: buildHeaders(opts.apiKey),
+      body: JSON.stringify(body),
+    },
+    DEFAULT_TIMEOUT_MS,
+    opts.signal,
+  )
+  if (!res.ok) {
+    throw new AiHttpError(
+      res.status,
+      HTTP_STATUS_MESSAGES[res.status] ?? `AI 端点请求失败（HTTP ${res.status}）`,
+    )
+  }
+  const text = await res.text()
+  let payload: unknown
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    payload = extractLastSseData(text)
+  }
+  return parseChatContent(payload)
+}
+
+/** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → resolve，否则抛带状态错误。 */
+export async function testConnection(opts: AiTestConnectionOptions): Promise<void> {
+  const base = normalizeBaseUrl(opts.baseUrl)
+  const res = await request(
+    `${base}/v1/models`,
+    {
+      method: 'GET',
+      headers: buildHeaders(opts.apiKey),
+    },
+    DEFAULT_TIMEOUT_MS,
+    opts.signal,
+  )
+  if (!res.ok) {
+    throw new AiHttpError(
+      res.status,
+      HTTP_STATUS_MESSAGES[res.status] ?? `AI 端点连接失败（HTTP ${res.status}）`,
+    )
+  }
+}
