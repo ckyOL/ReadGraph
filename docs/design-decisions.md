@@ -131,7 +131,7 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 
 ## 技术选型建议 (AI 时代最新 React 技术栈)
 
-针对 AI 辅助编程以及未来可能的本地 AI 能力集成，选型偏向于**高度类型安全**、**现代化 API**、以及**利于 AI 理解与生成代码**的技术栈。同时严格遵守本系统**纯前端、零依赖后端**的隐私安全核心原则，专注打造极致的本地 SPA 体验。
+针对 AI 辅助编程以及未来可能的AI 能力集成（云端 BYOK + 可选本地服务，路线见 [research/ai-integration-research.md](./research/ai-integration-research.md)），选型偏向于**高度类型安全**、**现代化 API**、以及**利于 AI 理解与生成代码**的技术栈。同时严格遵守本系统**纯前端、零依赖后端**的隐私安全核心原则，专注打造极致的本地 SPA 体验。
 
 | 类别 | 推荐 | 备选 | 说明 |
 |------|------|------|------|
@@ -143,7 +143,7 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 | UI 组件生态 | shadcn/ui | Radix UI | 基于 Tailwind 的可定制组件库，代码直接落盘于本地项目中，完全由开发者掌控。AI 工具（如 Cursor/v0 等）对其支持极深，生成质量最高 |
 | CSS/样式 | Tailwind CSS | CSS Modules | AI 时代首选的原子化 CSS 框架。通过系统级的配置文件来保持设计的一致性，省去为组件单独命名类的麻烦，极大提升 UI 迭代速度 |
 | 并发与性能 | Web Worker + Comlink | - | 将大量借阅记录的解析与统计下放至 Worker 线程，维持 AI 时代的丝滑 UI 交互 |
-| 本地 AI (未来扩展) | Transformers.js / WebLLM | - | 在浏览器内直接运行轻型模型（如自动分类、本地推荐），确保用户敏感阅读数据**绝对不离开本地设备** |
+| AI 接入 (未来扩展) | OpenAI 兼容端点（自写 fetch 薄封装，零新增依赖） | - | 云端 BYOK / 自托管网关 / 本地服务（Ollama/LM Studio）同一 OpenAI 契约，`baseUrl`+`apiKey` 配置即切换；浏览器内推理（WebLLM/Transformers.js）已否决——路线见 [research/ai-integration-research.md](./research/ai-integration-research.md)，落地契约见 [specs/ai-features.md](./specs/ai-features.md) |
 | 图表 | ECharts | Recharts | 见下方「图表选型」段：离线海量渲染更强、中文生态友好，故保留 |
 | 文件解析 | Papa Parse (CSV) | - | 客户端高性能、流式解析库，支持直接处理大型导出文件 |
 | 日期与工具 | date-fns | dayjs | 纯函数式 API，利于 Tree-shaking，且 AI 生成调用代码时直观明确 |
@@ -181,10 +181,9 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 ```
 Agent 实现要点：
 
-1. 数据完全本地：
-   - 不向任何服务器发送用户数据
-   - 不使用第三方分析工具（Google Analytics 等）
-   - 不加载需要网络的字体/图标（打包到本地）
+1. 数据完全本地（AI 功能例外见下）：
+   - 核心数据完全本地：默认不向任何服务器发送用户数据；不使用第三方分析工具（Google Analytics 等）；不加载需要网络的字体/图标（打包到本地）
+   - AI 功能（默认关闭、用户显式启用，见 [specs/ai-features.md](./specs/ai-features.md)）：仅向用户配置的 OpenAI 兼容端点发送**最小脱敏字段**（聚合统计 + Top 书目题名/作者，即发即弃）；直接标识符（cardno/条码/馆名）与借阅行为细节（借还时点/单条记录）永不发送；发送内容发送前可见可审——承诺「最少字段」而非「完全不出设备」（调研 [research/ai-integration-research.md](./research/ai-integration-research.md) §3.3）
 
 2. 数据脱敏：
    - 导出功能应提供脱敏选项

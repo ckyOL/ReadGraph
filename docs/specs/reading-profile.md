@@ -182,6 +182,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 **布局**（单页全幅，方向 B 图谱语言）：
 - 顶部一行概览统计卡片（藏书数 / 借阅周期数 / 在借数 / 平均借阅时长 / **借阅天数**），等宽数字 + 标签；卡片窄、克制，不抢图谱视觉。借阅天数取 `calendar.borrowDays`（全量口径，与其余概览卡一致；随 4 卡变 5 卡，栅格 `md:grid-cols-5`）。
 - 概览行下方为**价值统计卡行**（同款窄卡片，独立一行）：馆藏总价值 / 借阅图书价值 / 平均书价。金额用 `Intl.NumberFormat` 货币格式（等宽数字，符号随 locale）；馆藏总价值与平均书价不受时间范围影响，**借阅图书价值随 range 切换联动**（卡片标签标注当前 range，如「近 1 年」）；多币种时头条取 `dominantCurrency`，`multiCurrency=true` 时该卡下方加脚注（`其他币种：USD $… / JPY …`，一行灰字）。
+- **AI 解读区**（Phase 1，AI 启用后渲染）：价值统计卡行之下、图表 Tabs 之上，呈现画像分析结果——fact 洞察窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）+ taste 审美点评段（全宽）；形态/口径/预览/缓存契约见 [AI 功能规格](ai-features.md) §4.1；AI 未启用时本区不渲染（无 AI 痕迹）。
 - 卡片下方为图表区，**Tabs 切换**（shadcn `Tabs`，横向标签：分类法分布 / 借阅甘特带 / 借阅量 / 借阅时长分布 / 价格分布 / **借阅日历**，标签键 `profile.chart.*.title`，新增 `profile.calendar.*` 与 `profile.summary.borrowDays` 键时按 [i18n-conventions](../i18n-conventions.md) 两语同时补齐）：
   - 每次仅激活一个图谱块，独占全幅宽度与视口高度，互不挤压（书多时甘特 lane 不再被压扁）；
   - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）→ 借阅日历（年视图 ~280px / 月视图 ~380px，heatmap 网格）。
@@ -208,7 +209,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 ## 5. 数据契约与边界
 
-- **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。
+- **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。**AI 功能例外**（默认关闭、显式启用）：仅向用户配置端点发送脱敏最小字段（本页 `computeProfileStats` 输出 + Top 书目题名/作者，发送前预览可见）——契约见 [AI 功能规格](ai-features.md)。
 - **UTC 与 displayTimezone**：桶归属基于 UTC getter（`getUTCFullYear`/`getUTCMonth`），`displayTimezone` 仅用于轴标签（柱图 x 轴月份按 `Intl.DateTimeFormat` 用该时区呈现）。甘特区间的「在借」端点视觉锚由组件层以 `useDeferredValue` 的 now 补齐，**不改聚合产物**，保证可复现（对照 [import-pipeline §3](import-pipeline.md#3-纯函数-pipeline-契约) 确定性）。
 - **空数据**：`computeProfileStats` 对空入参返回结构完整但全零的 `ProfileStatsResult`（`classification=[]`/`gantt=[]`/...，`summary.*` 为 0 或 `null`，`money.*` 为空数组/`null`/0），UI 映射为整页 `Empty`；聚合函数不抛空异常。
 - **价值统计确定性**：`money` 仅由 `Book.price` 与 `BorrowCycle.borrowedAt` 派生，无时钟、无汇率、无外部输入；`distribution` 分桶阈值（`<20`/`20–50`/…）为模块常量。`Intl.NumberFormat` 只出现在渲染层，聚合层不格式化、只产数值（元，两位小数语义）——保证 Worker 与同步 `useMemo` 两路径产物深等价。

@@ -1,0 +1,194 @@
+# AI 功能规格（阅读画像分析）
+
+> 本文件由 [research/ai-integration-research.md](../research/ai-integration-research.md)（技术调研）衍生，遵循 SDD + TDD。调研确立的架构路线：**云端高智能 + 发送前脱敏（anonymize-before-send）为主力**，本地服务为可选后端（同一 OpenAI 兼容契约）；浏览器内推理（WebLLM / Transformers.js）已否决、模型选型不做建议（端点与模型是用户自己的事）。本规格只定义 **Phase 1** 落地契约（脱敏管道 + 设置页 AI 区 + 阅读画像分析）；Phase 2（年度叙事 / 流式）、Phase 3（本地后端）边界见 §9。
+> 关联：[design-decisions](../design-decisions.md)（纯前端/隐私原则）、[reading-profile](./reading-profile.md)（画像聚合契约）、[settings](./settings.md)（设置页落点）、[data-layer](./data-layer.md#8-用户偏好)（偏好持久化）、[npm-supply-chain-security](../npm-supply-chain-security.md)（依赖审查）。
+> 返回 [app-spec.md](../app-spec.md)。
+
+## 1. 范围与依赖
+
+**范围**：定义 AI 功能的默认关闭开关、脱敏管道（场景白名单装配 + 黑名单断言）、OpenAI 兼容端点薄客户端（fetch + SSE 解析 + Abort + 端点校验）、阅读画像分析（`insight[]`：`kind='fact'` 事实洞察 + `kind='taste'` 审美点评，同次生成、同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区。
+
+**不实现**（本规格明确排除）：
+
+- 年度总结叙事（Phase 2，§9.1）、本地服务后端（Phase 3，§9.2）
+- 多轮对话 / 会话 UI（调研 §6.3 否决：用例均为单次生成，「即发即弃」与隐私承诺一致）
+- 浏览器内推理（WebLLM / Transformers.js——调研 §4 删除该路线）
+- 模型选型建议、默认端点、榜单（项目不提供）
+- 单本/列表级批量点评（对齐 design-decisions §6「不做批量」；详情页单本点评入口已删除）
+
+**依赖**（Phase 1）：**零新增运行时依赖**——`fetch` 薄封装 + 脱敏纯函数 + 既有 `zod`（响应校验、场景 schema）。后续若引入任何包，须先过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 审查 + `pnpm verify`/`audit`。
+
+**代码落点**（调研 §7 草案）：
+
+```
+src/
+├─ ai/
+│  ├─ ai-provider.ts          # 接口：chat(messages, { schema?, stream?, signal? }) → 文本/JSON/流
+│  ├─ ai-client.ts            # OpenAI 兼容 fetch 薄封装：SSE 解析、Abort、timeout、schema→response_format（纯函数可单测）
+│  ├─ sanitize.ts             # 脱敏管道：场景 Schema → 白名单装配 + 黑名单断言（纯函数）
+│  ├─ prompts/
+│  │  ├─ profile-insights.ts  # 画像分析 prompt + Zod schema（insight[]，fact/taste 条目）
+│  │  └─ year-narrative.ts    # 年度总结叙事 prompt + Zod schema（Phase 2，仅落位）
+│  └─ use-ai.ts               # Hook：编排、loading/error/重试、流式拼接（Phase 2）、缓存
+└─ lib/ai-cache.ts            # 生成结果缓存（localStorage，按场景+键+locale）
+```
+
+## 2. 全局契约与隐私承诺
+
+1. **默认关闭**：`ai.enabled=false`；未启用时全站无 AI 痕迹（无入口、无文案、无区块）——区块条件渲染实现（调研 §6.3）。
+2. **显式触发**：启用后仍只在用户点击生成时发数据，无后台/页面加载期调用。
+3. **隐私承诺表述**（设置页与发送预览共用 i18n 文案）：「只发送完成任务所需的最少字段；直接标识符（cardno/条码/馆名）与借阅行为细节（借还时点/频率/单条记录）永不发送；发送内容发送前可见可审」。
+4. **诚实边界**：书名/作者/聚合统计必然发送（功能语义决定，无法脱敏）——承诺「最少字段」而非「完全不出设备」。
+5. **不持久化原文**：云端原文不落本地；本地缓存仅存生成结果，标注「AI 生成，基于本地数据」。
+6. **统计一致性**：发送的数值全部来自本地纯函数聚合（`computeProfileStats` 输出），LLM 只做语言转译，杜绝幻觉数字（design-decisions §6）。
+7. **输入独立性**：生成输入只消费本地聚合 + Top 书目，**不消费前一次 AI 输出**——防幻觉传播。
+
+## 3. 脱敏管道（src/ai/sanitize.ts）
+
+### 3.1 管道流程（调研 §5.1）
+
+```
+用户触发生成（默认关闭，显式启用）
+  → ① 场景 Schema（Zod）声明所需字段（白名单）
+  → ② 数据装配器：从 IndexedDB 只提取白名单字段
+  → ③ 敏感字段断言：黑名单字段绝不出现在 payload（测试强制）
+  → ④ 发送预览：UI 展示将发送的 payload JSON（与实际上送同一装配函数产物）
+  → ⑤ POST 用户配置端点（OpenAI 兼容 /v1/chat/completions；Phase 1 stream:false）
+  → ⑥ 响应 Zod 校验 → 渲染（标注「AI 生成，基于本地数据」）
+  → ⑦ 云端原文不持久化；本地缓存仅存生成结果并标注
+```
+
+### 3.2 画像场景白名单（契约草案，Phase 1 唯一场景）
+
+| 发送字段（白名单） | 永不发送（黑名单） |
+|-------------------|-------------------|
+| `summary.*`（藏书数/周期数/在借数/时长均值/中位数/借阅天数） | `cardno`、`barcode`、`metaId`/`metaIdKey`（馆内记录标识） |
+| `classification`（Top 类目：name/code/category/value，取 `classificationSystem` 有效类目） | `borrowCycles` 单条记录（含 `borrowedAt`/`returnedAt` 时点） |
+| `borrowVolume`（按月/年桶计数）、`durationDistribution`（时长桶计数） | `gantt` 区间明细、`calendar.days` 逐日明细（含借还时点） |
+| `calendar.borrowDays`（聚合天数） | `rawRecords`、馆名/`Source` 名称、IP/读者证件类字段 |
+| Top N 书目题名 + 作者（`TOP_BOOKS_N` 常量，默认 5，按借阅次数降序、平局取最近借阅） | 单条借阅记录、时间戳明细、`Book.price` 等画像外字段 |
+
+- 装配器直接消费 `computeProfileStats`（[reading-profile §2](./reading-profile.md#2-统计维度与聚合契约)）输出与 `Book` 题名/作者字段——统计永远由本地聚合产生，LLM 只做转译。
+- 聚合统计本身即匿名化（k-anonymity 思想）：桶计数无法反推单本借阅行为；**不发送 gantt / calendar 逐日明细**。
+- 审美点评（`kind='taste'`）与事实洞察共用同一白名单，不额外发送单本书目元数据（调研 §5.2）。
+
+### 3.3 黑名单断言（测试强制）
+
+- 装配产物 `serializePayload()` 纯函数：给定实体数组 → 仅含白名单字段。
+- 黑名单**穷举断言**：构造含 cardno/barcode/借还日期/馆名/rawRecords 的数据，断言 payload 序列化文本中不出现任何黑名单值（逐个值断言，非抽样）。
+- 发送预览与实际上送使用**同一装配函数产物**（防「预览一套、上送一套」漂移）。
+
+## 4. 用例与 UI 设计说明
+
+### 4.1 阅读画像分析（/profile「AI 解读」区，Phase 1）
+
+- **落点**：价值卡行之下、图表 Tabs 之上，与价值卡行同构（窄卡、不卡片套卡片、不抢图表全幅）；整体可重新生成。
+- **输出契约**（`src/ai/prompts/profile-insights.ts`，Zod 强校验）：
+
+```ts
+interface AIInsight {
+  kind: 'fact' | 'taste'       // taste 条目即审美点评（调研 §6.1）
+  title?: string               // 仅 fact：洞察标题（如「偏爱文学类」）
+  body: string                 // fact 为陈述+数字；taste 为一段评价性文字
+  dimension?: string           // 仅 fact：关联维度 chip（分类偏好/借阅节奏/时长习惯/复借最多…）
+}
+```
+
+- 生成 2–4 条洞察（含 0–1 条 `taste`）：fact 渲染为窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）；taste 渲染为一段全宽评价文字（Phase 1 非流式整段呈现，Phase 2 逐句流式）。
+- **口径**：固定全量口径（与概览卡一致），**不与 range 联动**——避免 range 切换反复调用 API；缓存键含 range 以预留联动（§5.3）。
+- **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；`kind='taste'` 自由文本的引用真实性**不可强校验**——规格明示诚实边界（区别于 fact 条目的数字强校验）。
+- **非流式**（Phase 1）：`stream:false` + `response_format` JSON 模式，响应过 `insightSchema.safeParse`，失败提示重试。
+- 不做列表级批量（对齐 design-decisions §6）。
+
+### 4.2 设置页 AI 区（/settings，Phase 1）
+
+- 布局：设置页偏好区/数据区之间新增 AI 区，`border-t` 分隔，不嵌套卡片（对齐 [settings §7](./settings.md#7-ui-设计说明)）。
+- 控件：启用开关（默认关）→ 启用后展开：端点 URL（默认空）、API Key（可选、`Password` 输入）、模型名（**用户自填**，项目不做选型建议）、「测试连接」按钮、隐私说明（§2.3 文案）、「发送预览」开关（默认开）、「清除 AI 缓存」。
+- **连接测试**：`GET {baseUrl}/v1/models`（带 `Authorization: Bearer <key>`，无 key 时也允许测试以支持本地无鉴权端点）；失败 toast 明确错误（网络/鉴权/非 OpenAI 兼容端点）。
+- 未配置端点/未启用时，`/profile` AI 解读区不渲染（§2.1）。
+- 本地服务路径（Phase 3）同属本区：端点填 `http://127.0.0.1:*`，连接测试即验证。
+
+### 4.3 发送预览
+
+- 各生成入口**首次触发**时展示：将发送的 payload JSON（`<pre>` 等宽可折叠）+ 「仅发送以上内容」确认/取消；与实际上送同一装配函数产物（§3.3）。
+- 设置页「发送预览」开关关闭后，后续生成不再弹预览（一次性确认，不重复打扰）。
+
+## 5. 数据契约与边界
+
+### 5.1 偏好持久化（扩展 data-layer §8）
+
+- `userPreferencesSchema` 扩展 `ai: { enabled: boolean; baseUrl: string; model: string }`（默认 `{ enabled: false, baseUrl: '', model: '' }`，校验非空字符串；非法值降级默认，对齐 [data-layer §8](./data-layer.md#8-用户偏好)）。
+- **API Key 独立存储**：存独立 `localStorage` key `readgraph:ai-api-key`，不进入 `userPreferencesSchema`、不随偏好读写/备份导出（`ExportData` 只含六张表，[data-layer §7](./data-layer.md#7-数据导出与重建)）；调用时读入内存参与请求头，不进入 React 状态持久化。
+- 系统重置 `clearPreferences=true` 时一并清除 AI 配置与 Key；`/settings` 另提供单独清除。
+
+### 5.2 CSP 放宽（vite.config.ts 注释记录）
+
+- `connect-src` 由 `'self' + OPAC 域名` 增加 `https:`（用户 BYOK 任意云端端点，构建期静态化无法按用户配置动态放行）+ `http://127.0.0.1:*`（本地服务路径）。
+- 取舍记录：放宽面为任意 https 端点，但数据只在用户**显式启用 AI 并触发功能**时发送；保守用户可自托管 header 收紧。注释落 `vite.config.ts`。
+
+### 5.3 结果缓存（src/lib/ai-cache.ts）
+
+- 缓存键：`ai:{scene}:{locale}:{key}`（画像场景 key 含 range 以预留联动；Phase 1 全量口径固定键）。缓存内容：生成结果 JSON + 生成时间戳。
+- 生命周期：localStorage，设置页「清除 AI 缓存」可清；**不随备份导出**。
+- 命中缓存直接渲染（仍标注「AI 生成」）；断网时缓存可读（AI 功能降级提示，核心功能不受影响）。
+
+### 5.4 端点契约与降级
+
+- 端点：用户配置的 OpenAI 兼容 `{baseUrl}/v1/chat/completions`；`baseUrl` 去尾斜杠；不支持空端点调用（连接测试除外）。
+- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 15s 默认超时 + 可重试）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案，不写库、不缓存失败结果。
+- 断网：AI 区块降级/禁用提示，页面其余功能不受影响（对齐「纯前端离线可用」主原则）。
+
+## 6. 用户故事与验收用例（Phase 1）
+
+1. 作为新用户，未启用 AI → `/profile` 无任何 AI 痕迹（无「AI 解读」区、无入口文案），`/settings` 仅有默认关闭的 AI 区开关。
+2. 作为用户，在 `/settings` 填入任意 OpenAI 兼容端点（BYOK）与模型名、保存 → 点「测试连接」→ 端点可达时成功、不可达/鉴权失败时明确错误 toast；刷新后配置保留。
+3. 作为用户，首次在 `/profile` 触发「AI 解读」→ 弹出发送预览，展示将发送的 payload；确认后生成 2–4 条洞察，fact 卡数字与本地概览卡一致，taste 为一段评价文字；响应标注「AI 生成」。
+4. 作为用户，点击 fact 卡维度 chip → 激活对应图表 tab（引用定位）；点「重新生成」→ 再次走发送预览（或按预览开关直接生成）并覆盖结果。
+5. 作为用户，生成成功后切换中英 locale → 缓存按 locale 隔离，各自生成对应语言内容（prompt 控制）；再次进入同 locale → 命中缓存秒开（可重新生成覆盖）。
+6. 作为用户，断网/端点不可用触发生成 → 明确错误提示，不写库、不缓存失败；已有缓存结果仍可读。
+7. 作为用户，在 `/settings` 清除 AI 缓存 → 再进入 `/profile` 需重新生成。
+
+**Phase 1 验收**（调研 §8）：配置任意 OpenAI 兼容云端端点（BYOK）→ `/profile` 生成画像分析（fact 洞察卡 + taste 审美点评）；发送预览与实际 payload 一致；洞察数字与本地聚合一致；点评引用的书目全部来自发送书单；黑名单断言单测绿；AI 未启用时 UI 无 AI 痕迹。
+
+## 7. 测试清单
+
+**Vitest（单元/集成，Phase 1 Red→Green）**
+
+- `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
+- `sanitize.ts` 装配边界：无 Top 书目（空库/无借阅）时 payload 结构完整（`topBooks=[]`）；分类缺失归并；`TOP_BOOKS_N` 截断与排序（借阅次数降序、平局最近借阅）。
+- `ai-client.ts`：`chat()` 构造正确 URL/headers/body（`Authorization` 仅在有 Key 时携带；`baseUrl` 去尾斜杠）；`stream:false` 普通 JSON 响应解析；**SSE 响应解析**（mock fetch 返回分片 `data:` 行：完整事件、事件间空行、`[DONE]`、断行重组）；Abort 中断抛 `AbortError`；超时触发 abort；HTTP 非 2xx 抛带状态错误；无鉴权端点（无 Key）请求不带头。
+- `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`。
+- `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
+- `ai-cache.ts`：缓存键含 scene/locale/key；写读回环；清除只删 `ai:` 前缀键；不随 `exportDatabase` 导出。
+- 偏好扩展：`ai` 非法值（如 `baseUrl` 非字符串）降级默认；`readgraph:ai-api-key` 独立读写、不进 `userPreferencesSchema`。
+
+**Playwright（E2E，统一 UI 里程碑接入）**
+
+- route mock 端点：未启用 AI → `/profile` 无 AI 区块；启用 + 触发 → 预览内容与实际请求 body 一致（拦截断言）；确认后渲染 fact 卡 + taste 段；taste/fact 均标注 AI 生成；重新生成覆盖；断网 mock 失败 → 错误 toast 且不渲染结果。
+
+## 8. React 性能规则引用
+
+- `client-localstorage-schema`：`ai` 偏好与 Key 读写过 schema 校验（`userPreferencesSchema` 扩展 + 独立 Key key），避免脏值；Key 不进 React 状态持久化。
+- `bundle-barrel-imports` / `bundle-dynamic-imports`：`src/ai/` 与 `ai-cache` 在 `/profile`、`/settings` 激活时动态加载（AI 默认关闭时不被主包拉入）。
+- `rendering-conditional-render`：AI 解读区按 `ai.enabled` + 结果态条件渲染（三元），未启用/空态无 AI 痕迹；不渲染空壳。
+- `rerender-transitions`：生成触发与重新生成用 loading 态（`Skeleton` 占位 + 按钮禁用），不阻塞页面其余渲染。
+- 装配器与聚合为纯函数，单遍 `Map` 建索引（复用 [reading-profile §8](./reading-profile.md#8-react-性能规则引用) 的 `js-index-maps` 取向），无重复线性查找。
+
+## 9. Phase 2 / Phase 3 边界
+
+### 9.1 Phase 2：年度总结叙事 + 流式
+
+- `/profile/$year` 年度视图「年度叙事」：`year-review` 切片指标 + Top 书目题名/作者 → 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。
+- 流式输出（`stream:true` + SSE 拼接）、`Abort`、按 year/range/locale 缓存；taste 段逐句呈现。
+- 脱敏断言覆盖年度场景（与 §3.2 同白名单形态，切片替代全量）；`prompts/year-narrative.ts` 就位。
+
+### 9.2 Phase 3：本地服务后端（可选）
+
+- Ollama / LM Studio 等 OpenAI 兼容本地端点，同一契约零成本共存（`baseUrl` 配 `http://127.0.0.1:*` 即切换）。
+- 未启动时连接测试 + 明确错误提示；功能级降级（§5.4）。
+- CORS 前提：Ollama 默认回环放行（`OLLAMA_ORIGINS` 可扩展，[调研参考](../research/ai-integration-research.md#参考来源)）；LM Studio 同契约。
+
+## 10. 待办关联
+
+- 落地前须完成：`vite.config.ts` CSP 注释记录（§5.2）；`userPreferencesSchema` 扩展（§5.1，随 [data-layer](./data-layer.md) 迁移/升级流程走 [internal-schema 版本化](../metadata/internal-schema.md)）。
+- 调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。

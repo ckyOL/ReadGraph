@@ -1,6 +1,6 @@
 # AI 画像分析与点评 —— 技术调研（修订版）
 
-> **状态**：调研文档（非规格）。落地实现前须按 SDD 流程先补 `docs/specs/ai-features.md` 规格章节，再进 Tests(Red) → Code → Tests(Green)。
+> **状态**：调研文档（非规格）。规格已按 SDD 落地为 [specs/ai-features.md](../specs/ai-features.md)（Phase 1 契约：脱敏管道 / 设置页 AI 区 / 阅读画像分析），实现按 Tests(Red) → Code → Tests(Green) 推进。
 > **日期**：2026-08-22（修订：2026-08-23）
 > **关联**：[design-decisions](./design-decisions.md)（纯前端/隐私原则）、[reading-profile](./specs/reading-profile.md)（画像聚合契约）、[settings](./specs/settings.md)（偏好落点）、[npm-supply-chain-security](./npm-supply-chain-security.md)（依赖审查）
 > **修订要点**：① 新增类似项目调研（§2）与隐私保护技术调研（§3）；② 架构路线改为**云端高智能 + 脱敏为主力**，本地服务降为可选；③ 删除浏览器内推理路线（WebLLM/Transformers.js——局限大，不采用）；④ 删除模型选型（端点与模型是用户自己的事，项目不做选型建议）。⑤ 点评语义修正：**审美情趣点评并入画像分析**（`insight[]` 的 `kind='taste'` 条目），删除详情页单本点评，Phase 1 落点为阅读画像分析（§6.1/§8）。⑥ 补 UI 设计决策：不新开 AI 页面、非 LLM 会话样式、消费端锚定数据语境（§6.3）。

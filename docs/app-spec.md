@@ -29,12 +29,13 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 阅读画像与图表 | ✅ 已补规格 | [specs/reading-profile.md](./specs/reading-profile.md) |
 | 设置与系统重置 | ✅ 已补规格 | [specs/settings.md](./specs/settings.md) |
 | OPAC 编目补全 | ✅ 已补规格 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) |
+| AI 功能（阅读画像分析） | ✅ 已补规格 | [specs/ai-features.md](./specs/ai-features.md) |
 
 ### 1.2 非目标
 
 - 不做后端服务、用户登录、云同步（纯前端/i18n 离线）
 - 不做按 ImportLog 撤销单次导入（仅支持整体重置）
-- 不在 v1 集成本地 AI（预留扩展位，见 design-decisions 未来扩展）
+- 不集成本地浏览器内 AI 推理（WebLLM/Transformers.js 已否决，路线见 [research/ai-integration-research.md](./research/ai-integration-research.md)）；AI 功能为云端 BYOK + 发送前脱敏（默认关闭），契约见 [specs/ai-features.md](./specs/ai-features.md)
 - 不引入 TanStack Start / Remix / Next.js 等带服务端运行时的「全栈框架」——与纯前端约束冲突（见 §5.2）
 
 ## 2. 技术栈与版本基线
@@ -79,7 +80,8 @@ ReadGraph/
 │  │  ├─ device-borrows.md   # 设备借阅区分规格
 │  │  ├─ branch-library.md   # 条码归属馆解析规格
 │  │  ├─ debug-mode.md       # 调试模式规格
-│  │  └─ settings.md         # 设置与系统重置规格
+│  │  ├─ settings.md         # 设置与系统重置规格
+│  │  └─ ai-features.md      # AI 功能规格（阅读画像分析）
 │  ├─ tasks/                 # 里程碑任务分解
 │  ├─ metadata/              # 实体 schema、parser 设计
 │  ├─ design-decisions.md
@@ -236,6 +238,7 @@ pnpm install --ignore-scripts
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
+| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（`insight[]` fact 事实洞察 + taste 审美点评，同次生成同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区 — 规格已补，待 TDD 落地（Phase 1） |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 
