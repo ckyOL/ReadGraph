@@ -6,8 +6,6 @@
   "dashboard.stats.inBorrow": "In borrow",
   "dashboard.stats.lastImport": "Last import",
   "dashboard.recent.title": "Recent borrows",
-  "dashboard.quick.title": "Quick links",
-  "dashboard.quick.library": "Library",
   "dashboard.empty.title": "No books yet",
   "dashboard.empty.description": "Import your borrow data to see your collection overview and recent borrows.",
   "dashboard.empty.action": "Go to import",

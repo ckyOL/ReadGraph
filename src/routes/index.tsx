@@ -117,8 +117,8 @@ function DashboardPage() {
             />
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="mt-6 flex flex-col gap-6">
+            <Card>
               <CardHeader>
                 <CardTitle>{t('dashboard.recent.title')}</CardTitle>
               </CardHeader>
@@ -152,20 +152,6 @@ function DashboardPage() {
                     ))}
                   </ul>
                 )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('dashboard.quick.title')}</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                <Button asChild>
-                  <Link to="/import">{t('import.title')}</Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link to="/library">{t('dashboard.quick.library')}</Link>
-                </Button>
               </CardContent>
             </Card>
           </div>

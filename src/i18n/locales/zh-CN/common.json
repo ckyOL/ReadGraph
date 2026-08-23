@@ -1,5 +1,6 @@
 {
   "app.name": "ReadGraph",
+  "app.tagline": "个人阅读档案",
   "dialog.close": "关闭",
   "sheet.close": "关闭",
   "sidebar.toggle": "切换侧边栏",

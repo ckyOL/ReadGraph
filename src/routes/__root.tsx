@@ -13,6 +13,7 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
+  SidebarFooter,
   SidebarProvider,
   SidebarMenu,
   SidebarMenuItem,
@@ -26,11 +27,11 @@ import {
 import { ThemeProvider } from '@/hooks/use-theme'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { db } from '@/db/db-instance'
+import { Button } from '@/components/ui/button'
 const navItems = [
   { to: '/', key: 'dashboard' as const, Icon: LayoutDashboardIcon },
   { to: '/library', key: 'library' as const, Icon: LibraryIcon },
   { to: '/timeline', key: 'timeline' as const, Icon: TimelineIcon },
-  { to: '/import', key: 'import' as const, Icon: UploadIcon },
   { to: '/profile', key: 'profile' as const, Icon: BarChart3Icon },
   { to: '/settings', key: 'settings' as const, Icon: SettingsIcon },
 ]
@@ -49,7 +50,7 @@ function SidebarNav() {
     [],
   )
   return (
-    <SidebarContent>
+    <SidebarContent className="px-2">
       <SidebarMenu>
         {navItems.map((item) => (
           <SidebarMenuItem key={item.to}>
@@ -79,10 +80,30 @@ function RootLayout() {
       <TooltipProvider>
         <SidebarProvider>
           <Sidebar>
-            <SidebarHeader>
-              <span className="px-2 text-lg font-bold">{t('app.name', { ns: 'common' })}</span>
+            <SidebarHeader className="gap-2 border-b border-sidebar-border px-4 py-4">
+              <div className="flex items-center gap-2">
+                <span aria-hidden className="flex size-4 shrink-0 items-center justify-center gap-px bg-primary">
+                  <span className="h-2.5 w-px bg-primary-foreground" />
+                  <span className="h-2.5 w-px bg-primary-foreground" />
+                  <span className="h-2.5 w-px bg-primary-foreground" />
+                </span>
+                <span className="font-display text-lg font-semibold tracking-[0.04em]">
+                  {t('app.name', { ns: 'common' })}
+                </span>
+              </div>
+              <p className="text-xs text-sidebar-foreground/60">
+                {t('app.tagline', { ns: 'common' })}
+              </p>
             </SidebarHeader>
             <SidebarNav />
+            <SidebarFooter className="border-t border-sidebar-border px-4 py-3">
+              <Button asChild variant="outline" className="h-11 w-full justify-start gap-2 md:h-9">
+                <Link to="/import">
+                  <UploadIcon />
+                  <span>{t('import')}</span>
+                </Link>
+              </Button>
+            </SidebarFooter>
           </Sidebar>
           <SidebarInset>
             <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">

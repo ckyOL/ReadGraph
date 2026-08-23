@@ -57,7 +57,6 @@ test.describe('shell navigation (ui-navigation §8)', () => {
     { name: /Overview|概览/, url: '/' },
     { name: /Library|书库/, url: '/library' },
     { name: /Timeline|时间线/, url: '/timeline' },
-    { name: /Import|导入/, url: '/import' },
     { name: /Profile|画像/, url: '/profile' },
     { name: /Settings|设置/, url: '/settings' },
   ] as const
@@ -65,12 +64,23 @@ test.describe('shell navigation (ui-navigation §8)', () => {
   for (const p of pages) {
     test(`navigates to ${p.url} and highlights the active item`, async ({ page }) => {
       await page.goto('/')
-      const link = page.locator('[data-slot="sidebar"]').getByRole('link', { name: p.name })
+      const link = page
+        .locator('[data-slot="sidebar"] [data-slot="sidebar-content"]')
+        .getByRole('link', { name: p.name })
       await link.click()
       await expect(page).toHaveURL(p.url)
       await expect(link).toHaveAttribute('aria-current', 'page')
     })
   }
+
+  test('footer import button navigates to /import (single import entry)', async ({ page }) => {
+    await page.goto('/')
+    const link = page.locator('[data-slot="sidebar-footer"]').getByRole('link', {
+      name: /Import|导入/,
+    })
+    await link.click()
+    await expect(page).toHaveURL(/\/import/)
+  })
 
   test('mobile: sidebar collapses into a sheet toggled by the trigger', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
