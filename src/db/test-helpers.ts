@@ -4,12 +4,13 @@ import Dexie from 'dexie'
 import { ReadGraphDB } from './db'
 import { uuid } from './uuid'
 import type {
-  Book,
-  BorrowCycle,
-  CatalogRecord,
-  ImportLog,
-  RawRecord,
-  Source,
+	Book,
+	BorrowCycle,
+	CatalogRecord,
+	ClassificationEntry,
+	ImportLog,
+	RawRecord,
+	Source,
 } from '@/types/entities'
 
 const NOW = new Date('2025-03-01T08:00:00.000Z')
@@ -98,7 +99,7 @@ export function makeCatalog(
   sourceId: string,
   barcode: string,
   metaId: string | number | null,
-  classifications: { system: 'clc'; code: string }[] = [],
+  	classifications: ClassificationEntry[] = [],
 ): CatalogRecord {
   return {
     id,
