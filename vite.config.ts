@@ -11,11 +11,13 @@ import path from 'node:path'
  * - 仅 build 注入（apply: 'build'）：dev 不注入——Vite/plugin-react 有内联脚本，注入即坏。
  * - style-src 'unsafe-inline' 为 ECharts/Radix 内联样式保留。
  * - frame-ancestors 经 meta 无效——自有托管须加 `X-Frame-Options: DENY` header（部署清单记录）。
- * - Worker（import-worker/stats-worker）经 Vite 产出独立同源文件，由 script-src 'self' 兜底
- *   （worker-src 未声明时回退 script-src），无需 worker-src。
+ * - connect-src 放宽面（AI 功能规格 docs/specs/ai-features.md §5.2）：BYOK 任意云端端点构建期
+ *   静态化无法按用户配置动态放行，故放行 `https:`（任意 https 端点）+ `http://127.0.0.1:*`
+ *   （Phase 3 本地服务回环路径）。数据只在用户显式启用 AI 并触发功能时发送；保守用户可
+ *   自托管 header 收紧（CSP meta 可被响应头策略覆盖收紧）。
  */
 const CSP_META_CONTENT =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.szlib.org.cn; font-src 'self'; object-src 'none'; base-uri 'self'"
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.szlib.org.cn https: http://127.0.0.1:*; font-src 'self'; object-src 'none'; base-uri 'self'"
 
 function cspMetaPlugin(): Plugin {
   return {
