@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { computeProfileStats } from '@/lib/profile-stats'
 import type { ProfileStatsInput, ProfileStatsOptions } from '@/lib/profile-stats'
 import { makeBook, makeCatalog, makeCycle, makeRawRecord, makeSource } from '@/db/test-helpers'
-import { BOOKLIST_FULL_LIMIT, profilePayloadSchema, serializePayload } from './sanitize'
+import { BOOKLIST_FULL_LIMIT, SAMPLE_BOOKS_LIMIT, profilePayloadSchema, serializePayload } from './sanitize'
 import sanitizeSource from './sanitize.ts?raw'
 import type { ProfilePayload } from './sanitize'
 import type { Book, BorrowCycle, CatalogRecord, RawRecord } from '@/types/entities'
@@ -334,5 +334,240 @@ describe('profilePayloadSchema / BOOKLIST_FULL_LIMIT', () => {
       books: [{ ...payload.books[0]!, isbn13: '9787123456789' }],
     }
     expect(profilePayloadSchema.safeParse(extraBookField).success).toBe(false)
+  })
+})
+describe('serializePayload 分层采样（S-2，ai-features §3.2 极端档案防护）', () => {
+  /** 批量构造书目：id=`${prefix}-NNNN`，title=`${prefix} NNNN`（NNNN 四位零填充）。 */
+  function makeLibraryBooks(count: number, prefix: string): Book[] {
+    return Array.from({ length: count }, (_, i) => {
+      const n = String(i).padStart(4, '0')
+      return { ...makeBook(`${prefix}-${n}`, null, `${prefix} ${n}`) }
+    })
+  }
+
+  function makeCycles(bookId: string, count: number): BorrowCycle[] {
+    return Array.from(
+      { length: count },
+      (_, i) =>
+        makeCycle(`cyc-${bookId}-${i}`, bookId, 'src-sz', U('2026-01-01T00:00:00.000Z')),
+    )
+  }
+
+  it('SAMPLE_BOOKS_LIMIT = 500（采样总上限）', () => {
+    expect(SAMPLE_BOOKS_LIMIT).toBe(500)
+  })
+
+  it('阈值左侧：3000 本全量进 payload 且无 sampled 字段', () => {
+    const books = makeLibraryBooks(BOOKLIST_FULL_LIMIT, 'F')
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: [],
+      sources: [makeSource('src-sz')],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const payload = serializePayload(input, stats, { classificationSystem: 'clc' })
+
+    expect(payload.books).toHaveLength(3000)
+    expect(payload).not.toHaveProperty('sampled')
+    expectValidPayload(payload)
+  })
+
+  it('阈值右侧：3001 本 → 采样 500 本，sampled={ total:3001, sent:500 }；两次调用深等价（确定性）', () => {
+    const books = makeLibraryBooks(BOOKLIST_FULL_LIMIT + 1, 'F')
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: [],
+      sources: [makeSource('src-sz')],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const first = serializePayload(input, stats, { classificationSystem: 'clc' })
+    const second = serializePayload(input, stats, { classificationSystem: 'clc' })
+
+    expect(first.books).toHaveLength(SAMPLE_BOOKS_LIMIT)
+    expect(first.sampled).toEqual({ total: 3001, sent: 500 })
+    expect(first.sampled!.sent).toBe(first.books.length)
+    expectValidPayload(first)
+    expect(second).toEqual(first)
+  })
+
+  it('采样集分类全覆盖：跨 ≥3 分类（含无编目书）→ 每分类桶（含未分类）采样集 ≥1 本，无空桶', () => {
+    const groups = [
+      { prefix: 'I', code: 'I247.5', count: 1001 },
+      { prefix: 'T', code: 'TP311', count: 1001 },
+      { prefix: 'U', code: 'U41', count: 1000 },
+    ]
+    const books: Book[] = []
+    const catalogRecords: CatalogRecord[] = []
+    for (const g of groups) {
+      for (let i = 0; i < g.count; i++) {
+        const n = String(i).padStart(4, '0')
+        const id = `${g.prefix}-${n}`
+        books.push({ ...makeBook(id, null, `${g.prefix} ${n}`) })
+        catalogRecords.push(
+          makeCatalog(`cr-${id}`, id, 'src-sz', `BC-${id}`, null, [
+            { system: 'clc', code: g.code },
+          ]),
+        )
+      }
+    }
+    books.push({ ...makeBook('un-0001', null, '未分类书') }) // 无编目 → __unclassified__ 桶
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords,
+      borrowCycles: [],
+      sources: [makeSource('src-sz')],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const payload = serializePayload(input, stats, { classificationSystem: 'clc' })
+
+    expect(payload.books).toHaveLength(SAMPLE_BOOKS_LIMIT)
+    expect(payload.sampled).toEqual({ total: 3003, sent: 500 })
+    const codesInSample = new Set(
+      payload.books.map((b) => b.classification?.code ?? '__unclassified__'),
+    )
+    expect(codesInSample).toEqual(new Set(['I', 'T', 'U', '__unclassified__']))
+    expectValidPayload(payload)
+  })
+
+  it('代表规则：同分类内 borrowCount 高者优先入选（对照断言）', () => {
+    const books = [...makeLibraryBooks(2000, 'I'), ...makeLibraryBooks(1001, 'K')]
+    // I 0000..I 0004 分别借阅 5..1 次，其余 0 次 → 高借阅者必入选，0 借阅尾部出局
+    const cycles: BorrowCycle[] = []
+    for (let i = 0; i < 5; i++) {
+      const id = `I-${String(i).padStart(4, '0')}`
+      cycles.push(...makeCycles(id, 5 - i))
+    }
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: cycles,
+      sources: [makeSource('src-sz')],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const payload = serializePayload(input, stats, { classificationSystem: 'clc' })
+
+    expect(payload.sampled).toEqual({ total: 3001, sent: 500 })
+    const sampleTitles = new Set(payload.books.map((b) => b.title))
+    for (let i = 0; i < 5; i++) {
+      expect(sampleTitles.has(`I ${String(i).padStart(4, '0')}`)).toBe(true)
+    }
+    expect(sampleTitles.has('I 1999')).toBe(false)
+    expect(sampleTitles.has('K 1000')).toBe(false)
+    expect(payload.books.slice(0, 5).map((b) => b.borrowCount)).toEqual([5, 4, 3, 2, 1])
+    expectValidPayload(payload)
+  })
+
+  it('采样产物可校验：sampled 产物过 profilePayloadSchema.safeParse（§3.3 预览与上送同一装配产物）；sampled 形状非法被拒', () => {
+    const books = makeLibraryBooks(BOOKLIST_FULL_LIMIT + 1, 'V')
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: [],
+      sources: [makeSource('src-sz')],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const payload = serializePayload(input, stats, { classificationSystem: 'clc' })
+
+    expect(profilePayloadSchema.safeParse(payload).success).toBe(true)
+    expect(payload.sampled).toEqual({ total: 3001, sent: 500 })
+    expect(payload.books).toHaveLength(payload.sampled!.sent)
+
+    // sampled 对象自身 strict：多余字段拒绝
+    expect(
+      profilePayloadSchema
+        .safeParse({ ...payload, sampled: { total: 3001, sent: 500, extra: 1 } })
+        .success,
+    ).toBe(false)
+  })
+
+  it('空库/无借阅：books=[] 结构完整且无 sampled；超阈值全 0 借阅 → 采样集 borrowCount 全 0', () => {
+    const empty: ProfileStatsInput = { books: [], catalogRecords: [], borrowCycles: [], sources: [] }
+    const emptyPayload = serializePayload(empty, computeProfileStats(empty, STATS_OPTS), {
+      classificationSystem: null,
+    })
+    expect(emptyPayload.books).toEqual([])
+    expect(emptyPayload).not.toHaveProperty('sampled')
+    expectValidPayload(emptyPayload)
+
+    const books = makeLibraryBooks(BOOKLIST_FULL_LIMIT + 1, 'Z')
+    const zeroInput: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: [],
+      sources: [makeSource('src-sz')],
+    }
+    const zeroPayload = serializePayload(zeroInput, computeProfileStats(zeroInput, STATS_OPTS), {
+      classificationSystem: 'clc',
+    })
+    expect(zeroPayload.sampled).toEqual({ total: 3001, sent: 500 })
+    expect(zeroPayload.books).toHaveLength(SAMPLE_BOOKS_LIMIT)
+    expect(zeroPayload.books.every((b) => b.borrowCount === 0)).toBe(true)
+  })
+
+  it('采样分支黑名单穷举：采样书条目与全量同白名单字段集，黑名单值不出现', () => {
+    const secret = secretBook() // id 'book-secret'、title '秘密之书'，塞满黑名单值
+    const books = [secret, ...makeLibraryBooks(BOOKLIST_FULL_LIMIT, 'BL')]
+    // 秘密书 10 次借阅（其余 0 次）→ 必入选采样集
+    const cycles = Array.from({ length: 10 }, (_, i) =>
+      makeCycle(`cyc-sec-${i}`, 'book-secret', 'src-secret', U('2026-01-01T00:00:00.000Z'), 'borrowed', 'BC-SECRET-77'),
+    )
+    const input: ProfileStatsInput & { rawRecords: RawRecord[] } = {
+      books,
+      catalogRecords: [secretCatalog()],
+      borrowCycles: cycles,
+      sources: [makeSource('src-secret')],
+      rawRecords: [secretRaw()],
+    }
+    const stats = computeProfileStats(input, STATS_OPTS)
+    const payload = serializePayload(input, stats, { classificationSystem: 'clc' })
+    const serialized = JSON.stringify(payload)
+
+    expect(payload.sampled).toEqual({ total: 3001, sent: 500 })
+    const sampledSecret = payload.books.find((b) => b.title === '秘密之书')
+    expect(sampledSecret).toBeDefined()
+    expect(sampledSecret!.classification).toEqual({ code: 'I', name: '文学' })
+    expect(sampledSecret!.borrowCount).toBe(10)
+    expect(Object.keys(sampledSecret!).sort()).toEqual([
+      'authors',
+      'borrowCount',
+      'classification',
+      'publishYear',
+      'publisher',
+      'subjects',
+      'subtitle',
+      'title',
+    ])
+
+    const blacklistValues = [
+      'cardno-9X8Y7Z',
+      'RAW-ONLY-SECRET',
+      'BC-SECRET-77',
+      '2026-02-14T08:30:00.000Z',
+      '2026-02-20T08:30:00.000Z',
+      '深圳图书馆',
+      'metaId-TOP-SECRET',
+      'metaIdKey-TOP-SECRET',
+      '9787123456789',
+      '123456789X',
+      'TOP-SECRET-tag',
+      '59.99',
+      'CNY',
+      'cover-TOP-SECRET',
+      'TOP-SECRET-translator',
+      'TOP-SECRET-parallel',
+      'TOP-SECRET-desc',
+      'TOP-SECRET-location',
+      'TOP-SECRET-return-location',
+      'src-secret',
+      'I247.5',
+      '第1版',
+      '999',
+    ]
+    for (const value of blacklistValues) {
+      expect(serialized).not.toContain(value)
+    }
+    expectValidPayload(payload)
   })
 })
