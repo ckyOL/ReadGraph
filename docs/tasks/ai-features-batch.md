@@ -40,14 +40,14 @@
     - 黑名单**逐值穷举**：构造含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的数据，断言 payload 序列化文本不含任何黑名单值；
     - 每书字段断言：含题名/作者/借阅次数，不含 `isbn13`/`tags`/`price`/借还日期；借阅次数与 `profile-stats` 同源计数一致；
     - 纯函数性：同输入两次调用深等价；无 `Date.now()`/DOM/存储读。
-- [ ] **S-2（W2，前置 S-1，同文件串行）** 装配边界与采样降级（同文件或独立纯函数）：空库/无借阅 → `books=[]` 结构完整；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT`（默认 3000）全量；超阈值**按分类分层采样**（每分类按借阅次数取代表，总上限 500，覆盖全部分类无空桶）+ 采样标记（预览标注「已采样（N/M 本）」）。
+- [x] **S-2（W2，前置 S-1，同文件串行）** 装配边界与采样降级（同文件或独立纯函数）：空库/无借阅 → `books=[]` 结构完整；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT`（默认 3000）全量；超阈值**按分类分层采样**（每分类按借阅次数取代表，总上限 500，覆盖全部分类无空桶）+ 采样标记（预览标注「已采样（N/M 本）」）。
   - 测试：阈值两侧行为；采样集分类全覆盖；`serializePayload` 产物与发送预览共用（§3.3 同一函数）。
 
 ## 阶段 2：端点客户端（[ai-features §5.4](../specs/ai-features.md#54-端点契约与降级)）
 
 - [x] **C-1（W1）** `src/ai/ai-client.ts`：OpenAI 兼容薄封装 `chat()`（`{baseUrl}/v1/chat/completions`，`stream:false` + `response_format` JSON；`baseUrl` 去尾斜杠；`Authorization` 仅在有 Key 时携带；`AbortController` 15s 超时）+ 连接测试 `GET {baseUrl}/v1/models`。
   - 测试（mock fetch）：URL/headers/body 构造；无 Key 请求不带头；超时触发 abort；HTTP 非 2xx（401/429）抛带状态错误；非 JSON/流式响应兜底解析。
-- [ ] **C-2（W2，前置 C-1）** `src/ai/ai-provider.ts`：`chat(messages, { schema?, stream?, signal? })` 契约（[ai-features §1](../specs/ai-features.md#1-范围与依赖) 代码落点）；响应过 schema 校验，非法抛 `ZodError`。
+- [x] **C-2（W2，前置 C-1）** `src/ai/ai-provider.ts`：`chat(messages, { schema?, stream?, signal? })` 契约（[ai-features §1](../specs/ai-features.md#1-范围与依赖) 代码落点）；响应过 schema 校验，非法抛 `ZodError`。
   - 测试：schema 校验通过/拒绝路径；Phase 1 非流式（`stream:false`）；SSE 解析纯函数（完整事件/空行/`[DONE]`/断行重组）为 Phase 2 预留并在本阶段实现+测试（mock fetch 分片响应）。
 
 ## 阶段 3：画像分析 prompt（[ai-features §4.1](../specs/ai-features.md#41-阅读画像分析profile-ai-解读区-phase-1)）
@@ -62,7 +62,7 @@
 
 - [x] **E-1（W1）** 偏好扩展：`userPreferencesSchema` 增 `ai: { enabled, baseUrl, model }`（默认关/空；非法值降级默认）；API Key 独立 `localStorage` key `readgraph:ai-api-key`（不进 schema、不随偏好读写/备份导出，[ai-features §5.1](../specs/ai-features.md#51-偏好持久化扩展-data-layer-§8)）。
   - 测试：`ai` 非法值降级；Key 独立读写、`exportDatabase` 产物不含 Key/`ai` 偏好；系统重置 `clearPreferences` 清 AI 配置与 Key。
-- [ ] **E-2（W2，前置 E-1 + C-1）** 设置页 AI 区 UI：启用开关（默认关）→ 展开端点 URL/API Key（`Password`）/模型名（用户自填）/「测试连接」（调 C-1）/隐私说明（§2.3 文案）/发送预览开关（默认开）/清除 AI 缓存。i18n `settings.ai.*` 双语。
+- [x] **E-2（W2，前置 E-1 + C-1）** 设置页 AI 区 UI：启用开关（默认关）→ 展开端点 URL/API Key（`Password`）/模型名（用户自填）/「测试连接」（调 C-1）/隐私说明（§2.3 文案）/发送预览开关（默认开）/清除 AI 缓存。i18n `settings.ai.*` 双语。
 - [x] **E-3（W1）** `src/lib/ai-cache.ts`：缓存键 `ai:{scene}:{locale}:{key}`；写读回环；清除只删 `ai:` 前缀键；不随备份导出。
   - 测试：键含 scene/locale/key；回环；清除范围；断网时缓存可读。
 
@@ -92,6 +92,7 @@
 - 2026-08-23 建档：[ai-features](../specs/ai-features.md) 规格已补（脱敏管道/每书字段集/模型知识边界/发送预览/缓存/设置页 AI 区）；白名单决策链已定稿——Top N → 全量书目 → 每书 8 字段（题名/副标题/作者/出版年份/出版社/单书分类/`subjects`/借阅次数），黑名单 10 项（cardno/barcode/借还日期/馆名/rawRecords/gantt/calendar 明细/isbn13/tags/price 等）。阶段 0–5 待启动；推进顺序 A-1 → A-2 → S-1 → S-2 → C-1 → C-2 → P-1 → E-1 → E-2 → E-3 → F-1 → F-2 → F-3 → F-4。
 - 2026-08-23 补充**并行执行策略**：任务按依赖划分为 W1–W4 四波（W1 七任务并行：A-1/A-2/S-1/C-1/P-1/E-1/E-3；W2：S-2/C-2/E-2；W3：F-1/F-3；W4：F-2/F-4）；S-1/S-2 同文件串行；每波结束统一验证。执行时按波次 fan-out，契约以 [ai-features 规格](../specs/ai-features.md) 为准。
 - 2026-08-23 **波次1完成**：A-1/A-2/S-1/C-1/P-1（含 P-2 占位）/E-1/E-3 七任务并行落地，TDD 全绿（sanitize 9 / ai-client 19 / prompts 14 / preferences+reset 32 / ai-cache 9 用例）；波次门禁通过——`pnpm test` 70 文件 835 用例全绿、`pnpm build`（`tsc -b` + vite）通过；黑名单穷举断言（§3.3 门禁）绿。产出：`src/ai/sanitize.ts`（`profilePayloadSchema`/`serializePayload`/`BOOKLIST_FULL_LIMIT`）、`src/ai/ai-client.ts`（`chat`/`testConnection`/`AiHttpError`）、`src/ai/prompts/{profile-insights,year-narrative}.ts`（`insightSchema`/`profileInsightsSchema`/`buildProfileInsightsPrompt`/`PROFILE_TEMPERATURE`）、`src/lib/preferences.ts` 扩展 `ai` + `src/lib/ai-api-key.ts`、`src/lib/ai-cache.ts`（`readAiCache`/`writeAiCache`/`clearAiCache`）、`vite.config.ts` CSP 放宽。波次2（S-2/C-2/E-2）待启。
+- 2026-08-23 **波次2完成**：S-2/C-2/E-2 三任务并行落地。S-2 `sanitize.ts` 增分层采样（`SAMPLE_BOOKS_LIMIT=500`、`sampled:{total,sent}` 标记、分类缺失归并 `__unclassified__`、确定性比较器）；C-2 `src/ai/ai-provider.ts` 增 `createAiProvider(config).chat(messages,{schema?,stream?,signal?})`（schema 校验失败抛 `ZodError`、stream:true 明确 Phase 2 错误）+ SSE 解析纯函数 `parseSseEvents`（断行重组/[DONE]/空行，Phase 2 预留）；E-2 设置页 AI 区（启用开关→端点/API Key/模型/测试连接/隐私说明/发送预览/清缓存，`preferences.ai` 增 `sendPreview` 默认 true）+ toast 基础设施（shadcn，radix-ui 既有，挂 `__root`）+ `settings.ai.*` 双语 i18n。门禁：`pnpm test` 71 文件 862 用例全绿、`pnpm build` 通过；UI 冒烟（dev server + 浏览器）：AI 区位置/展开/即写存储（baseUrl/model 进偏好、Key 独立键）、测试连接失败 toast 分级、清缓存仅删 `ai:` 前缀、发送预览开关、隐私文案双语齐。波次3（F-1/F-3）待启。
 
 ## 实现指南（给执行 LLM 的速查）
 
