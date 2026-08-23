@@ -1,0 +1,183 @@
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { testConnection, AiHttpError } from '@/ai/ai-client'
+import { readPreferences, writePreferences, type UserPreferencesInput } from '@/lib/preferences'
+import { readAiApiKey, writeAiApiKey } from '@/lib/ai-api-key'
+import { clearAiCache } from '@/lib/ai-cache'
+import { toast } from '@/components/ui/use-toast'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+
+/** 连接测试失败分级（ai-features §5.4）：网络/超时 → network；401 → auth；429 → rateLimited；其余 HTTP → http（带 status）。 */
+function testErrorKey(e: unknown): { key: string; options?: Record<string, unknown> } {
+  if (e instanceof AiHttpError) {
+    if (e.status === 401) return { key: 'settings.ai.test.error.auth' }
+    if (e.status === 429) return { key: 'settings.ai.test.error.rateLimited' }
+    return { key: 'settings.ai.test.error.http', options: { status: e.status } }
+  }
+  return { key: 'settings.ai.test.error.network' }
+}
+
+/**
+ * AI 区（ai-features §4.2）：启用开关（默认关）→ 启用后展开端点 URL / API Key（独立存储）/
+ * 模型名（用户自填）/「测试连接」/ 隐私说明（§2.3）/「发送预览」开关（默认开）/「清除 AI 缓存」。
+ * 配置输入即写即存（偏好 + 独立 Key key，Key 不进偏好）；错误与结果经 toast 呈现。
+ */
+export function AiSection() {
+  const { t } = useTranslation('pages')
+  const [enabled, setEnabled] = useState(() => readPreferences().ai.enabled)
+  const [baseUrl, setBaseUrl] = useState(() => readPreferences().ai.baseUrl)
+  const [model, setModel] = useState(() => readPreferences().ai.model)
+  const [apiKey, setApiKey] = useState(() => readAiApiKey())
+  const [sendPreview, setSendPreview] = useState(() => readPreferences().ai.sendPreview)
+  const [testing, setTesting] = useState(false)
+
+  const patchAi = (patch: Partial<UserPreferencesInput['ai']>) => {
+    writePreferences({ ai: { ...readPreferences().ai, ...patch } })
+  }
+
+  const handleEnabledChange = (v: boolean) => {
+    setEnabled(v)
+    patchAi({ enabled: v })
+  }
+
+  const handleBaseUrlChange = (v: string) => {
+    setBaseUrl(v)
+    patchAi({ baseUrl: v })
+  }
+
+  const handleApiKeyChange = (v: string) => {
+    setApiKey(v)
+    writeAiApiKey(v)
+  }
+
+  const handleModelChange = (v: string) => {
+    setModel(v)
+    patchAi({ model: v })
+  }
+
+  const handleSendPreviewChange = (v: boolean) => {
+    setSendPreview(v)
+    patchAi({ sendPreview: v })
+  }
+
+  const runTest = async () => {
+    const trimmed = baseUrl.trim()
+    if (!trimmed || testing) return
+    setTesting(true)
+    try {
+      await testConnection({ baseUrl: trimmed, apiKey: apiKey.trim() || undefined })
+      toast({ title: t('settings.ai.test.ok') })
+    } catch (e) {
+      // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
+      console.error('[settings] AI connection test failed:', e)
+      const { key, options } = testErrorKey(e)
+      toast({
+        variant: 'destructive',
+        title: t('settings.ai.test.error'),
+        description: t(key, options),
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleClearCache = () => {
+    clearAiCache()
+    toast({ title: t('settings.ai.cacheCleared') })
+  }
+
+  return (
+    <section className="space-y-4 border-t pt-4">
+      <h2 className="text-sm font-semibold">{t('settings.ai.title')}</h2>
+
+      {/* 启用开关：默认关；未启用时全站无 AI 痕迹（设置页开关常驻，展开区条件渲染） */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="w-32 shrink-0 text-sm text-muted-foreground">
+          {t('settings.ai.enable')}
+        </span>
+        <Switch
+          checked={enabled}
+          onCheckedChange={handleEnabledChange}
+          aria-label={t('settings.ai.enable')}
+        />
+      </div>
+
+      {enabled && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="w-32 shrink-0 text-sm text-muted-foreground">
+              {t('settings.ai.endpoint')}
+            </span>
+            <Input
+              value={baseUrl}
+              onChange={(e) => handleBaseUrlChange(e.target.value)}
+              placeholder={t('settings.ai.endpointPlaceholder')}
+              className="w-72"
+              aria-label={t('settings.ai.endpoint')}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="w-32 shrink-0 text-sm text-muted-foreground">
+              {t('settings.ai.apiKey')}
+            </span>
+            <Input
+              type="password"
+              value={apiKey}
+              onChange={(e) => handleApiKeyChange(e.target.value)}
+              placeholder={t('settings.ai.apiKeyHint')}
+              className="w-72"
+              autoComplete="off"
+              aria-label={t('settings.ai.apiKey')}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="w-32 shrink-0 text-sm text-muted-foreground">
+              {t('settings.ai.model')}
+            </span>
+            <Input
+              value={model}
+              onChange={(e) => handleModelChange(e.target.value)}
+              placeholder={t('settings.ai.modelPlaceholder')}
+              className="w-72"
+              aria-label={t('settings.ai.model')}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => void runTest()}
+              disabled={!baseUrl.trim() || testing}
+            >
+              {testing ? t('settings.ai.testing') : t('settings.ai.test')}
+            </Button>
+            <Button variant="outline" onClick={handleClearCache}>
+              {t('settings.ai.clearCache')}
+            </Button>
+          </div>
+
+          <p className="max-w-xl text-xs text-muted-foreground">
+            {t('settings.ai.privacyNotice')}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="w-32 shrink-0 text-sm text-muted-foreground">
+              {t('settings.ai.preview')}
+            </span>
+            <Switch
+              checked={sendPreview}
+              onCheckedChange={handleSendPreviewChange}
+              aria-label={t('settings.ai.preview')}
+            />
+            <p className="text-xs text-muted-foreground">{t('settings.ai.previewDesc')}</p>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}

@@ -53,7 +53,7 @@ describe('DEFAULT_PREFERENCES', () => {
     expect(DEFAULT_PREFERENCES.locale).toBe('zh-CN')
     expect(DEFAULT_PREFERENCES.theme).toBe('auto')
     expect(DEFAULT_PREFERENCES.displayTimezone).toBe('Asia/Shanghai')
-    expect(DEFAULT_PREFERENCES.ai).toEqual({ enabled: false, baseUrl: '', model: '' })
+    expect(DEFAULT_PREFERENCES.ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
   })
 })
 
@@ -61,13 +61,13 @@ describe('readPreferences', () => {
   it('returns defaults when nothing is stored', () => {
     installStorage(new Map())
     const r = readPreferences()
-    expect(r).toEqual({ locale: DEFAULT_LOCALE, theme: 'auto', displayTimezone: 'Asia/Shanghai', ai: { enabled: false, baseUrl: '', model: '' } })
+    expect(r).toEqual({ locale: DEFAULT_LOCALE, theme: 'auto', displayTimezone: 'Asia/Shanghai', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true } })
   })
 
   it('reads fully valid persisted preferences', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' } })]]))
     setNavLng('en-US')
-    expect(readPreferences()).toEqual({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' } })
+    expect(readPreferences()).toEqual({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o', sendPreview: true } })
   })
 
   it('downgrades an out-of-enum theme to default, keeps valid timezone', () => {
@@ -109,37 +109,48 @@ describe('readPreferences', () => {
   it('returns default ai when ai is missing from raw', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC' })]]))
     setNavLng('zh-CN')
-    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: '', model: '' })
+    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
   })
 
   it('round-trips a fully valid ai config', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'en', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' } })]]))
     setNavLng('en-US')
-    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' })
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o', sendPreview: true })
   })
 
   it('downgrades ai.baseUrl of wrong type to default, keeps valid siblings', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 123, model: 'gpt-4o' } })]]))
     setNavLng('zh-CN')
-    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: '', model: 'gpt-4o' })
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: '', model: 'gpt-4o', sendPreview: true })
   })
 
   it('downgrades ai.enabled of wrong type to default, keeps valid siblings', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: 'yes', baseUrl: 'https://api.example.com', model: 'gpt-4o' } })]]))
     setNavLng('zh-CN')
-    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: 'https://api.example.com', model: 'gpt-4o' })
+    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true })
   })
 
   it('downgrades ai.model of wrong type to default, keeps valid siblings', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 7 } })]]))
     setNavLng('zh-CN')
-    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: '' })
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: '', sendPreview: true })
   })
 
   it('downgrades a non-object ai to default ai', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: 'off' })]]))
     setNavLng('zh-CN')
-    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: '', model: '' })
+    expect(readPreferences().ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
+  })
+  it('downgrades ai.sendPreview of wrong type to default true, keeps valid siblings', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: 'no' } })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true })
+  })
+
+  it('round-trips a persisted sendPreview: false', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: false } })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: false })
   })
 })
 
@@ -148,7 +159,7 @@ describe('writePreferences', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'light', displayTimezone: 'UTC' })]]))
     setNavLng('zh-CN')
     const r = writePreferences({ theme: 'dark' as Theme })
-    expect(r).toEqual({ locale: 'zh-CN', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: false, baseUrl: '', model: '' } })
+    expect(r).toEqual({ locale: 'zh-CN', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true } })
   })
 
   it('rejects an invalid theme patch, keeping the current valid value', () => {
@@ -166,17 +177,24 @@ describe('writePreferences', () => {
   it('persists an ai patch merged with existing prefs and reads it back', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC' })]]))
     setNavLng('zh-CN')
-    const r = writePreferences({ ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' } })
-    expect(r.ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' })
+    const r = writePreferences({ ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true } })
+    expect(r.ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true })
     expect(r.theme).toBe('auto')
-    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' })
+    expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true })
+  })
+  it('persists a sendPreview: false ai patch and reads it back', () => {
+    installStorage(new Map())
+    setNavLng('zh-CN')
+    const r = writePreferences({ ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: false } })
+    expect(r.ai.sendPreview).toBe(false)
+    expect(readPreferences().ai.sendPreview).toBe(false)
   })
 
   it('rejects an invalid ai patch, keeping the current value', () => {
     installStorage(new Map())
     setNavLng('zh-CN')
-    const r = writePreferences({ ai: { enabled: 'yes' as unknown as boolean, baseUrl: '', model: '' } })
-    expect(r.ai).toEqual({ enabled: false, baseUrl: '', model: '' })
+    const r = writePreferences({ ai: { enabled: 'yes' as unknown as boolean, baseUrl: '', model: '', sendPreview: true } })
+    expect(r.ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
   })
 })
 
@@ -234,7 +252,7 @@ describe('ai-api-key', () => {
     installStorage(store)
     setNavLng('zh-CN')
     writeAiApiKey('sk-secret-123')
-    writePreferences({ ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o' } })
+    writePreferences({ ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true } })
     const raw = store.get('readgraph:preferences') ?? ''
     expect(raw).not.toContain('sk-secret-123')
     expect(raw).not.toContain('ai-api-key')

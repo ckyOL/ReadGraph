@@ -28,6 +28,7 @@ import { ThemeProvider } from '@/hooks/use-theme'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { db } from '@/db/db-instance'
 import { Button } from '@/components/ui/button'
+import { Toaster } from '@/components/ui/toaster'
 const navItems = [
   { to: '/', key: 'dashboard' as const, Icon: LayoutDashboardIcon },
   { to: '/library', key: 'library' as const, Icon: LibraryIcon },
@@ -113,6 +114,7 @@ function RootLayout() {
           </SidebarInset>
         </SidebarProvider>
       </TooltipProvider>
+      <Toaster />
     </ThemeProvider>
   )
 }

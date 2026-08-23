@@ -13,6 +13,7 @@ export const userPreferencesSchema = z.object({
     enabled: z.boolean(),
     baseUrl: z.string(),
     model: z.string(),
+    sendPreview: z.boolean(),
   }),
 })
 
@@ -23,7 +24,7 @@ export const DEFAULT_PREFERENCES = {
   locale: 'zh-CN' as const,
   theme: 'auto' as const,
   displayTimezone: 'Asia/Shanghai',
-  ai: { enabled: false, baseUrl: '', model: '' },
+  ai: { enabled: false, baseUrl: '', model: '', sendPreview: true },
 }
 
 export type Theme = 'light' | 'dark' | 'auto'
@@ -76,6 +77,10 @@ export function readPreferences(): UserPreferencesParsed {
         baseUrl:
           typeof aiObj.baseUrl === 'string' ? aiObj.baseUrl : DEFAULT_PREFERENCES.ai.baseUrl,
         model: typeof aiObj.model === 'string' ? aiObj.model : DEFAULT_PREFERENCES.ai.model,
+        sendPreview:
+          typeof aiObj.sendPreview === 'boolean'
+            ? aiObj.sendPreview
+            : DEFAULT_PREFERENCES.ai.sendPreview,
       }
     }
   }
