@@ -28,14 +28,14 @@
 
 ## 阶段 0：前置（供应链与配置）
 
-- [ ] **A-1（W1）** 零新增依赖确认：Phase 1 运行时依赖 = 既有 `zod` + 原生 `fetch`/`AbortController`/`EventSource 解析（手写）`；无新包引入，无需供应链审查门（记录于「实现指南 · 依赖」）。
-- [ ] **A-2（W1）** CSP 放宽：`vite.config.ts` `connect-src` 增加 `https:` + `http://127.0.0.1:*`，**注释记录取舍**（放宽面为任意 https 端点，但数据只在用户显式启用 AI 并触发功能时发送；保守用户可自托管 header 收紧，[ai-features §5.2](../specs/ai-features.md#52-csp-放宽viteconfigts-注释记录)）。无测试（构建期静态配置，注释即记录）。
+- [x] **A-1（W1）** 零新增依赖确认：Phase 1 运行时依赖 = 既有 `zod` + 原生 `fetch`/`AbortController`/`EventSource 解析（手写）`；无新包引入，无需供应链审查门（记录于「实现指南 · 依赖」）。
+- [x] **A-2（W1）** CSP 放宽：`vite.config.ts` `connect-src` 增加 `https:` + `http://127.0.0.1:*`，**注释记录取舍**（放宽面为任意 https 端点，但数据只在用户显式启用 AI 并触发功能时发送；保守用户可自托管 header 收紧，[ai-features §5.2](../specs/ai-features.md#52-csp-放宽viteconfigts-注释记录)）。无测试（构建期静态配置，注释即记录）。
 
 ## 阶段 1：脱敏管道（[ai-features §3](../specs/ai-features.md#3-脱敏管道src-aisanitizets)，纯函数层，TDD 核心）
 
 > 权威契约：[ai-features §3.2](../specs/ai-features.md#32-画像场景白名单契约草案phase-1-唯一场景) 白名单/黑名单表 + 每书字段集 + 模型知识边界；统计数值只消费 `computeProfileStats` 输出（[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约)）。
 
-- [ ] **S-1（W1）** `src/ai/sanitize.ts`：画像场景 Zod schema（白名单声明）+ `serializePayload()` 装配器（聚合统计 + 全量每书字段：题名/副标题/作者/出版年份/出版社/单书分类（首选体系）/`subjects`/借阅次数）。
+- [x] **S-1（W1）** `src/ai/sanitize.ts`：画像场景 Zod schema（白名单声明）+ `serializePayload()` 装配器（聚合统计 + 全量每书字段：题名/副标题/作者/出版年份/出版社/单书分类（首选体系）/`subjects`/借阅次数）。
   - 测试（Vitest，Red 先行，[ai-features §7](../specs/ai-features.md#7-测试清单)）：
     - 黑名单**逐值穷举**：构造含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的数据，断言 payload 序列化文本不含任何黑名单值；
     - 每书字段断言：含题名/作者/借阅次数，不含 `isbn13`/`tags`/`price`/借还日期；借阅次数与 `profile-stats` 同源计数一致；
@@ -45,25 +45,25 @@
 
 ## 阶段 2：端点客户端（[ai-features §5.4](../specs/ai-features.md#54-端点契约与降级)）
 
-- [ ] **C-1（W1）** `src/ai/ai-client.ts`：OpenAI 兼容薄封装 `chat()`（`{baseUrl}/v1/chat/completions`，`stream:false` + `response_format` JSON；`baseUrl` 去尾斜杠；`Authorization` 仅在有 Key 时携带；`AbortController` 15s 超时）+ 连接测试 `GET {baseUrl}/v1/models`。
+- [x] **C-1（W1）** `src/ai/ai-client.ts`：OpenAI 兼容薄封装 `chat()`（`{baseUrl}/v1/chat/completions`，`stream:false` + `response_format` JSON；`baseUrl` 去尾斜杠；`Authorization` 仅在有 Key 时携带；`AbortController` 15s 超时）+ 连接测试 `GET {baseUrl}/v1/models`。
   - 测试（mock fetch）：URL/headers/body 构造；无 Key 请求不带头；超时触发 abort；HTTP 非 2xx（401/429）抛带状态错误；非 JSON/流式响应兜底解析。
 - [ ] **C-2（W2，前置 C-1）** `src/ai/ai-provider.ts`：`chat(messages, { schema?, stream?, signal? })` 契约（[ai-features §1](../specs/ai-features.md#1-范围与依赖) 代码落点）；响应过 schema 校验，非法抛 `ZodError`。
   - 测试：schema 校验通过/拒绝路径；Phase 1 非流式（`stream:false`）；SSE 解析纯函数（完整事件/空行/`[DONE]`/断行重组）为 Phase 2 预留并在本阶段实现+测试（mock fetch 分片响应）。
 
 ## 阶段 3：画像分析 prompt（[ai-features §4.1](../specs/ai-features.md#41-阅读画像分析profile-ai-解读区-phase-1)）
 
-- [ ] **P-1（W1）** `src/ai/prompts/profile-insights.ts`：`insightSchema`（`insight[]`：`kind: 'fact'|'taste'`，fact 带 `title`/`dimension`，taste 无维度）+ prompt 模板。
+- [x] **P-1（W1）** `src/ai/prompts/profile-insights.ts`：`insightSchema`（`insight[]`：`kind: 'fact'|'taste'`，fact 带 `title`/`dimension`，taste 无维度）+ prompt 模板。
   - 测试：schema 接受合法 fact/taste、拒绝缺 `kind`/`body`/非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名，代码审计断言）；幻觉控制指令在位（仅引用发送书单内书目、数字只转译、temperature 低）。
-- [ ] **P-2（W1，无依赖）** `src/ai/prompts/year-narrative.ts`：占位落位（Phase 2 用，仅导出类型与空模板标记，不实现）。
+- [x] **P-2（W1，无依赖）** `src/ai/prompts/year-narrative.ts`：占位落位（Phase 2 用，仅导出类型与空模板标记，不实现）。
 
 ## 阶段 4：设置页 AI 区（[ai-features §4.2](../specs/ai-features.md#42-设置页-ai-区settings-phase-1)）
 
 > 设置页既有三区（偏好/数据）已落地；AI 区插入偏好区与数据区之间（[settings §7](../specs/settings.md#7-ui-设计说明) 同步过）。
 
-- [ ] **E-1（W1）** 偏好扩展：`userPreferencesSchema` 增 `ai: { enabled, baseUrl, model }`（默认关/空；非法值降级默认）；API Key 独立 `localStorage` key `readgraph:ai-api-key`（不进 schema、不随偏好读写/备份导出，[ai-features §5.1](../specs/ai-features.md#51-偏好持久化扩展-data-layer-§8)）。
+- [x] **E-1（W1）** 偏好扩展：`userPreferencesSchema` 增 `ai: { enabled, baseUrl, model }`（默认关/空；非法值降级默认）；API Key 独立 `localStorage` key `readgraph:ai-api-key`（不进 schema、不随偏好读写/备份导出，[ai-features §5.1](../specs/ai-features.md#51-偏好持久化扩展-data-layer-§8)）。
   - 测试：`ai` 非法值降级；Key 独立读写、`exportDatabase` 产物不含 Key/`ai` 偏好；系统重置 `clearPreferences` 清 AI 配置与 Key。
 - [ ] **E-2（W2，前置 E-1 + C-1）** 设置页 AI 区 UI：启用开关（默认关）→ 展开端点 URL/API Key（`Password`）/模型名（用户自填）/「测试连接」（调 C-1）/隐私说明（§2.3 文案）/发送预览开关（默认开）/清除 AI 缓存。i18n `settings.ai.*` 双语。
-- [ ] **E-3（W1）** `src/lib/ai-cache.ts`：缓存键 `ai:{scene}:{locale}:{key}`；写读回环；清除只删 `ai:` 前缀键；不随备份导出。
+- [x] **E-3（W1）** `src/lib/ai-cache.ts`：缓存键 `ai:{scene}:{locale}:{key}`；写读回环；清除只删 `ai:` 前缀键；不随备份导出。
   - 测试：键含 scene/locale/key；回环；清除范围；断网时缓存可读。
 
 ## 阶段 5：/profile「AI 解读」区（[ai-features §4.1](../specs/ai-features.md#41-阅读画像分析profile-ai-解读区-phase-1)）
@@ -91,6 +91,7 @@
 
 - 2026-08-23 建档：[ai-features](../specs/ai-features.md) 规格已补（脱敏管道/每书字段集/模型知识边界/发送预览/缓存/设置页 AI 区）；白名单决策链已定稿——Top N → 全量书目 → 每书 8 字段（题名/副标题/作者/出版年份/出版社/单书分类/`subjects`/借阅次数），黑名单 10 项（cardno/barcode/借还日期/馆名/rawRecords/gantt/calendar 明细/isbn13/tags/price 等）。阶段 0–5 待启动；推进顺序 A-1 → A-2 → S-1 → S-2 → C-1 → C-2 → P-1 → E-1 → E-2 → E-3 → F-1 → F-2 → F-3 → F-4。
 - 2026-08-23 补充**并行执行策略**：任务按依赖划分为 W1–W4 四波（W1 七任务并行：A-1/A-2/S-1/C-1/P-1/E-1/E-3；W2：S-2/C-2/E-2；W3：F-1/F-3；W4：F-2/F-4）；S-1/S-2 同文件串行；每波结束统一验证。执行时按波次 fan-out，契约以 [ai-features 规格](../specs/ai-features.md) 为准。
+- 2026-08-23 **波次1完成**：A-1/A-2/S-1/C-1/P-1（含 P-2 占位）/E-1/E-3 七任务并行落地，TDD 全绿（sanitize 9 / ai-client 19 / prompts 14 / preferences+reset 32 / ai-cache 9 用例）；波次门禁通过——`pnpm test` 70 文件 835 用例全绿、`pnpm build`（`tsc -b` + vite）通过；黑名单穷举断言（§3.3 门禁）绿。产出：`src/ai/sanitize.ts`（`profilePayloadSchema`/`serializePayload`/`BOOKLIST_FULL_LIMIT`）、`src/ai/ai-client.ts`（`chat`/`testConnection`/`AiHttpError`）、`src/ai/prompts/{profile-insights,year-narrative}.ts`（`insightSchema`/`profileInsightsSchema`/`buildProfileInsightsPrompt`/`PROFILE_TEMPERATURE`）、`src/lib/preferences.ts` 扩展 `ai` + `src/lib/ai-api-key.ts`、`src/lib/ai-cache.ts`（`readAiCache`/`writeAiCache`/`clearAiCache`）、`vite.config.ts` CSP 放宽。波次2（S-2/C-2/E-2）待启。
 
 ## 实现指南（给执行 LLM 的速查）
 
@@ -134,3 +135,7 @@ pnpm exec playwright test  # E2E（F-4 阶段）
 
 - **Phase 2**：年度总结叙事（`/profile/$year`，切片指标 + 年度全量书目）+ 流式（SSE 拼接、Abort、按 year/range/locale 缓存）；`year-narrative.ts` 就位（P-2）。
 - **Phase 3**：本地服务后端（Ollama/LM Studio 同契约，`baseUrl` 配 `http://127.0.0.1:*`）；未启动明确错误；CORS 前提见 [research 参考来源](../research/ai-integration-research.md#参考来源)。
+
+### F. 依赖（Phase 1）
+
+**零新增运行时依赖确认**（对齐 [ai-features §1](../specs/ai-features.md#1-范围与依赖)）：Phase 1 运行时依赖 = 既有 `zod`（响应/场景 schema 校验，已在 `package.json` dependencies 中）+ 平台原生 `fetch`/`AbortController` + 手写 SSE 解析（纯函数）；**无任何新包引入**，无需过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 供应链审查门。后续任何阶段引入新包时，再补审查 + `pnpm verify`/`audit`。
