@@ -195,5 +195,6 @@ interface AIInsight {
 
 ## 10. 待办关联
 
+- 任务分解与 Phase 1 落地清单见 [tasks/ai-features-batch.md](../tasks/ai-features-batch.md)（汇集调研 §8 路线图与本规格 §9 阶段边界）；规格索引状态见 [app-spec §6](../app-spec.md#6-功能规格索引) #11。
 - 落地前须完成：`vite.config.ts` CSP 注释记录（§5.2）；`userPreferencesSchema` 扩展（§5.1，随 [data-layer](./data-layer.md) 迁移/升级流程走 [internal-schema 版本化](../metadata/internal-schema.md)）。
-- 调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。
+- 调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。

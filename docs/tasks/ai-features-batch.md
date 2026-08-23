@@ -1,0 +1,120 @@
+# AI 功能里程碑 — 任务分解
+
+> 本文件汇集散落各处的 AI 功能阶段计划：调研路线图 [research/ai-integration-research §8](../research/ai-integration-research.md#8-推荐路线图)（Phase 1/2/3）、规格阶段边界 [ai-features §9](../specs/ai-features.md#9-phase-2--phase-3-边界)、app-spec 规格索引 [§6 #11](../app-spec.md#6-功能规格索引) 的「待 TDD 落地」状态。本文件是**唯一**的任务执行清单，规格权威不变：[AI 功能规格](../specs/ai-features.md)。
+> 工作流：[SDD + TDD](../ai-agent-workflow-rules.md) — 规格已就位，按下方顺序进 Tests(Red) → Code → Tests(Green) → Refactor。
+> 架构路线（调研定案）：**云端高智能 + 发送前脱敏为主力**；本地服务为可选后端（同一 OpenAI 兼容契约）；浏览器内推理（WebLLM/Transformers.js）已否决；端点与模型选型由用户自定（BYOK）。
+
+## 里程碑范围与边界
+
+- **进入条件**：规格已就位（[ai-features](../specs/ai-features.md)，Phase 1 契约完整）；`profile-stats` 聚合、设置页、`userPreferencesSchema` 既有实现为绿（本批次**不重复**聚合/偏好读写）。
+- **本批次范围**：Phase 1 最小闭环——脱敏管道 + 设置页 AI 区 + 阅读画像分析（洞察 + 审美点评，非流式、JSON schema、Zod、缓存）。
+- **不在本批次**：年度总结叙事（Phase 2，§9.1）、本地服务后端（Phase 3，§9.2）、流式输出、多轮会话 UI（已否决）、浏览器内推理（已否决）、模型选型建议/默认端点。
+- **依赖面共识**：Phase 1 **零新增运行时依赖**（fetch 薄封装 + 脱敏纯函数 + 既有 `zod`）；后续引入任何包须过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 审查 + `pnpm verify`/`audit`。
+
+## 阶段 0：前置（供应链与配置）
+
+- [ ] **A-1** 零新增依赖确认：Phase 1 运行时依赖 = 既有 `zod` + 原生 `fetch`/`AbortController`/`EventSource 解析（手写）`；无新包引入，无需供应链审查门（记录于「实现指南 · 依赖」）。
+- [ ] **A-2** CSP 放宽：`vite.config.ts` `connect-src` 增加 `https:` + `http://127.0.0.1:*`，**注释记录取舍**（放宽面为任意 https 端点，但数据只在用户显式启用 AI 并触发功能时发送；保守用户可自托管 header 收紧，[ai-features §5.2](../specs/ai-features.md#52-csp-放宽viteconfigts-注释记录)）。无测试（构建期静态配置，注释即记录）。
+
+## 阶段 1：脱敏管道（[ai-features §3](../specs/ai-features.md#3-脱敏管道src-aisanitizets)，纯函数层，TDD 核心）
+
+> 权威契约：[ai-features §3.2](../specs/ai-features.md#32-画像场景白名单契约草案phase-1-唯一场景) 白名单/黑名单表 + 每书字段集 + 模型知识边界；统计数值只消费 `computeProfileStats` 输出（[reading-profile §2](../specs/reading-profile.md#2-统计维度与聚合契约)）。
+
+- [ ] **S-1** `src/ai/sanitize.ts`：画像场景 Zod schema（白名单声明）+ `serializePayload()` 装配器（聚合统计 + 全量每书字段：题名/副标题/作者/出版年份/出版社/单书分类（首选体系）/`subjects`/借阅次数）。
+  - 测试（Vitest，Red 先行，[ai-features §7](../specs/ai-features.md#7-测试清单)）：
+    - 黑名单**逐值穷举**：构造含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的数据，断言 payload 序列化文本不含任何黑名单值；
+    - 每书字段断言：含题名/作者/借阅次数，不含 `isbn13`/`tags`/`price`/借还日期；借阅次数与 `profile-stats` 同源计数一致；
+    - 纯函数性：同输入两次调用深等价；无 `Date.now()`/DOM/存储读。
+- [ ] **S-2** 装配边界与采样降级（同文件或独立纯函数）：空库/无借阅 → `books=[]` 结构完整；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT`（默认 3000）全量；超阈值**按分类分层采样**（每分类按借阅次数取代表，总上限 500，覆盖全部分类无空桶）+ 采样标记（预览标注「已采样（N/M 本）」）。
+  - 测试：阈值两侧行为；采样集分类全覆盖；`serializePayload` 产物与发送预览共用（§3.3 同一函数）。
+
+## 阶段 2：端点客户端（[ai-features §5.4](../specs/ai-features.md#54-端点契约与降级)）
+
+- [ ] **C-1** `src/ai/ai-client.ts`：OpenAI 兼容薄封装 `chat()`（`{baseUrl}/v1/chat/completions`，`stream:false` + `response_format` JSON；`baseUrl` 去尾斜杠；`Authorization` 仅在有 Key 时携带；`AbortController` 15s 超时）+ 连接测试 `GET {baseUrl}/v1/models`。
+  - 测试（mock fetch）：URL/headers/body 构造；无 Key 请求不带头；超时触发 abort；HTTP 非 2xx（401/429）抛带状态错误；非 JSON/流式响应兜底解析。
+- [ ] **C-2** `src/ai/ai-provider.ts`：`chat(messages, { schema?, stream?, signal? })` 契约（[ai-features §1](../specs/ai-features.md#1-范围与依赖) 代码落点）；响应过 schema 校验，非法抛 `ZodError`。
+  - 测试：schema 校验通过/拒绝路径；Phase 1 非流式（`stream:false`）；SSE 解析纯函数（完整事件/空行/`[DONE]`/断行重组）为 Phase 2 预留并在本阶段实现+测试（mock fetch 分片响应）。
+
+## 阶段 3：画像分析 prompt（[ai-features §4.1](../specs/ai-features.md#41-阅读画像分析profile-ai-解读区-phase-1)）
+
+- [ ] **P-1** `src/ai/prompts/profile-insights.ts`：`insightSchema`（`insight[]`：`kind: 'fact'|'taste'`，fact 带 `title`/`dimension`，taste 无维度）+ prompt 模板。
+  - 测试：schema 接受合法 fact/taste、拒绝缺 `kind`/`body`/非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名，代码审计断言）；幻觉控制指令在位（仅引用发送书单内书目、数字只转译、temperature 低）。
+- [ ] **P-2** `src/ai/prompts/year-narrative.ts`：占位落位（Phase 2 用，仅导出类型与空模板标记，不实现）。
+
+## 阶段 4：设置页 AI 区（[ai-features §4.2](../specs/ai-features.md#42-设置页-ai-区settings-phase-1)）
+
+> 设置页既有三区（偏好/数据）已落地；AI 区插入偏好区与数据区之间（[settings §7](../specs/settings.md#7-ui-设计说明) 同步过）。
+
+- [ ] **E-1** 偏好扩展：`userPreferencesSchema` 增 `ai: { enabled, baseUrl, model }`（默认关/空；非法值降级默认）；API Key 独立 `localStorage` key `readgraph:ai-api-key`（不进 schema、不随偏好读写/备份导出，[ai-features §5.1](../specs/ai-features.md#51-偏好持久化扩展-data-layer-§8)）。
+  - 测试：`ai` 非法值降级；Key 独立读写、`exportDatabase` 产物不含 Key/`ai` 偏好；系统重置 `clearPreferences` 清 AI 配置与 Key。
+- [ ] **E-2** 设置页 AI 区 UI：启用开关（默认关）→ 展开端点 URL/API Key（`Password`）/模型名（用户自填）/「测试连接」（调 C-1）/隐私说明（§2.3 文案）/发送预览开关（默认开）/清除 AI 缓存。i18n `settings.ai.*` 双语。
+- [ ] **E-3** `src/lib/ai-cache.ts`：缓存键 `ai:{scene}:{locale}:{key}`；写读回环；清除只删 `ai:` 前缀键；不随备份导出。
+  - 测试：键含 scene/locale/key；回环；清除范围；断网时缓存可读。
+
+## 阶段 5：/profile「AI 解读」区（[ai-features §4.1](../specs/ai-features.md#41-阅读画像分析profile-ai-解读区-phase-1)）
+
+> 布局权威：[reading-profile §4](../specs/reading-profile.md#4-ui-设计说明)（价值卡行之下、图表 Tabs 之上）；AI 未启用时本区不渲染（全站无 AI 痕迹）。
+
+- [ ] **F-1** `src/ai/use-ai.ts` Hook：编排生成（装配→预览→POST→校验→缓存）、loading/error/重试、缓存命中直出；输入只消费聚合 + 书目（不消费前次 AI 输出）。
+- [ ] **F-2** `/profile` AI 解读区：fact 窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）+ taste 全宽评价段（Phase 1 非流式整段）；「AI 生成，基于本地数据」标注；整体可重新生成；全量口径不与 range 联动。
+- [ ] **F-3** 发送预览：各生成入口首次触发展示将发送 payload JSON（与实际上送同一装配函数产物）；设置页预览开关关闭后不再弹。
+- [ ] **F-4 测试（Vitest + Playwright，Red 先行）**：
+  - Vitest：Hook 编排（loading/成功/失败/缓存命中/重试）；缓存键 locale 隔离；预览产物与 `serializePayload` 同一引用。
+  - Playwright（route mock 端点，[ai-features §7](../specs/ai-features.md#7-测试清单) E2E）：未启用 AI → `/profile` 无 AI 区块；启用 + 触发 → 预览内容与实际请求 body 一致（拦截断言）→ 确认后渲染 fact 卡 + taste 段、均标注 AI 生成；重新生成覆盖；断网 mock 失败 → 错误 toast 且不渲染结果。
+
+## 落地原则（所有阶段共同）
+
+- SDD：每个产物先写该阶段列出的 Vitest/Playwright 测试（Red），再实现到 Green，再 Refactor；不得跳过 Red。
+- 纯函数隔离：脱敏/装配/缓存/客户端解析均为纯函数（无 DOM/存储读/时钟），UI 层只消费其产物——保证 Worker/同步/测试三路径等价。
+- 隐私护栏：黑名单穷举断言是**门禁**（`sanitize` 测试不过不进入下一阶段）；发送预览与实际上送同一函数产物（防漂移）。
+- UI 文案禁止硬编码：`t()` 双语，namespace `pages`（`profile.ai.*` / `settings.ai.*`），新增 key 同步补 `zh-CN`/`en`。
+- 性能规则引用 [ai-features §8](../specs/ai-features.md#8-react-性能规则引用)：`bundle-barrel-imports`/`bundle-dynamic-imports`（`src/ai/` 按需加载，AI 默认关闭不拉主包）、`rendering-conditional-render`、`rerender-transitions`、`client-localstorage-schema`。
+- 不破坏既有测试：每阶段结束 `pnpm test` + `pnpm exec tsc --noEmit` + `pnpm build`；Phase 1 无新依赖，跳过 audit 门（后续引入包时补）。
+- 提交粒度：Conventional Commits（`feat(ai):`、`feat(settings):`、`feat(profile):`、`docs(spec):`）。
+
+## 状态
+
+- 2026-08-23 建档：[ai-features](../specs/ai-features.md) 规格已补（脱敏管道/每书字段集/模型知识边界/发送预览/缓存/设置页 AI 区）；白名单决策链已定稿——Top N → 全量书目 → 每书 8 字段（题名/副标题/作者/出版年份/出版社/单书分类/`subjects`/借阅次数），黑名单 10 项（cardno/barcode/借还日期/馆名/rawRecords/gantt/calendar 明细/isbn13/tags/price 等）。阶段 0–5 待启动；推进顺序 A-1 → A-2 → S-1 → S-2 → C-1 → C-2 → P-1 → E-1 → E-2 → E-3 → F-1 → F-2 → F-3 → F-4。
+
+## 实现指南（给执行 LLM 的速查）
+
+### A. 已就位代码快照（勿重复建）
+
+| 层 | 已有文件 | 状态 |
+|----|---------|------|
+| 聚合 | `src/lib/profile-stats.ts`（`computeProfileStats`） | ✅ 已 TDD 落地，白名单消费其输出 |
+| 偏好 | `src/lib/preferences.ts`（`userPreferencesSchema` + 读写） | ✅ 已落地，E-1 扩展 `ai` |
+| 设置页 | `src/routes/settings.tsx`（偏好区/数据区） | ✅ 已落地，E-2 插入 AI 区 |
+| 画像页 | `src/routes/profile.tsx` + `src/profile/` 图表 | ✅ 已落地，F-2 插入 AI 解读区（价值卡行下、Tabs 上） |
+| 校验 | `zod@4.x` | ✅ 既有 |
+| 目录 | `src/ai/`（`ai-provider.ts`/`ai-client.ts`/`sanitize.ts`/`prompts/`/`use-ai.ts`） | ⛔ 未建，本批次新建 |
+
+### B. 精确命令
+
+```bash
+pnpm test                  # Vitest（Red→Green 每阶段跑）
+pnpm exec tsc --noEmit     # 类型检查
+pnpm build                 # 生产构建
+pnpm exec playwright test  # E2E（F-4 阶段）
+```
+
+### C. i18n key 模式
+
+- `settings.ai.*`：开关/端点/Key/模型/测试连接/隐私说明/预览开关/清缓存。
+- `profile.ai.*`：AI 解读区标题/生成/重新生成/「AI 生成，基于本地数据」/预览确认/错误提示。
+- 隐私承诺文案（§2.3）双语共用，设置页与发送预览同一 key。
+
+### D. 验收 checklist（Phase 1，[ai-features §6](../specs/ai-features.md#6-用户故事与验收用例-phase-1)）
+
+- [ ] 配置任意 OpenAI 兼容云端端点（BYOK）→ `/profile` 生成画像分析（fact 卡 + taste 段）；
+- [ ] 发送预览与实际 payload 一致（同一装配函数产物）；
+- [ ] 洞察数字与本地聚合一致（只转译不生成）；
+- [ ] 点评引用书目全部来自发送书单（prompt 限定 + 全量书单兜底）；
+- [ ] 黑名单穷举断言单测绿（isbn13/tags/price/借还时点/cardno/barcode 均不在 payload）；
+- [ ] AI 未启用时 UI 无 AI 痕迹（`/profile` 无区块、全站无入口）；
+- [ ] taste 条目标注「AI 生成，供参考」；可重新生成；缓存按 locale 隔离、可清除。
+
+### E. 后置阶段（不在本批次）
+
+- **Phase 2**：年度总结叙事（`/profile/$year`，切片指标 + 年度全量书目）+ 流式（SSE 拼接、Abort、按 year/range/locale 缓存）；`year-narrative.ts` 就位（P-2）。
+- **Phase 3**：本地服务后端（Ollama/LM Studio 同契约，`baseUrl` 配 `http://127.0.0.1:*`）；未启动明确错误；CORS 前提见 [research 参考来源](../research/ai-integration-research.md#参考来源)。

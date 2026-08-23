@@ -241,6 +241,7 @@ pnpm install --ignore-scripts
 | 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（`insight[]` fact 事实洞察 + taste 审美点评，同次生成同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区 — 规格已补，待 TDD 落地（Phase 1） |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
+> AI 功能里程碑任务见 [tasks/ai-features-batch.md](./tasks/ai-features-batch.md)（Phase 1 落地清单：脱敏管道 → 端点客户端 → prompt → 设置页 AI 区 → /profile AI 解读区）。
 
 每个功能阶段开始前，对应规格文件需包含：
 
