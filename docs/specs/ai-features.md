@@ -41,7 +41,7 @@ src/
 4. **诚实边界**：书名/作者/聚合统计必然发送（功能语义决定，无法脱敏）——承诺「最少字段」而非「完全不出设备」。
 5. **不持久化原文**：云端原文不落本地；本地缓存仅存生成结果，标注「AI 生成，基于本地数据」。
 6. **统计一致性**：发送的数值全部来自本地纯函数聚合（`computeProfileStats` 输出），LLM 只做语言转译，杜绝幻觉数字（design-decisions §6）。
-7. **输入独立性**：生成输入只消费本地聚合 + Top 书目，**不消费前一次 AI 输出**——防幻觉传播。
+7. **输入独立性**：生成输入只消费本地聚合 + 书目（脱敏书目字段（§3.2 每书字段集），全量），**不消费前一次 AI 输出**——防幻觉传播。
 
 ## 3. 脱敏管道（src/ai/sanitize.ts）
 
@@ -66,10 +66,14 @@ src/
 | `classification`（Top 类目：name/code/category/value，取 `classificationSystem` 有效类目） | `borrowCycles` 单条记录（含 `borrowedAt`/`returnedAt` 时点） |
 | `borrowVolume`（按月/年桶计数）、`durationDistribution`（时长桶计数） | `gantt` 区间明细、`calendar.days` 逐日明细（含借还时点） |
 | `calendar.borrowDays`（聚合天数） | `rawRecords`、馆名/`Source` 名称、IP/读者证件类字段 |
-| Top N 书目题名 + 作者（`TOP_BOOKS_N` 常量，默认 5，按借阅次数降序、平局取最近借阅） | 单条借阅记录、时间戳明细、`Book.price` 等画像外字段 |
+| 全量书目：题名 + 副标题 + 作者 + 出版年份 + 出版社 + 单书分类（首选体系 code+类名）+ 编目主题词 `subjects` + 借阅次数（每书聚合 count）（超阈值降级见下） | 单条借阅记录、时间戳明细、`isbn13`/`isbn10`、`Book.price`/`pages`/`edition`、`tags`（用户个人标签）、`coverUrl`、`description`、`translators`、`parallelTitles` |
 
 - 装配器直接消费 `computeProfileStats`（[reading-profile §2](./reading-profile.md#2-统计维度与聚合契约)）输出与 `Book` 题名/作者字段——统计永远由本地聚合产生，LLM 只做转译。
+- **每书字段集**（题名/副标题/作者/出版年份/出版社/单书分类/主题词/借阅次数）与聚合统计同属白名单：分类取自 `CatalogRecord.classifications` 首选体系（与画像 treemap 同口径），借阅次数为本地聚合值（非单条记录）——**不发 `tags`（用户个人标签，泄露主观判断）、不发 `isbn13/10`（唯一标识符可跨库追踪）**；`price`/`pages`/`edition`/`translators`/`parallelTitles`/`coverUrl`/`description` 与品味判断无关或边际，Phase 1 不发。
+- **全量书目而非 Top N**：品味点评需覆盖书目多样性——Top N 只暴露复借最多的高频书，系统性忽视「每本只借一次」的冷门分类/体裁，审美判断失真。全量量级可接受（个人档案典型数百本，每书条目约 100–200 字符，全量 10–400KB，云端上下文轻松容纳）；且书名/作者本就必然发送（调研 [../research/ai-integration-research.md](../research/ai-integration-research.md) §3.3 诚实边界），全量与 Top N 属同一字段类别，不新增隐私暴露面。**字段级最小化仍成立**：每书只发品味判断所需字段（§3.2 字段集），不发 ISBN/价格/条码/借还日期/个人标签。
+- **极端档案防护**：书目数 ≤ `BOOKLIST_FULL_LIMIT`（默认 3000 本）直接全发；超过则降级为**按分类分层采样**（每分类按借阅次数取代表书目，总采样上限 500 本，保证分类多样性），发送预览标注「已采样（N/M 本）」。
 - 聚合统计本身即匿名化（k-anonymity 思想）：桶计数无法反推单本借阅行为；**不发送 gantt / calendar 逐日明细**。
+- **模型知识边界（诚实承诺）**：BYOK chat/completions 端点**无联网搜索**——模型基于训练记忆 + 发送字段生成。知名书点评可靠；冷门书（地方出版物/自编文献/小众翻译）训练数据稀疏，点评可能泛泛而谈。prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」只能约束引用范围，**不能保证冷门书内容判断正确**——taste 条目标注「AI 生成，供参考」，用户可重新生成（调研 §9 模型幻觉风险缓解）。
 - 审美点评（`kind='taste'`）与事实洞察共用同一白名单，不额外发送单本书目元数据（调研 §5.2）。
 
 ### 3.3 黑名单断言（测试强制）
@@ -155,7 +159,8 @@ interface AIInsight {
 **Vitest（单元/集成，Phase 1 Red→Green）**
 
 - `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
-- `sanitize.ts` 装配边界：无 Top 书目（空库/无借阅）时 payload 结构完整（`topBooks=[]`）；分类缺失归并；`TOP_BOOKS_N` 截断与排序（借阅次数降序、平局最近借阅）。
+- `sanitize.ts` 每书字段：payload 中每书含题名/作者/借阅次数且不含 `isbn13`/`tags`/`price`/借还日期（字段级断言）；借阅次数来自本地聚合（与 `profile-stats` 同源计数一致）。
+- `sanitize.ts` 装配边界：空库/无借阅时 payload 结构完整（`books=[]`）；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT` 时全量进 payload（与源 Book 一一对应）；超过阈值触发分层采样降级（每分类取代表、总上限 500、标注采样标记），采样集覆盖全部分类（无空分类桶）。
 - `ai-client.ts`：`chat()` 构造正确 URL/headers/body（`Authorization` 仅在有 Key 时携带；`baseUrl` 去尾斜杠）；`stream:false` 普通 JSON 响应解析；**SSE 响应解析**（mock fetch 返回分片 `data:` 行：完整事件、事件间空行、`[DONE]`、断行重组）；Abort 中断抛 `AbortError`；超时触发 abort；HTTP 非 2xx 抛带状态错误；无鉴权端点（无 Key）请求不带头。
 - `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`。
 - `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
@@ -178,7 +183,7 @@ interface AIInsight {
 
 ### 9.1 Phase 2：年度总结叙事 + 流式
 
-- `/profile/$year` 年度视图「年度叙事」：`year-review` 切片指标 + Top 书目题名/作者 → 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。
+- `/profile/$year` 年度视图「年度叙事」：`year-review` 切片指标 + 年度切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小，通常远低于阈值） → 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。
 - 流式输出（`stream:true` + SSE 拼接）、`Abort`、按 year/range/locale 缓存；taste 段逐句呈现。
 - 脱敏断言覆盖年度场景（与 §3.2 同白名单形态，切片替代全量）；`prompts/year-narrative.ts` 就位。
 

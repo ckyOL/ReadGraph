@@ -183,7 +183,7 @@ Agent 实现要点：
 
 1. 数据完全本地（AI 功能例外见下）：
    - 核心数据完全本地：默认不向任何服务器发送用户数据；不使用第三方分析工具（Google Analytics 等）；不加载需要网络的字体/图标（打包到本地）
-   - AI 功能（默认关闭、用户显式启用，见 [specs/ai-features.md](./specs/ai-features.md)）：仅向用户配置的 OpenAI 兼容端点发送**最小脱敏字段**（聚合统计 + Top 书目题名/作者，即发即弃）；直接标识符（cardno/条码/馆名）与借阅行为细节（借还时点/单条记录）永不发送；发送内容发送前可见可审——承诺「最少字段」而非「完全不出设备」（调研 [research/ai-integration-research.md](./research/ai-integration-research.md) §3.3）
+   - AI 功能（默认关闭、用户显式启用，见 [specs/ai-features.md](./specs/ai-features.md)）：仅向用户配置的 OpenAI 兼容端点发送**最小脱敏字段**（聚合统计 + 脱敏书目字段——题名/作者/分类/出版/借阅次数，即发即弃；超阈值采样降级见 [specs/ai-features.md §3.2](./specs/ai-features.md#32-画像场景白名单契约草案phase-1-唯一场景)）；直接标识符（cardno/条码/馆名/isbn13）与借阅行为细节（借还时点/单条记录）与个人标签 `tags` 永不发送；发送内容发送前可见可审——承诺「最少字段」而非「完全不出设备」（调研 [research/ai-integration-research.md](./research/ai-integration-research.md) §3.3）
 
 2. 数据脱敏：
    - 导出功能应提供脱敏选项

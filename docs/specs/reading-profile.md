@@ -209,7 +209,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 ## 5. 数据契约与边界
 
-- **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。**AI 功能例外**（默认关闭、显式启用）：仅向用户配置端点发送脱敏最小字段（本页 `computeProfileStats` 输出 + Top 书目题名/作者，发送前预览可见）——契约见 [AI 功能规格](ai-features.md)。
+- **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。**AI 功能例外**（默认关闭、显式启用）：仅向用户配置端点发送脱敏最小字段（本页 `computeProfileStats` 输出 + 脱敏书目字段（题名/作者/分类/出版/借阅次数，全量），发送前预览可见）——契约见 [AI 功能规格](ai-features.md)。
 - **UTC 与 displayTimezone**：桶归属基于 UTC getter（`getUTCFullYear`/`getUTCMonth`），`displayTimezone` 仅用于轴标签（柱图 x 轴月份按 `Intl.DateTimeFormat` 用该时区呈现）。甘特区间的「在借」端点视觉锚由组件层以 `useDeferredValue` 的 now 补齐，**不改聚合产物**，保证可复现（对照 [import-pipeline §3](import-pipeline.md#3-纯函数-pipeline-契约) 确定性）。
 - **空数据**：`computeProfileStats` 对空入参返回结构完整但全零的 `ProfileStatsResult`（`classification=[]`/`gantt=[]`/...，`summary.*` 为 0 或 `null`，`money.*` 为空数组/`null`/0），UI 映射为整页 `Empty`；聚合函数不抛空异常。
 - **价值统计确定性**：`money` 仅由 `Book.price` 与 `BorrowCycle.borrowedAt` 派生，无时钟、无汇率、无外部输入；`distribution` 分桶阈值（`<20`/`20–50`/…）为模块常量。`Intl.NumberFormat` 只出现在渲染层，聚合层不格式化、只产数值（元，两位小数语义）——保证 Worker 与同步 `useMemo` 两路径产物深等价。
