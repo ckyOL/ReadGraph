@@ -76,6 +76,13 @@ const BorrowCalendar = lazy(() =>
     default: m.BorrowCalendar,
   })),
 )
+// AI 解读区按需动态加载（§8 bundle-dynamic-imports）：未启用时不渲染 lazy 组件
+// → chunk 不加载，AI 默认关闭不拉主包。
+const AiInsightsSection = lazy(() =>
+  import('@/profile/ai-insights').then((m) => ({
+    default: m.AiInsightsSection,
+  })),
+)
 
 export const Route = createFileRoute('/profile')({
   component: ProfilePage,
@@ -95,6 +102,8 @@ function ProfilePage() {
   const [rangeKey, setRangeKey] = useState<RangeKey>('all')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
+  // 图表区受控 Tabs：AI 解读 fact 卡维度 chip 引用定位（激活对应 tab，§4.1）。
+  const [activeTab, setActiveTab] = useState('classification')
   const [isPending, startTransition] = useTransition()
 
   // 日期范围倒置校验（A-2，WCAG 3.3.1）：纯派生，随输入即时更新（validate-on-change），
@@ -116,6 +125,9 @@ function ProfilePage() {
     () => readPreferences().displayTimezone,
     [],
   )
+  // AI 门控（§2.1 默认关闭）：挂载态偏好，false 时不渲染 AI 解读区
+  // （lazy 组件不渲染 → chunk 不加载，§8）。
+  const aiEnabled = readPreferences().ai.enabled
 
   const sessionNow = useState(() => Date.now())[0]
 
@@ -298,8 +310,20 @@ function ProfilePage() {
               pending={isPending || computing}
             />
           </ErrorBoundary>
+          {/* AI 解读区（ai-features §4.1）：价值卡行之下、图表 Tabs 之上；AI 默认
+              关闭时不渲染 lazy 组件 → chunk 不加载（§2.1/§8，AI 不拉主包）。 */}
+          {aiEnabled === true && (
+            <Suspense fallback={null}>
+              <AiInsightsSection
+                classificationSystem={classificationSystem}
+                displayTimezone={displayTimezone}
+                calendarAnchor={new Date(sessionNow)}
+                onActivateTab={setActiveTab}
+              />
+            </Suspense>
+          )}
           {/* 图表区 Tabs：每次激活一个图谱块，独占全幅视口，互不挤压（reading-profile §4）。 */}
-          <Tabs defaultValue="classification" className="mt-4 gap-3">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4 gap-3">
             <TabsList className="overflow-x-auto">
               <TabsTrigger value="classification">
                 {t('profile.chart.classification.title')}
