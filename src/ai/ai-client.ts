@@ -161,6 +161,24 @@ function extractLastSseData(body: string): unknown {
   return last
 }
 
+/** 解析 /v1/models 响应中的模型 ID 列表：兼容 OpenAI 标准 `{data:[{id}]}` 与顶层 `[{id}]`；缺结构返回空数组（连接成功但端点未提供列表）。 */
+export function parseModelList(payload: unknown): string[] {
+  let list: unknown = null
+  if (Array.isArray(payload)) {
+    list = payload
+  } else if (payload && typeof payload === 'object' && 'data' in payload) {
+    const data = payload.data
+    if (Array.isArray(data)) list = data
+  }
+  if (!Array.isArray(list)) return []
+  const ids = new Set<string>()
+  for (const item of list) {
+    const id = item && typeof item === 'object' && 'id' in item ? item.id : undefined
+    if (typeof id === 'string' && id.trim()) ids.add(id.trim())
+  }
+  return [...ids]
+}
+
 /**
  * chat/completions 调用（ai-features §3.1 ⑤：stream:false + response_format JSON 模式）。
  * 返回 choices[0].message.content（string）；结构非法抛解析错误。
@@ -202,8 +220,8 @@ export async function chat(opts: AiChatOptions): Promise<string> {
   return parseChatContent(payload)
 }
 
-/** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → resolve，否则抛带状态错误。 */
-export async function testConnection(opts: AiTestConnectionOptions): Promise<void> {
+/** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → 返回模型 ID 列表（端点未提供时为空数组），否则抛带状态错误。 */
+export async function testConnection(opts: AiTestConnectionOptions): Promise<string[]> {
   const base = normalizeBaseUrl(opts.baseUrl)
   const res = await request(
     buildRequestUrl(endpointUrl(base, 'models')),
@@ -220,4 +238,11 @@ export async function testConnection(opts: AiTestConnectionOptions): Promise<voi
       HTTP_STATUS_MESSAGES[res.status] ?? `AI 端点连接失败（HTTP ${res.status}）`,
     )
   }
+  let payload: unknown
+  try {
+    payload = JSON.parse(await res.text())
+  } catch {
+    return []
+  }
+  return parseModelList(payload)
 }

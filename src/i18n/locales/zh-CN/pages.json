@@ -234,6 +234,8 @@
   "settings.ai.test": "测试连接",
   "settings.ai.testing": "正在测试…",
   "settings.ai.test.ok": "连接成功，端点可用。",
+  "settings.ai.test.okModels": "连接成功，已获取 {{count}} 个模型。",
+  "settings.ai.test.okNoModels": "连接成功，但端点未提供模型列表，可手动输入模型名。",
   "settings.ai.test.error": "连接失败",
   "settings.ai.test.error.network": "网络请求失败，请检查连接后重试。",
   "settings.ai.test.error.cors": "跨域请求被拦截（CORS）或端点不可达。云端端点需支持 CORS；本地服务（如 Ollama）需放行来源；或改用自托管反向代理。",

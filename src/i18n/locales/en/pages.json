@@ -238,6 +238,8 @@
   "settings.ai.test": "Test connection",
   "settings.ai.testing": "Testing…",
   "settings.ai.test.ok": "Connection successful — endpoint is reachable.",
+  "settings.ai.test.okModels": "Connection successful — {{count}} models available.",
+  "settings.ai.test.okNoModels": "Connection successful, but the endpoint returned no model list; you can type a model name manually.",
   "settings.ai.test.error": "Connection failed",
   "settings.ai.test.error.network": "Network request failed. Check your connection and retry.",
   "settings.ai.test.error.cors": "Request blocked by CORS or endpoint unreachable. Cloud endpoints must allow CORS; local servers (e.g. Ollama) must allow this origin; or use a self-hosted reverse proxy.",

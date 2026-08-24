@@ -216,12 +216,12 @@ describe('testConnection', () => {
     vi.unstubAllGlobals()
   })
 
-  it('GET {base}/v1/models，2xx → resolve；有 key 携带 Bearer 头', async () => {
+  it('GET {base}/v1/models，2xx → 返回模型 ID 列表；有 key 携带 Bearer 头', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '[]' }))
     vi.stubGlobal('fetch', fetchMock)
     await expect(
       testConnection({ baseUrl: 'http://127.0.0.1:11434/', apiKey: 'k' }),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual([])
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://127.0.0.1:11434/v1/models')
     expect(init.method).toBe('GET')
@@ -265,5 +265,43 @@ describe('testConnection', () => {
     await expect(
       testConnection({ baseUrl: 'https://api.example.com' }),
     ).rejects.toBeInstanceOf(AiHttpError)
+  })
+  it('2xx 且响应含 data[].id → 返回去重后的模型 ID 列表', async () => {
+    const body = JSON.stringify({
+      object: 'list',
+      data: [
+        { id: 'gpt-4o-mini', object: 'model' },
+        { id: 'gpt-4o', object: 'model' },
+        { id: 'gpt-4o-mini', object: 'model' },
+      ],
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => body })))
+    await expect(testConnection({ baseUrl: 'https://api.example.com' })).resolves.toEqual([
+      'gpt-4o-mini',
+      'gpt-4o',
+    ])
+  })
+
+  it('2xx 且响应为顶层模型数组 → 同样解析', async () => {
+    const body = JSON.stringify([{ id: 'llama3.2' }, { id: 'qwen2.5' }])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => body })))
+    await expect(testConnection({ baseUrl: 'http://127.0.0.1:11434' })).resolves.toEqual([
+      'llama3.2',
+      'qwen2.5',
+    ])
+  })
+
+  it('2xx 但响应非 JSON / 无模型结构 → 返回空数组（连接成功但端点未提供列表）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => '<html>gateway</html>' })),
+    )
+    await expect(testConnection({ baseUrl: 'https://api.example.com' })).resolves.toEqual([])
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => '{"hello":"world"}' })),
+    )
+    await expect(testConnection({ baseUrl: 'https://api.example.com' })).resolves.toEqual([])
   })
 })

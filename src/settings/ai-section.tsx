@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { testConnection, AiHttpError, AiNetworkError } from '@/ai/ai-client'
@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 /** 连接测试失败分级（ai-features §5.4）：网络/超时 → network；401 → auth；429 → rateLimited；其余 HTTP → http（带 status）。 */
 function testErrorKey(e: unknown): { key: string; options?: Record<string, unknown> } {
@@ -37,6 +38,15 @@ export function AiSection() {
   const [apiKey, setApiKey] = useState(() => readAiApiKey())
   const [sendPreview, setSendPreview] = useState(() => readPreferences().ai.sendPreview)
   const [testing, setTesting] = useState(false)
+  /** 连接测试抓取的模型 ID 列表（§4.2）；端点变更即失效。 */
+  const [models, setModels] = useState<string[]>([])
+
+  /** 模型选项：端点列表 + 当前已保存值（可能不在列表，保留可选中/可回退手输）。 */
+  const modelOptions = useMemo(() => {
+    const set = new Set(models)
+    if (model) set.add(model)
+    return [...set]
+  }, [models, model])
 
   const patchAi = (patch: Partial<UserPreferencesInput['ai']>) => {
     writePreferences({ ai: { ...readPreferences().ai, ...patch } })
@@ -49,6 +59,7 @@ export function AiSection() {
 
   const handleBaseUrlChange = (v: string) => {
     setBaseUrl(v)
+    setModels([])
     patchAi({ baseUrl: v })
   }
 
@@ -72,8 +83,20 @@ export function AiSection() {
     if (!trimmed || testing) return
     setTesting(true)
     try {
-      await testConnection({ baseUrl: trimmed, apiKey: apiKey.trim() || undefined })
-      toast({ title: t('settings.ai.test.ok') })
+      const list = await testConnection({ baseUrl: trimmed, apiKey: apiKey.trim() || undefined })
+      setModels(list)
+      if (list.length > 0) {
+        // 模型为空时自动选中列表首项（测试连接即选定，省一次操作）；已填值保留。
+        if (!model) {
+          const first = list[0]!
+          setModel(first)
+          patchAi({ model: first })
+        }
+        toast({ title: t('settings.ai.test.okModels', { count: list.length }) })
+      } else {
+        // 端点可达但未提供模型列表（响应结构不兼容）：回退手输。
+        toast({ title: t('settings.ai.test.okNoModels') })
+      }
     } catch (e) {
       // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
       console.error('[settings] AI connection test failed:', e)
@@ -143,13 +166,28 @@ export function AiSection() {
             <span className="w-32 shrink-0 text-sm text-muted-foreground">
               {t('settings.ai.model')}
             </span>
-            <Input
-              value={model}
-              onChange={(e) => handleModelChange(e.target.value)}
-              placeholder={t('settings.ai.modelPlaceholder')}
-              className="w-72"
-              aria-label={t('settings.ai.model')}
-            />
+            {modelOptions.length > 0 ? (
+              <Select value={model} onValueChange={handleModelChange}>
+                <SelectTrigger className="w-72" aria-label={t('settings.ai.model')}>
+                  <SelectValue placeholder={t('settings.ai.modelPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={model}
+                onChange={(e) => handleModelChange(e.target.value)}
+                placeholder={t('settings.ai.modelPlaceholder')}
+                className="w-72"
+                aria-label={t('settings.ai.model')}
+              />
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

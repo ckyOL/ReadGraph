@@ -70,8 +70,6 @@ function inlineEntryCssPlugin(): Plugin {
 
 /**
  * AI dev 同源代理（ai-features §5.4/§8）：`pnpm dev` 下把 AI 端点请求经 Vite dev server
-/**
- * AI dev 同源代理（ai-features §5.4/§8）：`pnpm dev` 下把 AI 端点请求经 Vite dev server
  * 转发，同源消除 CORS——用户 BYOK 任意云端端点（构建期无法静态化 server.proxy target，
  * 故不沿用 OPAC 固定 target 写法）。请求形如 `/__ai-proxy/<encodeURIComponent(完整 URL)>`；
  * 仅放行 https 与 http 回环地址（拒绝任意 http 内网目标）；上游失败中断连接 → 浏览器
@@ -79,7 +77,10 @@ function inlineEntryCssPlugin(): Plugin {
  * build/preview/E2E 走直连（E2E 有意用跨源 mock 验证真实 CORS 预检流程）。
  */
 const AI_PROXY_PREFIX = '/__ai-proxy/'
-const PROXY_HOP_BY_HOP: Record<string, true> = {
+/** 代理转发时剥离的请求/响应头：hop-by-hop 外，剥离压缩协商——undici 自动解码
+ *  gzip/br/deflate，转发字节已解压：请求侧不转发 Accept-Encoding（上游返回未压缩），
+ *  响应侧剥离 content-encoding（防上游强制压缩时浏览器对已解压字节二次解压失败）。 */
+const PROXY_STRIP_HEADERS: Record<string, true> = {
   connection: true,
   'keep-alive': true,
   'proxy-authenticate': true,
@@ -90,6 +91,8 @@ const PROXY_HOP_BY_HOP: Record<string, true> = {
   upgrade: true,
   host: true,
   'content-length': true,
+  'accept-encoding': true,
+  'content-encoding': true,
 }
 
 function aiDevProxyPlugin(): Plugin {
@@ -123,7 +126,7 @@ function aiDevProxyPlugin(): Plugin {
         }
         const headers = new Headers()
         for (const [key, value] of Object.entries(req.headers)) {
-          if (typeof value === 'string' && !(key in PROXY_HOP_BY_HOP)) headers.set(key, value)
+          if (typeof value === 'string' && !(key in PROXY_STRIP_HEADERS)) headers.set(key, value)
         }
         let body: Buffer | undefined
         if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -143,7 +146,7 @@ function aiDevProxyPlugin(): Plugin {
           })
           res.statusCode = up.status
           up.headers.forEach((value, key) => {
-            if (!(key in PROXY_HOP_BY_HOP)) res.setHeader(key, value)
+            if (!(key in PROXY_STRIP_HEADERS)) res.setHeader(key, value)
           })
           res.end(Buffer.from(await up.arrayBuffer()))
         } catch {
