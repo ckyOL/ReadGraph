@@ -1,22 +1,23 @@
 // AI 阅读画像编排 Hook（ai-features §3.1 管道流程 ①–⑦ / §4.1 / §5.3 / §5.4）。
 // 职责边界：响应式聚合（与 use-profile-stats 同源实体，range 固定 null = 全量口径）、
-// 脱敏装配（serializePayload）、结果缓存、发送预览门、上送编排与错误分级。
+// 状态管理（insights/loading/error/pendingPreview/并发闸）与预览门接线；
+// 编排核心（缓存检查→装配→预览门→上送→错误分级）为纯函数，落在
+// insight-pipeline.ts（依赖注入可单测），本 Hook 只做数据源接入与状态落位。
 // 输入独立性（§2.7）：生成输入只消费本地实体+聚合+payload，insights 状态绝不参与
 // 生成输入——防幻觉传播。
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
-import { ZodError } from 'zod'
 
-import { AiHttpError } from '@/ai/ai-client'
 import { createAiProvider } from '@/ai/ai-provider'
+import { runInsightPipeline, submitInsightPayload } from '@/ai/insight-pipeline'
+import type { AiInsightError, InsightPipelineDeps } from '@/ai/insight-pipeline'
 import {
   PROFILE_TEMPERATURE,
   buildProfileInsightsPrompt,
   profileInsightsSchema,
 } from '@/ai/prompts/profile-insights'
 import type { AIInsight, ProfileInsights } from '@/ai/prompts/profile-insights'
-import { serializePayload } from '@/ai/sanitize'
 import type { ProfilePayload } from '@/ai/sanitize'
 import { db } from '@/db/db-instance'
 import { readAiApiKey } from '@/lib/ai-api-key'
@@ -38,14 +39,8 @@ export interface UseAiInsightsOptions {
   calendarAnchor: Date | null
 }
 
-/** 错误分级（§5.4）：F-2 toast 按 kind 取文案；失败不写库、不缓存。 */
-export type AiInsightError =
-  /** 网络失败/超时/HTTP 非 2xx（AbortError / AiHttpError / 其他网络异常） */
-  | { kind: 'network'; message: string }
-  /** 响应 Zod 校验失败（ZodError） */
-  | { kind: 'validation'; message: string }
-  /** 端点/模型未配置（§5.4 不支持空端点调用） */
-  | { kind: 'unconfigured'; message: string }
+// 错误分级类型归属编排核心模块（insight-pipeline.ts）；对外签名不变（再导出）。
+export type { AiInsightError } from '@/ai/insight-pipeline'
 
 export interface UseAiInsightsState {
   /** 生成结果；未生成/无数据时为 null */
@@ -56,8 +51,9 @@ export interface UseAiInsightsState {
   /** 预览门（§3.1 ④）：sendPreview=true 时 generate() 停在此处；
    *  F-2 据此挂 AiSendPreviewDialog，payload 与上送为同一对象引用（§3.3 防漂移）。 */
   pendingPreview: ProfilePayload | null
-  /** 触发生成：未启用/聚合无数据静默返回；缓存命中直出；error 状态下再次调用即重试。 */
-  generate: () => Promise<void>
+  /** 触发生成：未启用/聚合无数据静默返回；缓存命中直出；error 状态下再次调用即重试。
+   *  bypassCache=true（重新生成，§4.1 整体可重新生成）绕过缓存重新请求并覆盖。 */
+  generate: (bypassCache?: boolean) => Promise<void>
   /** 预览确认：用 pendingPreview（同一引用）走上送路径。 */
   confirmGenerate: () => Promise<void>
   /** 预览取消：仅关闭预览门，不置 error。 */
@@ -73,20 +69,6 @@ type EntityTuple = [
 
 const EMPTY_TUPLE: EntityTuple = [[], [], [], []]
 
-/** 错误归一：AbortError/AiHttpError → network；ZodError → validation；其余按 network 兜底。 */
-function classifyError(e: unknown): AiInsightError {
-  if (e instanceof AiHttpError || (e instanceof Error && e.name === 'AbortError')) {
-    return { kind: 'network', message: e.message }
-  }
-  if (e instanceof ZodError) {
-    return { kind: 'validation', message: 'AI 响应校验失败：响应不符合预期格式，请重试' }
-  }
-  if (e instanceof Error) {
-    return { kind: 'network', message: e.message }
-  }
-  return { kind: 'network', message: String(e) }
-}
-
 /**
  * AI 阅读画像编排 Hook。
  *
@@ -94,11 +76,8 @@ function classifyError(e: unknown): AiInsightError {
  * 结构完整），useMemo 跑 computeProfileStats——range 固定 null = 全量口径，
  * 不与 range 联动（§4.1），classificationSystem/displayTimezone/calendarAnchor 透传。
  *
- * 编排（§3.1）：未启用或聚合无数据 → 静默返回；缓存命中（过 profileInsightsSchema
- * 校验，损坏视为未命中）→ insights 直出；未命中 → serializePayload 装配 →
- * sendPreview=true 停预览门（等 F-2 确认），false 直接走同一上送路径。
- * 上送（⑤⑥）：createAiProvider.chat + buildProfileInsightsPrompt，成功
- * writeAiCache + setInsights，失败分级 setError；loading 覆盖生成与重新生成，
+ * 上述编排核心为 insight-pipeline.ts 纯函数（依赖注入：实体/聚合/偏好/缓存/上送），
+ * 本 Hook 只注入数据源（db/偏好/apiKey）与状态落位；loading 覆盖生成与重新生成，
  * error 状态下再次 generate() 即重试。
  */
 export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
@@ -149,85 +128,85 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   const busyRef = useRef(false)
 
   /**
-   * 上送路径（§3.1 ⑤⑥）：预览确认（confirmGenerate）与直接生成（sendPreview=false）
-   * 共用；payload 即预览展示的同一对象引用（§3.3）。成功写缓存 + 落 insights，
-   * 失败分级 setError——均不写库、不缓存失败结果。
+   * 上送（§3.1 ⑤⑥）：绑定 provider 的 chat 门面，由管线 submitInsightPayload 调用；
+   * payload 即预览展示的同一对象引用（§3.3）。prompt 数据区只取 payload 白名单子集
+   * （summary + books，prompts 契约）；schema 校验失败 provider 抛 ZodError，管线按
+   * validation 分级。成功/失败与缓存写入由管线处理，此处只管理并发闸与 loading 态。
    */
-  const submitPayload = useCallback(
-    async (payload: ProfilePayload) => {
-      busyRef.current = true
-      setLoading(true)
-      setError(null)
-      setPendingPreview(null)
-      try {
-        const prefs = readPreferences()
-        const provider = createAiProvider({
-          baseUrl: prefs.ai.baseUrl,
-          apiKey: readAiApiKey(),
-          model: prefs.ai.model,
-          temperature: PROFILE_TEMPERATURE,
-        })
-        // prompt 数据区只取 payload 白名单子集（summary + books，prompts 契约）；
-        // schema 校验失败 provider 抛 ZodError，此处按 validation 分级。
-        const result = (await provider.chat(
-          buildProfileInsightsPrompt({
-            summary: payload.summary,
-            books: payload.books,
-            locale,
-          }),
-          { schema: profileInsightsSchema },
-        )) as ProfileInsights
-        writeAiCache(CACHE_SCENE, locale, CACHE_KEY, result)
-        setInsights(result.insights)
-      } catch (e) {
-        setError(classifyError(e))
-      } finally {
-        busyRef.current = false
-        setLoading(false)
-      }
-    },
-    [locale],
+  const submit = useCallback<InsightPipelineDeps['submit']>(async (payload, locale) => {
+    busyRef.current = true
+    setLoading(true)
+    setError(null)
+    setPendingPreview(null)
+    try {
+      const prefs = readPreferences()
+      const provider = createAiProvider({
+        baseUrl: prefs.ai.baseUrl,
+        apiKey: readAiApiKey(),
+        model: prefs.ai.model,
+        temperature: PROFILE_TEMPERATURE,
+      })
+      return (await provider.chat(
+        buildProfileInsightsPrompt({ summary: payload.summary, books: payload.books, locale }),
+        { schema: profileInsightsSchema },
+      )) as ProfileInsights
+    } finally {
+      busyRef.current = false
+      setLoading(false)
+    }
+  }, [])
+
+  const pipelineDeps = useMemo<InsightPipelineDeps>(
+    () => ({
+      readCache: readAiCache,
+      writeCache: writeAiCache,
+      submit,
+    }),
+    [submit],
   )
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (bypassCache = false) => {
     if (busyRef.current || pendingPreview) return
     const prefs = readPreferences()
-    // 未启用（§2.1 默认关闭）或聚合无数据（useLiveQuery 未就绪）→ 静默返回，不置 error。
-    if (!prefs.ai.enabled || !stats) return
-    // 未配置端点/模型（§5.4）：不支持空端点调用。
-    if (prefs.ai.baseUrl.trim() === '' || prefs.ai.model.trim() === '') {
-      setError({
-        kind: 'unconfigured',
-        message: '未配置 AI 端点：请在设置页填写端点 URL 与模型名',
-      })
-      return
-    }
-    setError(null)
-    // 缓存命中（§5.3）：结果过 schema 校验，缓存损坏视为未命中继续生成。
-    const cached = readAiCache(CACHE_SCENE, locale, CACHE_KEY)
-    if (cached) {
-      const parsed = profileInsightsSchema.safeParse(cached.result)
-      if (parsed.success) {
-        setInsights(parsed.data.insights)
-        return
-      }
-    }
-    setLoading(true)
-    try {
-      // 装配（§3.1 ②）：预览展示与上送共用同一 serializePayload 产物（§3.3 防漂移）。
-      const payload = serializePayload(
-        { books, catalogRecords, borrowCycles, sources },
+    // 编排核心（缓存检查→装配→预览门→上送→错误分级）在 insight-pipeline.ts：
+    // 未启用/聚合无数据 → skipped（静默，不清 error）；未配置端点/模型 → unconfigured；
+    // 缓存命中（损坏视为未命中）→ cache-hit 直出；未命中 → 装配 → 预览门或直接上送。
+    // 「重新生成」bypassCache=true 绕过缓存重新请求并覆盖缓存（§4.1）。
+    const result = await runInsightPipeline(
+      {
+        prefs: prefs.ai,
+        locale,
+        entities: { books, catalogRecords, borrowCycles, sources },
         stats,
-        { classificationSystem: opts.classificationSystem },
-      )
-      // 预览门（§3.1 ④）：sendPreview=true 停此处等 F-2 确认；false 直接走同一上送路径。
-      if (prefs.ai.sendPreview) {
-        setPendingPreview(payload)
+        classificationSystem: opts.classificationSystem,
+        bypassCache,
+        scene: CACHE_SCENE,
+        key: CACHE_KEY,
+      },
+      pipelineDeps,
+    )
+    switch (result.status) {
+      case 'skipped':
+        // 静默返回，不置 error。
         return
-      }
-      await submitPayload(payload)
-    } finally {
-      setLoading(false)
+      case 'unconfigured':
+        setError(result.error)
+        return
+      case 'cache-hit':
+        setError(null)
+        setInsights(result.insights)
+        return
+      case 'pending-preview':
+        setError(null)
+        setPendingPreview(result.payload)
+        return
+      case 'success':
+        setError(null)
+        setInsights(result.insights)
+        return
+      case 'error':
+        setError(result.error)
+        return
     }
   }, [
     stats,
@@ -238,14 +217,20 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
     locale,
     opts.classificationSystem,
     pendingPreview,
-    submitPayload,
+    pipelineDeps,
   ])
 
   const confirmGenerate = useCallback(async () => {
     if (busyRef.current || !pendingPreview) return
     // 上送对象与预览展示对象同一引用（§3.3）。
-    await submitPayload(pendingPreview)
-  }, [pendingPreview, submitPayload])
+    const result = await submitInsightPayload(
+      pendingPreview,
+      { locale, scene: CACHE_SCENE, key: CACHE_KEY },
+      pipelineDeps,
+    )
+    if (result.status === 'success') setInsights(result.insights)
+    else setError(result.error)
+  }, [pendingPreview, locale, pipelineDeps])
 
   const cancelGenerate = useCallback(() => {
     setPendingPreview(null)
