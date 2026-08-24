@@ -175,14 +175,14 @@ describe('chat', () => {
     })
   })
 
-  it('fetch 挂起超过默认 15s → 抛 AbortError', async () => {
+  it('chat 挂起超过 60s（生成超时阈值）→ 抛 AbortError', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('fetch', hangingFetch())
     const p = chat({ ...BASE_OPTS })
     // 先挂断言再推进时钟：避免计时器触发拒绝时尚未挂 handler 的 unhandled rejection。
     const instanceCheck = expect(p).rejects.toBeInstanceOf(DOMException)
     const nameCheck = expect(p).rejects.toMatchObject({ name: 'AbortError' })
-    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.advanceTimersByTimeAsync(60_000)
     await instanceCheck
     await nameCheck
   })
@@ -204,7 +204,7 @@ describe('chat', () => {
     vi.stubGlobal('fetch', hangingFetch())
     const p = chat({ ...BASE_OPTS, signal: ctrl.signal })
     const assertion = expect(p).rejects.toMatchObject({ name: 'AbortError' })
-    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.advanceTimersByTimeAsync(60_000)
     await assertion
     expect(ctrl.signal.aborted).toBe(false)
   })
@@ -246,6 +246,14 @@ describe('testConnection', () => {
     await expect(
       testConnection({ baseUrl: 'https://api.example.com' }),
     ).rejects.toBeInstanceOf(AiNetworkError)
+  })
+  it('连接测试保持 15s 超时（快速失败，区别于 chat 60s）', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', hangingFetch())
+    const p = testConnection({ baseUrl: 'https://api.example.com' })
+    const assertion = expect(p).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.advanceTimersByTimeAsync(15_000)
+    await assertion
   })
 
   it('无 key → 请求不含 Authorization 头（本地无鉴权端点）', async () => {

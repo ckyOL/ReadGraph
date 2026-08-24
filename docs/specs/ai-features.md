@@ -140,7 +140,7 @@ interface AIInsight {
 ### 5.4 端点契约与降级
 
 - 端点：用户配置的 OpenAI 兼容 `{baseUrl}/v1/chat/completions`；`baseUrl` 去尾斜杠；**已含 `/v1` 后缀（如 placeholder `https://api.example.com/v1`）自动识别、不重复拼接**（网关前缀路径如 `/proxy/v1` 同样保留前缀且不叠加）；不支持空端点调用（连接测试除外）。
-- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 15s 默认超时 + 可重试）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案，不写库、不缓存失败结果。**fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一为 `AiNetworkError`，与超时 `AbortError` 区分**；连接测试 toast 对 CORS 给出可操作指引（云端端点需支持 CORS、本地服务放行来源、或自托管反代）。
+- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 超时 + 可重试：**chat 60s `CHAT_TIMEOUT_MS`、连接测试 15s `DEFAULT_TIMEOUT_MS`**——云端 LLM 生成耗时远超连接测试，15s 易误伤）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案（**/profile 错误 toast 附诊断 message**：401/429/HTTP 状态/CORS 区分；超时 AbortError 给「请求超时」文案，避免固定 network 文案把鉴权失败误报成跨域），不写库、不缓存失败结果。**fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一为 `AiNetworkError`，与超时 `AbortError` 区分**；连接测试 toast 对 CORS 给出可操作指引（云端端点需支持 CORS、本地服务放行来源、或自托管反代）。
 - 断网：AI 区块降级/禁用提示，页面其余功能不受影响（对齐「纯前端离线可用」主原则）。
 - **CORS 与代理**：`pnpm dev` 下 AI 请求经 Vite 同源代理（`vite.config.ts` `aiDevProxyPlugin`，路径 `/__ai-proxy/<encodeURIComponent(完整 URL)>`）转发任意 https / http 回环端点，同源消除 CORS（前端 `buildRequestUrl` 挂代理路径，构建期 `__AI_DEV_PROXY__` 开关仅 dev 开启）；**生产构建 / preview / E2E 直连**——云端端点需支持 CORS，否则沿用 `AiNetworkError` 指引（换端点或自托管反代）。代理仅放行 https 与 http 回环地址（拒绝任意 http 内网目标）；上游失败中断连接 → 浏览器 fetch `TypeError` → 前端归一 `AiNetworkError`（与直连语义一致）。E2E 有意以跨源 mock 验证真实 CORS 预检流程，不受 dev 代理影响。
 

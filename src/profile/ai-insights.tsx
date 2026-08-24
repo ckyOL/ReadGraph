@@ -56,6 +56,8 @@ export function AiInsightsSection({
 
   // 错误分级 toast（§5.4）：网络失败/超时、响应校验失败、未配置端点/模型；
   // 错误态不渲染结果（hook 保证 insights 与 error 互斥）。
+  // description 展示模块内构造的诊断 message（401/429/HTTP 状态/CORS/超时区分），
+  // 避免固定 network 文案把鉴权失败误报成「跨域」；AbortError 的 'Aborted' 无信息量则省略。
   useEffect(() => {
     if (error === null) return
     const key =
@@ -64,7 +66,14 @@ export function AiInsightsSection({
         : error.kind === 'validation'
           ? 'profile.ai.error.validation'
           : 'profile.ai.error.unconfigured'
-    toast({ variant: 'destructive', title: t(key) })
+    // AbortError（超时/中止）的 message 为 'Aborted' 无信息量：给明确超时文案，避免误读为 CORS。
+    const description =
+      error.kind === 'network' && error.message === 'Aborted'
+        ? t('profile.ai.error.timeout')
+        : error.kind !== 'unconfigured' && error.message
+          ? error.message
+          : undefined
+    toast({ variant: 'destructive', title: t(key), description })
   }, [error, t])
 
   // 未启用（§2.1）：全站无 AI 痕迹——含 loading 态也不渲染。

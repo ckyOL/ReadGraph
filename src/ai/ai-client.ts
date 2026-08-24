@@ -16,6 +16,8 @@ export function buildRequestUrl(target: string, useProxy = __AI_DEV_PROXY__): st
 
 /** 默认请求超时（ai-features §5.4：AbortController 15s 默认超时）。 */
 export const DEFAULT_TIMEOUT_MS = 15_000
+/** chat 生成超时：云端 LLM 生成耗时远超连接测试（长 prompt + 完整 JSON 输出），15s 易误伤，取 60s。 */
+export const CHAT_TIMEOUT_MS = 60_000
 
 /** HTTP 非 2xx 响应错误：携带状态码；401/429 附显式文案。 */
 export class AiHttpError extends Error {
@@ -201,7 +203,7 @@ export async function chat(opts: AiChatOptions): Promise<string> {
       headers: buildHeaders(opts.apiKey),
       body: JSON.stringify(body),
     },
-    DEFAULT_TIMEOUT_MS,
+    CHAT_TIMEOUT_MS,
     opts.signal,
   )
   if (!res.ok) {
