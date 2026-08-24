@@ -138,9 +138,10 @@ interface AIInsight {
 
 ### 5.4 端点契约与降级
 
-- 端点：用户配置的 OpenAI 兼容 `{baseUrl}/v1/chat/completions`；`baseUrl` 去尾斜杠；不支持空端点调用（连接测试除外）。
-- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 15s 默认超时 + 可重试）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案，不写库、不缓存失败结果。
+- 端点：用户配置的 OpenAI 兼容 `{baseUrl}/v1/chat/completions`；`baseUrl` 去尾斜杠；**已含 `/v1` 后缀（如 placeholder `https://api.example.com/v1`）自动识别、不重复拼接**（网关前缀路径如 `/proxy/v1` 同样保留前缀且不叠加）；不支持空端点调用（连接测试除外）。
+- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 15s 默认超时 + 可重试）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案，不写库、不缓存失败结果。**fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一为 `AiNetworkError`，与超时 `AbortError` 区分**；连接测试 toast 对 CORS 给出可操作指引（云端端点需支持 CORS、本地服务放行来源、或自托管反代）。
 - 断网：AI 区块降级/禁用提示，页面其余功能不受影响（对齐「纯前端离线可用」主原则）。
+- **CORS 与代理**：`pnpm dev` 下 AI 请求经 Vite 同源代理（`vite.config.ts` `aiDevProxyPlugin`，路径 `/__ai-proxy/<encodeURIComponent(完整 URL)>`）转发任意 https / http 回环端点，同源消除 CORS（前端 `buildRequestUrl` 挂代理路径，构建期 `__AI_DEV_PROXY__` 开关仅 dev 开启）；**生产构建 / preview / E2E 直连**——云端端点需支持 CORS，否则沿用 `AiNetworkError` 指引（换端点或自托管反代）。代理仅放行 https 与 http 回环地址（拒绝任意 http 内网目标）；上游失败中断连接 → 浏览器 fetch `TypeError` → 前端归一 `AiNetworkError`（与直连语义一致）。E2E 有意以跨源 mock 验证真实 CORS 预检流程，不受 dev 代理影响。
 
 ## 6. 用户故事与验收用例（Phase 1）
 
@@ -161,7 +162,7 @@ interface AIInsight {
 - `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
 - `sanitize.ts` 每书字段：payload 中每书含题名/作者/借阅次数且不含 `isbn13`/`tags`/`price`/借还日期（字段级断言）；借阅次数来自本地聚合（与 `profile-stats` 同源计数一致）。
 - `sanitize.ts` 装配边界：空库/无借阅时 payload 结构完整（`books=[]`）；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT` 时全量进 payload（与源 Book 一一对应）；超过阈值触发分层采样降级（每分类取代表、总上限 500、标注采样标记），采样集覆盖全部分类（无空分类桶）。
-- `ai-client.ts`：`chat()` 构造正确 URL/headers/body（`Authorization` 仅在有 Key 时携带；`baseUrl` 去尾斜杠）；`stream:false` 普通 JSON 响应解析；**SSE 响应解析**（mock fetch 返回分片 `data:` 行：完整事件、事件间空行、`[DONE]`、断行重组）；Abort 中断抛 `AbortError`；超时触发 abort；HTTP 非 2xx 抛带状态错误；无鉴权端点（无 Key）请求不带头。
+- `ai-client.ts`：`chat()` 构造正确 URL/headers/body（`Authorization` 仅在有 Key 时携带；`baseUrl` 去尾斜杠；**`/v1` 结尾不重复拼接**；`buildRequestUrl`：dev 代理前缀编码 / 生产直连）；`stream:false` 普通 JSON 响应解析；**SSE 响应解析**（mock fetch 返回分片 `data:` 行：完整事件、事件间空行、`[DONE]`、断行重组）；Abort 中断抛 `AbortError`；超时触发 abort；HTTP 非 2xx 抛带状态错误；无鉴权端点（无 Key）请求不带头；**fetch `TypeError` → `AiNetworkError`（端点不可达 / CORS 拦截）**。
 - `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`。
 - `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
 - `ai-cache.ts`：缓存键含 scene/locale/key；写读回环；清除只删 `ai:` 前缀键；不随 `exportDatabase` 导出。

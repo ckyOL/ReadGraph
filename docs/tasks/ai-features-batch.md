@@ -97,6 +97,10 @@
 - 2026-08-23 **波次4完成**：F-2/F-4 落地，Phase 1 收尾。F-2 `/profile` AI 解读区（`src/profile/ai-insights.tsx`，lazy 动态加载、未启用零渲染）：fact 窄卡（标题+正文+维度 chip，chip 小写匹配 Tabs 值集合激活对应图表 tab=引用定位，不命中降级不可点）+ taste 全宽段，每条「AI 生成，基于本地数据」标注，整体重新生成，错误 toast 按 network/validation/unconfigured 分级；profile.tsx Tabs 受控化。**规格缺口修复**：`generate()` 缓存命中直出导致重新生成无法覆盖——`generate(bypassCache?)` + 重新生成按钮传 `true`（§4.1/§6-5）。F-4 测试：编排核心下沉 `src/ai/insight-pipeline.ts` 纯函数（依赖注入，`runInsightPipeline`/`submitInsightPayload` 阶段结果判别联合；use-ai.ts 对外签名不变）→ Vitest 15 用例（缓存命中/损坏、预览产物同一引用 `toBe`、locale 隔离、失败不写缓存、bypass、未启用/unconfigured）+ `e2e/ai-profile.spec.ts` Playwright 6 用例（未启用无区块、预览↔请求体深等价 §3.3、fact/taste 渲染、重新生成覆盖、断网 toast）。**全量门禁**：`pnpm test` 72 文件 877 用例绿、`pnpm build` 绿、`pnpm exec playwright test` 68 用例绿（含既有 11 spec 不回归）；UI 冒烟（dev server+browser+mock 端点）：生成→预览→确认→fact/taste/AI 标注→chip 引用定位→重新生成覆盖→断网 toast 全项通过。**Phase 1 里程碑达成**：脱敏管道+设置页 AI 区+画像分析最小闭环全部落地。
 
 ## 实现指南（给执行 LLM 的速查）
+- 2026-08-24 **dev 同源代理**：`vite.config.ts` 增 `aiDevProxyPlugin`（`pnpm dev` 生效，`/__ai-proxy/<encoded URL>` 转发任意 https / http 回环端点，同源消除 CORS；拒绝非回环 http；上游失败中断连接→浏览器 TypeError→`AiNetworkError` 语义一致）；`define.__AI_DEV_PROXY__` 仅 dev 注入 true（build/preview/vitest 均 false → 直连，vitest.config.ts 显式补 false）。`ai-client.ts` 增 `buildRequestUrl(target, useProxy?)`（导出、可单测）。冒烟：GET/POST 转发与 body 透传、400 拒绝、上游不可达连接重置。门禁：`pnpm test` 72 文件 885 用例全绿、`pnpm build` 通过、产物直连（define 替换生效）。生产边界：云端端点仍需支持 CORS 或自托管反代；E2E 跨源 mock 不受影响。
+
+- 2026-08-24 **修复**：端点 URL 双 `/v1` 拼接——`ai-client.ts` 增 `endpointUrl()`（`baseUrl` 已含 `/v1` 后缀不重复拼接、网关前缀路径保留，placeholder `https://api.example.com/v1` 直填即用）；fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一 `AiNetworkError`（与超时 `AbortError` 区分），连接测试 toast 按 CORS 分级给可操作指引（`settings.ai.test.error.cors` 双语，`profile.ai.error.network` 文案补 CORS）。测试：ai-client 25 用例（新增 `/v1` 结尾 x2、网关前缀、TypeError x2）。门禁：`pnpm test` 72 文件 883 用例全绿、`pnpm build` 通过。
+
 
 ### A. 已就位代码快照（勿重复建）
 

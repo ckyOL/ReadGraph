@@ -1,7 +1,7 @@
 // AI 客户端（src/ai/ai-client.ts）单测：OpenAI 兼容端点 fetch 薄封装（ai-features §5.4 / §7）。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AiHttpError, chat, testConnection } from '@/ai/ai-client'
+import { AiHttpError, AiNetworkError, buildRequestUrl, chat, testConnection } from '@/ai/ai-client'
 
 /** mock fetch：挂起直到 signal abort（与真实 fetch 行为一致）。 */
 function hangingFetch() {
@@ -28,6 +28,19 @@ function okResponse(body: unknown) {
 
 const MESSAGES = [{ role: 'user' as const, content: '你好' }]
 const BASE_OPTS = { baseUrl: 'https://api.example.com', model: 'gpt-4o-mini', messages: MESSAGES }
+describe('buildRequestUrl', () => {
+  it('useProxy=true（dev）→ 完整目标 URL 编码后挂 /__ai-proxy/ 前缀', () => {
+    expect(buildRequestUrl('https://api.example.com/v1/chat/completions', true)).toBe(
+      '/__ai-proxy/https%3A%2F%2Fapi.example.com%2Fv1%2Fchat%2Fcompletions',
+    )
+  })
+
+  it('useProxy=false（build/preview/test）→ 直连原 URL', () => {
+    expect(buildRequestUrl('https://api.example.com/v1/chat/completions', false)).toBe(
+      'https://api.example.com/v1/chat/completions',
+    )
+  })
+})
 
 describe('chat', () => {
   afterEach(() => {
@@ -51,6 +64,35 @@ describe('chat', () => {
       stream: false,
       response_format: { type: 'json_object' },
     })
+  })
+
+  it.each(['https://api.example.com/v1', 'https://api.example.com/v1/'])(
+    'baseUrl 已含 /v1 后缀（%s）→ 不重复拼接 /v1',
+    async (baseUrl) => {
+      const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
+      vi.stubGlobal('fetch', fetchMock)
+      await chat({ ...BASE_OPTS, baseUrl })
+      const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(url).toBe('https://api.example.com/v1/chat/completions')
+    },
+  )
+
+  it('baseUrl 含网关前缀 /proxy/v1 → 保留前缀且不重复拼接 /v1', async () => {
+    const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
+    vi.stubGlobal('fetch', fetchMock)
+    await chat({ ...BASE_OPTS, baseUrl: 'https://gateway.example.com/proxy/v1' })
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://gateway.example.com/proxy/v1/chat/completions')
+  })
+
+  it('fetch TypeError（端点不可达/CORS 拦截）→ 抛 AiNetworkError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(chat({ ...BASE_OPTS })).rejects.toBeInstanceOf(AiNetworkError)
   })
 
   it('temperature 透传；缺省时不发送 temperature 字段', async () => {
@@ -184,6 +226,26 @@ describe('testConnection', () => {
     expect(url).toBe('http://127.0.0.1:11434/v1/models')
     expect(init.method).toBe('GET')
     expect(init.headers).toMatchObject({ Authorization: 'Bearer k' })
+  })
+
+  it('baseUrl 已含 /v1 后缀 → GET {base}/v1/models 不重复拼接', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '[]' }))
+    vi.stubGlobal('fetch', fetchMock)
+    await testConnection({ baseUrl: 'https://api.example.com/v1' })
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/v1/models')
+  })
+
+  it('fetch TypeError（CORS/不可达）→ 抛 AiNetworkError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(
+      testConnection({ baseUrl: 'https://api.example.com' }),
+    ).rejects.toBeInstanceOf(AiNetworkError)
   })
 
   it('无 key → 请求不含 Authorization 头（本地无鉴权端点）', async () => {

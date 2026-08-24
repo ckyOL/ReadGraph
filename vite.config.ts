@@ -5,6 +5,7 @@ import tanRouterPlugin from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 /**
  * SEC-1 CSP meta 注入（docs/tasks/quality-hardening.md §阶段5 SEC-1）：
@@ -67,11 +68,104 @@ function inlineEntryCssPlugin(): Plugin {
   }
 }
 
+/**
+ * AI dev 同源代理（ai-features §5.4/§8）：`pnpm dev` 下把 AI 端点请求经 Vite dev server
+/**
+ * AI dev 同源代理（ai-features §5.4/§8）：`pnpm dev` 下把 AI 端点请求经 Vite dev server
+ * 转发，同源消除 CORS——用户 BYOK 任意云端端点（构建期无法静态化 server.proxy target，
+ * 故不沿用 OPAC 固定 target 写法）。请求形如 `/__ai-proxy/<encodeURIComponent(完整 URL)>`；
+ * 仅放行 https 与 http 回环地址（拒绝任意 http 内网目标）；上游失败中断连接 → 浏览器
+ * fetch 抛 TypeError → 前端归一 AiNetworkError（与直连语义一致）。仅 serve 生效；
+ * build/preview/E2E 走直连（E2E 有意用跨源 mock 验证真实 CORS 预检流程）。
+ */
+const AI_PROXY_PREFIX = '/__ai-proxy/'
+const PROXY_HOP_BY_HOP: Record<string, true> = {
+  connection: true,
+  'keep-alive': true,
+  'proxy-authenticate': true,
+  'proxy-authorization': true,
+  te: true,
+  trailer: true,
+  'transfer-encoding': true,
+  upgrade: true,
+  host: true,
+  'content-length': true,
+}
+
+function aiDevProxyPlugin(): Plugin {
+  return {
+    name: 'ai-dev-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      // 不用 connect 路径前缀 use（会剥离前缀改写 req.url）：手动匹配保留完整路径。
+      server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next) => {
+        if (!req.url?.startsWith(AI_PROXY_PREFIX)) {
+          next()
+          return
+        }
+        const raw = decodeURIComponent(req.url.slice(AI_PROXY_PREFIX.length))
+        let target: URL
+        try {
+          target = new URL(raw)
+        } catch {
+          res.statusCode = 400
+          res.end('invalid AI proxy target')
+          return
+        }
+        const isHttps = target.protocol === 'https:'
+        const isLoopback =
+          target.protocol === 'http:' &&
+          ['127.0.0.1', 'localhost', '::1'].includes(target.hostname)
+        if (!isHttps && !isLoopback) {
+          res.statusCode = 400
+          res.end('unsupported AI proxy target')
+          return
+        }
+        const headers = new Headers()
+        for (const [key, value] of Object.entries(req.headers)) {
+          if (typeof value === 'string' && !(key in PROXY_HOP_BY_HOP)) headers.set(key, value)
+        }
+        let body: Buffer | undefined
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          body = Buffer.concat(chunks)
+        }
+        const controller = new AbortController()
+        res.on('close', () => controller.abort())
+        try {
+          const up = await fetch(target, {
+            method: req.method,
+            headers,
+            body,
+            redirect: 'manual',
+            signal: controller.signal,
+          })
+          res.statusCode = up.status
+          up.headers.forEach((value, key) => {
+            if (!(key in PROXY_HOP_BY_HOP)) res.setHeader(key, value)
+          })
+          res.end(Buffer.from(await up.arrayBuffer()))
+        } catch {
+          // 上游不可达：中断连接 → 浏览器 fetch TypeError → AiNetworkError。
+          res.destroy()
+        }
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // AI dev 代理开关（ai-features §5.4）：仅 `pnpm dev`（mode=development）开启；
+  // build/preview/vitest（mode=production/test）注入 false → 前端直连。构建期静态替换。
+  define: {
+    __AI_DEV_PROXY__: JSON.stringify(mode === 'development'),
+  },
   plugins: [
     cspMetaPlugin(),
     inlineEntryCssPlugin(),
+    aiDevProxyPlugin(),
     tanRouterPlugin({
       target: 'react',
       autoCodeSplitting: true,
@@ -96,4 +190,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

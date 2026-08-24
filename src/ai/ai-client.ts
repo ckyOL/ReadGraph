@@ -1,7 +1,18 @@
 // AI 端点客户端（ai-features §5.4）：OpenAI 兼容端点 fetch 薄封装，纯函数可单测。
 // 职责边界：URL/headers/body 构造、超时与中止、HTTP 状态分级、SSE 兜底解析。
 // 不做 schema 校验 / Provider 抽象（C-2 波次2）。错误分级：网络失败/超时 → AbortError，
-// HTTP 非 2xx → AiHttpError（401/429 显式文案），响应结构非法 → 解析错误。
+// HTTP 非 2xx → AiHttpError（401/429 显式文案），响应结构非法 → 解析错误；
+// fetch TypeError（端点不可达 / CORS 拦截）→ AiNetworkError（区别于超时中止）。
+/** `pnpm dev` 下 AI 请求走 Vite 同源代理（vite.config.ts aiDevProxyPlugin）消除 CORS；构建期由 define 静态注入，build/preview/test 为 false。 */
+declare const __AI_DEV_PROXY__: boolean
+
+/** dev 同源代理路径前缀（vite.config.ts aiDevProxyPlugin 中间件）。 */
+export const AI_PROXY_PREFIX = '/__ai-proxy/'
+
+/** 构造实际请求 URL：useProxy（dev）时将完整目标 URL 编码挂同源代理路径，否则直连。 */
+export function buildRequestUrl(target: string, useProxy = __AI_DEV_PROXY__): string {
+  return useProxy ? `${AI_PROXY_PREFIX}${encodeURIComponent(target)}` : target
+}
 
 /** 默认请求超时（ai-features §5.4：AbortController 15s 默认超时）。 */
 export const DEFAULT_TIMEOUT_MS = 15_000
@@ -14,6 +25,14 @@ export class AiHttpError extends Error {
     super(message)
     this.name = 'AiHttpError'
     this.status = status
+  }
+}
+
+/** 网络层失败（fetch TypeError）：端点不可达或跨域（CORS）被浏览器拦截；与超时/中止（AbortError）区分。 */
+export class AiNetworkError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AiNetworkError'
   }
 }
 
@@ -52,6 +71,16 @@ function normalizeBaseUrl(baseUrl: string): string {
   return trimmed.replace(/\/+$/, '')
 }
 
+/**
+ * 拼接 OpenAI 兼容端点路径：baseUrl 已含 `/v1` 后缀（如 placeholder `https://api.example.com/v1`）
+ * 时不重复拼接，否则补上 `/v1`；保留 baseUrl 中网关前缀路径（如 `/proxy/v1`）。
+ */
+function endpointUrl(baseUrl: string, path: string): string {
+  const base = normalizeBaseUrl(baseUrl)
+  const versionSegment = /\/v1$/.test(base) ? '' : '/v1'
+  return `${base}${versionSegment}/${path}`
+}
+
 /** Authorization 仅在 apiKey 非空时携带（本地无鉴权端点支持）。 */
 function buildHeaders(apiKey?: string): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -63,7 +92,8 @@ function buildHeaders(apiKey?: string): Record<string, string> {
 
 /**
  * fetch + 超时/中止封装：内部 AbortController 兜底 15s 超时，外部 signal 透传；
- * 超时或外部中止统一归一为 DOMException AbortError，其余网络错误透传原错误。
+ * 超时或外部中止统一归一为 DOMException AbortError；fetch TypeError（端点不可达 /
+ * CORS 拦截）归一为 AiNetworkError；其余网络错误透传原错误。
  */
 async function request(
   url: string,
@@ -86,6 +116,13 @@ async function request(
   } catch (e) {
     if (controller.signal.aborted) {
       throw new DOMException('Aborted', 'AbortError')
+    }
+    if (e instanceof TypeError) {
+      // fetch 网络失败/跨域拦截统一抛 TypeError：给用户可操作诊断文案。
+      throw new AiNetworkError(
+        'AI 端点网络请求失败：端点不可达，或跨域（CORS）被浏览器拦截。' +
+          '云端端点需支持 CORS；本地服务（如 Ollama）需放行来源；或改用自托管反向代理。',
+      )
     }
     throw e
   } finally {
@@ -140,7 +177,7 @@ export async function chat(opts: AiChatOptions): Promise<string> {
     body.temperature = opts.temperature
   }
   const res = await request(
-    `${base}/v1/chat/completions`,
+    buildRequestUrl(endpointUrl(base, 'chat/completions')),
     {
       method: 'POST',
       headers: buildHeaders(opts.apiKey),
@@ -169,7 +206,7 @@ export async function chat(opts: AiChatOptions): Promise<string> {
 export async function testConnection(opts: AiTestConnectionOptions): Promise<void> {
   const base = normalizeBaseUrl(opts.baseUrl)
   const res = await request(
-    `${base}/v1/models`,
+    buildRequestUrl(endpointUrl(base, 'models')),
     {
       method: 'GET',
       headers: buildHeaders(opts.apiKey),

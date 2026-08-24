@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { testConnection, AiHttpError } from '@/ai/ai-client'
+import { testConnection, AiHttpError, AiNetworkError } from '@/ai/ai-client'
 import { readPreferences, writePreferences, type UserPreferencesInput } from '@/lib/preferences'
 import { readAiApiKey, writeAiApiKey } from '@/lib/ai-api-key'
 import { clearAiCache } from '@/lib/ai-cache'
@@ -16,6 +16,10 @@ function testErrorKey(e: unknown): { key: string; options?: Record<string, unkno
     if (e.status === 401) return { key: 'settings.ai.test.error.auth' }
     if (e.status === 429) return { key: 'settings.ai.test.error.rateLimited' }
     return { key: 'settings.ai.test.error.http', options: { status: e.status } }
+  }
+  if (e instanceof AiNetworkError) {
+    // 跨域（CORS）拦截 / 端点不可达：与超时（AbortError）区分，给可操作指引。
+    return { key: 'settings.ai.test.error.cors' }
   }
   return { key: 'settings.ai.test.error.network' }
 }
