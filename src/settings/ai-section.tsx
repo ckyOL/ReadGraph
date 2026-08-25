@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { testConnection, AiHttpError, AiNetworkError } from '@/ai/ai-client'
 import { readPreferences, writePreferences, type UserPreferencesInput } from '@/lib/preferences'
 import { readAiApiKey, writeAiApiKey } from '@/lib/ai-api-key'
+import { clearAiModelList, readAiModelList, writeAiModelList } from '@/lib/ai-model-list'
 import { clearAiCache } from '@/lib/ai-cache'
 import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -38,8 +39,8 @@ export function AiSection() {
   const [apiKey, setApiKey] = useState(() => readAiApiKey())
   const [sendPreview, setSendPreview] = useState(() => readPreferences().ai.sendPreview)
   const [testing, setTesting] = useState(false)
-  /** 连接测试抓取的模型 ID 列表（§4.2）；端点变更即失效。 */
-  const [models, setModels] = useState<string[]>([])
+  /** 连接测试抓取的模型 ID 列表（§4.2）：独立存储跨会话保留；端点变更即清除（ai-features §4.2）。 */
+  const [models, setModels] = useState<string[]>(() => readAiModelList())
 
   /** 模型选项：端点列表 + 当前已保存值（可能不在列表，保留可选中/可回退手输）。 */
   const modelOptions = useMemo(() => {
@@ -60,7 +61,10 @@ export function AiSection() {
   const handleBaseUrlChange = (v: string) => {
     setBaseUrl(v)
     setModels([])
-    patchAi({ baseUrl: v })
+    clearAiModelList()
+    // 端点变更 → 已保存模型名一并清除：旧端点的模型对新端点无意义，留空待重新测试/手输。
+    setModel('')
+    patchAi({ baseUrl: v, model: '' })
   }
 
   const handleApiKeyChange = (v: string) => {
@@ -85,6 +89,7 @@ export function AiSection() {
     try {
       const list = await testConnection({ baseUrl: trimmed, apiKey: apiKey.trim() || undefined })
       setModels(list)
+      writeAiModelList(list)
       if (list.length > 0) {
         // 模型为空时自动选中列表首项（测试连接即选定，省一次操作）；已填值保留。
         if (!model) {

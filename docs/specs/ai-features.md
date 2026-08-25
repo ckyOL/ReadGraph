@@ -107,9 +107,11 @@ interface AIInsight {
 ### 4.2 设置页 AI 区（/settings，Phase 1）
 
 - 布局：设置页偏好区/数据区之间新增 AI 区，`border-t` 分隔，不嵌套卡片（对齐 [settings §7](./settings.md#7-ui-设计说明)）。
-- 控件：启用开关（默认关）→ 启用后展开：端点 URL（默认空）、API Key（可选、`Password` 输入）、模型名（**连接测试后从端点 `/v1/models` 列表选择**，模型为空时自动选中列表首项；端点未提供列表时回退手输）、「测试连接」按钮、隐私说明（§2.3 文案）、「发送预览」开关（默认开）、「清除 AI 缓存」。
+- 控件：启用开关（默认关）→ 启用后展开：端点 URL（默认空）、API Key（可选、`Password` 输入）、模型名（**连接测试后从端点 `/v1/models` 列表选择**，模型为空时自动选中列表首项；端点未提供列表时回退手输）、「测试并获取模型」按钮（连通性验证 + 抓取模型列表，中英文案 `settings.ai.test`）、隐私说明（§2.3 文案）、「发送预览」开关（默认开）、「清除 AI 缓存」。
 - **连接测试**：`GET {baseUrl}/v1/models`（带 `Authorization: Bearer <key>`，无 key 时也允许测试以支持本地无鉴权端点）；2xx 返回模型 ID 列表（`data[].id`，兼容顶层 `[{id}]`，去重）供模型下拉；列表为空（响应结构不兼容）→ toast 提示可手输；失败 toast 明确错误（网络/鉴权/非 OpenAI 兼容端点）。
 - 端点变更（URL 输入变化）→ 已抓取模型列表失效清空，需重新测试连接获取。
+- 端点变更（URL 输入变化）→ 已抓取模型列表失效清空、**已保存模型名（`ai.model`）一并清除**，需重新测试连接获取。
+- 模型列表**跨会话持久化**：测试连接抓取的模型 ID 列表存独立 `localStorage` key（`readgraph:ai-model-list`，见 §5.1），下次进入设置页仍可用；**端点变更即清除**（与上条一致，旧端点列表不污染新端点）。
 - 未配置端点/未启用时，`/profile` AI 解读区不渲染（§2.1）。
 - 本地服务路径（Phase 3）同属本区：端点填 `http://127.0.0.1:*`，连接测试即验证。
 
@@ -123,7 +125,8 @@ interface AIInsight {
 ### 5.1 偏好持久化（扩展 data-layer §8）
 
 - `userPreferencesSchema` 扩展 `ai: { enabled: boolean; baseUrl: string; model: string }`（默认 `{ enabled: false, baseUrl: '', model: '' }`，校验非空字符串；非法值降级默认，对齐 [data-layer §8](./data-layer.md#8-用户偏好)）。
-- **API Key 独立存储**：存独立 `localStorage` key `readgraph:ai-api-key`，不进入 `userPreferencesSchema`、不随偏好读写/备份导出（`ExportData` 只含六张表，[data-layer §7](./data-layer.md#7-数据导出与重建)）；调用时读入内存参与请求头，不进入 React 状态持久化。
+- **模型列表独立存储**（同类）：存独立 `localStorage` key `readgraph:ai-model-list`（`string[]`），不进 `userPreferencesSchema`、不随备份导出；测试连接成功后写入，端点 URL 变更即清除，系统重置 `clearPreferences=true` 时一并清除。
+- 系统重置 `clearPreferences=true` 时一并清除 AI 配置与 Key；`/settings` 另提供单独清除。
 - 系统重置 `clearPreferences=true` 时一并清除 AI 配置与 Key；`/settings` 另提供单独清除。
 
 ### 5.2 CSP 放宽（vite.config.ts 注释记录）
