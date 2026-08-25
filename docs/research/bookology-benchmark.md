@@ -73,10 +73,12 @@
 - ReadGraph 映射：目标维度只支持「**年内读完/借阅的独立 Book 数**」（`borrowedAt ∈ 本年` 的去重 Book 计数，语义随数据而定，须在规格中定死）。Bookology 支持的本数/页数/时长/天数/连击目标中，**页数/时长/连击无数据支撑，明确不支持**（见 §6 边界）。
 - 落地形态：/profile 概览行新增「年度目标」窄卡片（进度 + 差量）；目标值落 `readgraph:preferences`（`UserPreferences` schema 需增量扩展，见 [data-layer §8 用户偏好](./specs/data-layer.md#8-用户偏好)，走设置页编辑）；进度由纯函数从 BorrowCycle 派生。
 - 交互参考：Bookology 的「编号占位」完成网格（第 7、8 本…灰色占位）适合画报式年度回顾页，作为卡片微缩版即可，不必照搬大网格。
+**承接状态（2026-08-25）**：口径已由 [reading-profile §2.7 年度切片契约](../specs/reading-profile.md#2-统计维度与聚合契约) 承接（本书 §6 语义边界决策：年内曾借出、UTC 左闭右开、设备排除、独立 Book 去重、进度 = `yearSlice.bookCount`）；目标卡为纯本地功能（不依赖 AI），排期独立；UI 落点 = 年度视图静态骨架（[ai-features §9.1](../specs/ai-features.md)）。
 
 **5.3 年度回顾方向（对应 Bookology「Annual book showcase」/「2026 Finished」书架）**
 - 借鉴点：按年组织「今年借过的书」+ 最常读排行；Bookology 的「年份 + 状态」命名书架是低成本高感知的组织模式。
 - ReadGraph 映射：/profile 时间范围已有年粒度（[reading-profile §2.3](./specs/reading-profile.md) 数据跨度 > 2 年自动切年）；「年度回顾」= 年粒度借阅量的叙事化呈现（年度书单、最常借 Top N）。与 design-decisions 未来扩展「社交分享——阅读报告图片（纯前端 Canvas）」衔接，先做页内呈现、分享图留待扩展。
+**承接状态（2026-08-25）**：方向已承接为年度视图 `/profile/$year`（新路由）静态骨架 + AI 叙事区（[ai-features §9.1](../specs/ai-features.md)、[ui-navigation §2 路由预留](../specs/ui-navigation.md#2-路由树)）；页内呈现先行，分享图仍留扩展。
 
 ### P1 记录为未来扩展参考（不进入 v1 规格）
 
@@ -100,6 +102,8 @@
 
 ## 6. 目标口径的语义边界（落规格前必须定死）
 
+> **状态（2026-08-25）**：本节语义边界已由 [reading-profile §2.7 年度切片契约](../specs/reading-profile.md#2-统计维度与聚合契约) 承接（含「年内曾借出」推荐决策），落地以该契约为准，本节保留为决策依据记录。
+
 Bookology 目标口径是**阅读行为**（读了多少页/分钟）；ReadGraph 能提供的只有**借阅行为**。若做年度目标，必须在 [specs/reading-profile.md] 规格中明确：
 
 1. 「年内完成」定义：`borrowedAt ∈ [本年 1 月 1 日, 下年 1 月 1 日)`（UTC，左闭右开）且 `status='returned'` 的**独立 Book** 计数？还是含在借？——推荐取「年内曾借出的独立 Book 数」（与 `borrowedValue` 口径一致，见 [reading-profile §2.5](./specs/reading-profile.md)），避免依赖归还状态引入语义抖动。
@@ -111,9 +115,9 @@ Bookology 目标口径是**阅读行为**（读了多少页/分钟）；ReadGrap
 
 可直接借鉴 3 条，全部落在现有「只读画像页」架构内、零新实体、零新依赖：
 
-1. **借阅日历热力图**（月历格 = 在借书封面，All/Month/Year，借阅天数汇总）→ /profile 新增 tab。
-2. **年度目标卡片**（目标 = 年内借出的独立 Book 数，进度 + 差量，值落 UserPreferences）→ 概览行。
-3. **年度回顾方向**（按年组织 + 最常读，衔接未来阅读报告分享）。
+1. **借阅日历热力图**（月历格 = 在借书封面，All/Month/Year，借阅天数汇总）→ /profile 新增 tab。✅ 已落地（2026-08-22，[reading-profile §2.6](../specs/reading-profile.md)）。
+2. **年度目标卡片**（目标 = 年内借出的独立 Book 数，进度 + 差量，值落 UserPreferences）→ 概览行。✅ 口径已承接（2026-08-25，[reading-profile §2.7 年度切片](../specs/reading-profile.md#2-统计维度与聚合契约)），纯本地功能、排期独立。
+3. **年度回顾方向**（按年组织 + 最常读，衔接未来阅读报告分享）→ 年度视图（`/profile/$year`）静态骨架 + AI 叙事区（[ai-features §9.1](../specs/ai-features.md)）。
 
 其余（笔记模型、自定义书单）记录为未来扩展外部参考；计时器、拟物书架、云同步、widgets、手动状态明确不借鉴。Bookology 的书库缺筛选搜索恰为 ReadGraph 已有优势（URL 化筛选/排序），调研结论与现有规格方向互相印证。
 

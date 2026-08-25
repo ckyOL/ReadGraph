@@ -185,7 +185,11 @@ interface AIInsight {
 
 ### 9.1 Phase 2：年度总结叙事 + 流式
 
-- `/profile/$year` 年度视图「年度叙事」：`year-review` 切片指标 + 年度切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小，通常远低于阈值） → 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。
+- **年度视图落点**：`/profile/$year`（新路由，方向 B 图谱语言；路由树预留见 [ui-navigation §2](./ui-navigation.md#2-路由树)）。年度视图 = **静态骨架 + 叙事区**：
+  - 静态骨架（非 AI，本地直出）：年度书单 + 最常借 Top N（bookology-benchmark §5.3 年度回顾）+ 年度目标进度卡（bookology-benchmark §5.2，目标值落 `UserPreferences`，进度 = `yearSlice.bookCount`）——数字与叙事同源；
+  - **「年度叙事」AI 区**：与 /profile「AI 解读区」同构（fact/taste、AI 生成标注、重新生成、发送预览），是年度视图内的区块而非独立孤岛。
+- **输入契约**：`computeYearSlice` 切片指标（[reading-profile §2.7](./reading-profile.md#2-统计维度与聚合契约) 年度切片契约；口径 = bookology-benchmark §6 语义边界：`borrowedAt ∈ 本年` UTC 左闭右开、独立 Book 去重、设备排除、不依赖 `status='returned'`）+ 年度切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小，通常远低于阈值）→ 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。叙事、目标卡、回顾三个消费方共用同一 `yearSlice` 产物——数字同源，LLM 只转译（§2.6 统计一致性）。
+- **白名单边界**：年度场景 = 同一白名单形态（§3.2 每书字段集 + `yearSlice` 聚合输出），切片替代全量；**年度目标值（`UserPreferences` 用户设置）不进 payload**——非聚合统计、非书目字段，叙事不提「距目标还差 N 本」；如需纳入须显式扩展白名单并声明。
 - 流式输出（`stream:true` + SSE 拼接）、`Abort`、按 year/range/locale 缓存；taste 段逐句呈现。
 - 脱敏断言覆盖年度场景（与 §3.2 同白名单形态，切片替代全量）；`prompts/year-narrative.ts` 就位。
 

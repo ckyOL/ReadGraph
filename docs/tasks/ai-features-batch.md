@@ -144,7 +144,7 @@ pnpm exec playwright test  # E2E（F-4 阶段）
 
 ### E. 后置阶段（不在本批次）
 
-- **Phase 2**：年度总结叙事（`/profile/$year`，切片指标 + 年度全量书目）+ 流式（SSE 拼接、Abort、按 year/range/locale 缓存）；`year-narrative.ts` 就位（P-2）。
+- **Phase 2**：年度视图（`/profile/$year`，新路由）静态骨架（年度书单/最常借 Top N + 年度目标进度卡，bookology-benchmark §5.2/§5.3）+ 「年度叙事」AI 区；输入 = `computeYearSlice`（[reading-profile §2.7](../specs/reading-profile.md#2-统计维度与聚合契约)）+ 年度全量书目（§3.2 白名单形态）；**目标值不进 payload**；流式（SSE 拼接、Abort、按 year/range/locale 缓存）；`year-narrative.ts` 就位（P-2）。
 - **Phase 3**：本地服务后端（Ollama/LM Studio 同契约，`baseUrl` 配 `http://127.0.0.1:*`）；未启动明确错误；CORS 前提见 [research 参考来源](../research/ai-integration-research.md#参考来源)。
 
 ### F. 依赖（Phase 1）

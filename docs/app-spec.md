@@ -8,7 +8,7 @@
 | 主题 | 文档 |
 |------|------|
 | 数据模型 | [docs/metadata](./metadata) + [src/db/schemas.ts](../src/db/schemas.ts) |
-| 竞品调研 | [bookology-benchmark](./bookology-benchmark.md)（Bookology 借鉴分析：借阅日历/年度目标/年度回顾 P0，笔记/书单 P1，计时器/书架/同步 P2 不借鉴） |
+| 竞品调研 | [bookology-benchmark](./bookology-benchmark.md)（Bookology 借鉴分析：借阅日历/年度目标/年度回顾 P0——日历已落地、年度目标/回顾口径已承接 [reading-profile §2.7](./specs/reading-profile.md)，笔记/书单 P1，计时器/书架/同步 P2 不借鉴） |
 | 设计决策与约束 | [design-decisions](./design-decisions.md) |
 | 供应链安全 | [npm-supply-chain-security](./npm-supply-chain-security.md)（pnpm 等价映射见 §5） |
 | AI Agent 工作流 | [ai-agent-workflow-rules](./ai-agent-workflow-rules.md) |
@@ -238,7 +238,7 @@ pnpm install --ignore-scripts
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
-| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（`insight[]` fact 事实洞察 + taste 审美点评，同次生成同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区 — 规格已补，待 TDD 落地（Phase 1） |
+| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（`insight[]` fact 事实洞察 + taste 审美点评，同次生成同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区 — 规格已补，待 TDD 落地（Phase 1）；Phase 2 年度叙事（§9.1）输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约 |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 > AI 功能里程碑任务见 [tasks/ai-features-batch.md](./tasks/ai-features-batch.md)（Phase 1 落地清单：脱敏管道 → 端点客户端 → prompt → 设置页 AI 区 → /profile AI 解读区）。

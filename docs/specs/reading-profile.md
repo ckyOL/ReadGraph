@@ -164,6 +164,17 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
    - **每日去重**：同一天多个周期来自同一 bookId 只计一次（`count` 为独立 Book 数）；`bookIds` 升序。跨日叠加（同日两本书）各自展开到所属天。
    - **呈现**：ECharts `heatmap` series（已选型，[design-decisions 图表选型](../design-decisions.md)），GitHub 贡献图式网格；年视图（x=周列，y=7 行星期）+ 月视图（x=7 列星期，y=月内周行）由 `src/profile/charts/calendar-grid.ts` 纯函数产格；格子以计数强度着色（`--chart-2` 松叶色 + alpha 阶），无数据日弱底格；tooltip 列当日题名（含 `Book.coverUrl` 封面缩略图，≤8 本 + 「另有 N 本」折叠）。封面无数据也成立（计数格恒有）。**无需新依赖**（heatmap 为 ECharts 内置图种）。
    - **UTC 桶归属**：日键取 UTC getter，`displayTimezone` 不影响桶归属；周起始日随 locale（zh 周一 / en 周日），仅影响行列排布，不影响日→桶映射。
+7. **年度切片（yearSlice，年度目标/回顾/叙事共用）**
+   - **目的与消费方**：年度目标进度（bookology-benchmark §5.2）、年度回顾（年度书单/最常借 Top N，bookology-benchmark §5.3）、年度叙事（AI，ai-features §9.1）三个消费方**共用同一切片——口径一次定死、数字同源**；AI 叙事只转译不生成（对齐 ai-features §2.6 统计一致性）。
+   - **口径**：年内「曾借出」的**独立 Book 数**——存在周期 `borrowedAt ∈ [y-01-01T00:00:00.000Z, (y+1)-01-01T00:00:00.000Z)`（UTC 左闭右开）即计入，**不依赖 `status='returned'`**（与 `borrowedValue` 同口径 §2.5，避免归还状态引入语义抖动）；同书多次借阅只计一次；设备书排除（§2.0 排除总则）。
+   - **输出契约**（独立纯函数入口 `computeYearSlice(books, records, year, options)`，**不进 `ProfileStatsResult`**——`/profile/$year` 按需调用，不污染主聚合结构）：
+     - `bookIds`：该年借出独立 Book id，升序（年度书单呈现 + AI 叙事书目装配源）；
+     - `bookCount`：`bookIds.length`（年度目标进度口径）；
+     - `topBooks`：`{ bookId, count }[]` 按年内借出次数降序 Top N（复借最多口径，次数为本地聚合值）；
+     - `classification`：该年独立 Book 按首选体系的分类分布（与 treemap 同体系同口径，无分类号归 `__unclassified__`）。
+   - **空年**：无周期落入该年 → `bookIds=[]`/`bookCount=0`/`topBooks=[]`/`classification=[]`，不抛错。
+   - **纯函数性**：UTC 桶归属、同输入两次调用深等价、无 `Date.now()`，与其余维度同约束（§2 契约）。
+   - **状态**：口径与契约已定（2026-08-25，承接 bookology-benchmark §6 语义边界，含「年内曾借出」推荐决策）；实现随消费方排期——年度目标/年度回顾为纯本地功能（不依赖 AI），年度叙事为 ai-features §9.1 Phase 2。
 
 ## 3. ECharts 主题与薄适配层
 
@@ -263,6 +274,8 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - calendar 口径：`borrowDays` 全量（与 range 无关、含 range 外周期）；`days` 随 range 裁剪（`borrowedAt ∈ range` 左闭右开）；`minDate/maxDate` 取自 `days`。
 - calendar 排除：设备书周期不产生天格、不入 `borrowDays`；UTC 桶归属与 displayTimezone 无关；纯函数性（同输入含锚两次调用深等价、不读 `Date.now()`）。
 - calendar-grid 纯函数：年/月视图产格行列正确（周起始随 locale、月初列标签、月内周行）；格色 alpha 阶（0/1/2/3/4+）；`bookIndex` 缺失 bookId 不抛错；tooltip HTML 转义书名与 URL。
+- yearSlice 口径：`borrowedAt` 恰为 `[y-01-01, (y+1)-01-01)` 边界计入/不计（左闭右开）；同书 2 周期计 1；`status='borrowed'` 在借周期计入（不依赖 returned）；设备书排除；跨年周期只计入 `borrowedAt` 所在年；空年零值结构完整、不抛错。
+- yearSlice 纯函数性：同输入两次调用深等价；UTC 桶归属与 displayTimezone 无关；`topBooks` 按次数降序、`bookIds` 升序。
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。

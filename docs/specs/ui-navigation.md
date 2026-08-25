@@ -46,6 +46,7 @@ src/routes/
   timeline.tsx            借阅时间线脊柱（/timeline）
   import.tsx              导入（/import）：单页——来源选择 + 文件/预览 + 右侧报告
   profile.tsx             阅读画像（/profile）：图表主导（方向 B）
+  profile.$year.tsx       年度视图（/profile/$year）：年度回顾/目标进度 + AI 叙事区（Phase 2 预留，见 ai-features §9.1）
   settings.tsx            设置（/settings）：主题/locale/时区/系统重置
 ```
 
@@ -79,6 +80,7 @@ src/routes/
    - 借阅甘特带（同条码多次借阅 / 同书多次借阅的周期叠放）。
    - 按月/按年借阅量柱图、借阅时长分布。
    - 空态：无数据 `Empty`，图表区隐去占位，给出导入入口。
+   - 年度视图（`/profile/$year`，Phase 2 预留）：年度书单/最常借 Top N + 年度目标进度卡（静态骨架，bookology-benchmark §5.2/§5.3）+ AI 年度叙事区（[ai-features §9.1](ai-features.md)）。
 6. **设置（/settings）**：[设置与系统重置规格](settings.md)。
 7. **待完善（无独立页）**：编辑能力统一在 [/library/$bookId 编辑 Dialog](book-editing.md)（全字段 + 编目 volume/barcodes/classifications，保存即解除待审标记）；合并到已有书目、拆为独立 Book 在详情页「更多」菜单（AlertDialog 二次确认）。待审类型语义见 [book-editing §10](book-editing.md#10-待审类型语义并入自原-reviewmd)；详情页编目卡显示卷号 Badge。
 
