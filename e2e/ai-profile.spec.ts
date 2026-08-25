@@ -438,11 +438,14 @@ test.describe('AI thinking 渲染（reasoning_content 思考过程，ai-features
     })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
-    // thinking 阶段：思考块出现（灰色，含思考过程标题与内容），流仍在进行。
+    // thinking 阶段：思考块出现（默认折叠，仅标题行），流仍在进行。
     const reasoning = page.locator('[data-slot="profile-ai-reasoning"]')
     await expect(reasoning).toBeVisible()
     await expect(reasoning).toContainText('思考过程')
-    await expect(reasoning).toContainText('先分析分类分布')
+    // 默认折叠：思考内容不在 DOM；点击标题展开后可见（流式增长）。
+    await expect(page.getByText('先分析分类分布')).toHaveCount(0)
+    await reasoning.getByRole('button').click()
+    await expect(page.getByText('先分析分类分布')).toBeVisible()
     await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'true')
     // 定稿：思考块消失，仅渲染最终 markdown。
     await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()

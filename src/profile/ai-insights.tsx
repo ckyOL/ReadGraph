@@ -8,9 +8,11 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ChevronDown } from 'lucide-react'
 
 import { useAiInsights } from '@/ai/use-ai'
 import { AiSendPreviewDialog } from '@/components/ai-send-preview'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/use-toast'
@@ -106,13 +108,26 @@ export function AiInsightsSection({
           // 占位，否则 Skeleton 占位 + 按钮禁用，不阻塞页面其余渲染。
           <>
             {streamingReasoning !== null && streamingReasoning.length > 0 && (
-              <div
-                className="mt-3 rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground"
+              <Collapsible
+                defaultOpen={false}
+                className="mt-3 rounded-lg border border-border bg-muted/50"
                 data-slot="profile-ai-reasoning"
               >
-                <p className="mb-1 font-medium">{t('profile.ai.reasoning')}</p>
-                <p className="whitespace-pre-wrap leading-relaxed">{streamingReasoning}</p>
-              </div>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-1.5 p-3 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <ChevronDown className="size-3.5 shrink-0 transition-transform data-open:rotate-180" />
+                    {t('profile.ai.reasoning')}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="px-3 pb-3">
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                    {streamingReasoning}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
             )}
             {streamingMarkdown !== null && streamingMarkdown.length > 0 ? (
               <>

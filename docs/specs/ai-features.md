@@ -92,7 +92,7 @@ src/
 - **口径**：固定全量口径（与概览卡一致），**不与 range 联动**——避免 range 切换反复调用 API；缓存键含 range 以预留联动（§5.3）。
 - **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；自由文本的引用真实性**不可强校验**——规格明示诚实边界。
 - **端点容错**（2026-08-25）：SSE 解析为**行独立事件**宽松语义——每行 `data:` 独立成事件（空行/字段行/注释/下一个 data 行均结束当前事件，兼容单换行分隔端点），裸 JSON 行（无 `data:` 前缀）容错为事件值，`choices[0].message.content` 兼容（整体 JSON 被分块传输的端点）；规范多行 data 拼接语义不做支持（OpenAI 兼容端点均为单行 data 事件）。骨架屏仅存于 TTFB/首 token 窗口，窗口内显示「生成中」文案。
-- **thinking 模型（qwen3-reasoning / deepseek-r1 等）**：`delta.reasoning_content` 思考过程经独立通道（`ChatStreamDelta.kind='reasoning'`）渐进渲染为灰色思考块（`profile-ai-reasoning`），仅展示不参与定稿/缓存；思考期间字节不断流，空闲超时不会误杀长思考。
+- **thinking 模型（qwen3-reasoning / deepseek-r1 等）**：`delta.reasoning_content` 思考过程经独立通道（`ChatStreamDelta.kind='reasoning'`）渐进渲染为灰色思考块（`profile-ai-reasoning`，**默认折叠**，点标题展开后内容随流式增长），仅展示不参与定稿/缓存；思考期间字节不断流，空闲超时不会误杀长思考。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
