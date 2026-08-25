@@ -271,6 +271,26 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     expect(chatRequests).toHaveLength(2)
   })
 
+  test('定稿后「复制」：剪贴板写入 markdown 内容 + 已复制 toast', async ({ page }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await seed(page)
+    await injectAiPrefs(page, {
+      enabled: true,
+      baseUrl: AI_BASE_URL,
+      model: 'test-model',
+      sendPreview: false,
+    })
+    await mockAiEndpoints(page, { chatResponses: INSIGHTS_V1, stream: true })
+    await page.goto('/profile')
+    await page.getByRole('button', { name: '生成 AI 解读' }).click()
+    await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()
+    await page.getByRole('button', { name: '复制' }).click()
+    await expect(page.getByText('已复制到剪贴板。', { exact: true })).toBeVisible()
+    // 剪贴板内容与渲染的 markdown 一致（INSIGHTS_V1 全文）。
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe(INSIGHTS_V1)
+  })
+
   test('流式（chatStream）：请求 body stream:true；SSE 分片响应最终渲染成功（逐字时序归 Vitest）', async ({
     page,
   }) => {
@@ -330,6 +350,8 @@ test.describe('AI 流式渲染：网络到达即渐进显示（ai-features §4.1
         Connection: 'keep-alive',
         'Access-Control-Allow-Origin': '*',
       })
+      // 客户端中止（停止生成测试）后继续 write 会报错：吞掉避免 crash server。
+      res.on('error', () => {})
       let i = 0
       const timer = setInterval(() => {
         if (i >= SLOW_PARTS.length) {
@@ -368,10 +390,33 @@ test.describe('AI 流式渲染：网络到达即渐进显示（ai-features §4.1
     // 此刻流仍在进行（增量渲染，而非最终一次性出现）。
     await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'true')
     await expect(page.getByText(/正在生成/)).toBeVisible()
-    // 最终完整定稿（busy 归 false、总结小节出现）。
+    // 打字光标：流式期间内容尾部可见，定稿后消失。
+    await expect(page.locator('[data-slot="profile-ai-caret"]')).toBeVisible()
+    // 最终完整定稿（busy 归 false、总结小节出现、光标消失）。
     await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()
     await expect(page.getByText('整体书单以虚构类为主，风格偏向细腻叙事。')).toBeVisible()
+    await expect(page.locator('[data-slot="profile-ai-caret"]')).toHaveCount(0)
     await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'false')
+  })
+
+  test('流式中点停止：保留已生成部分、无错误提示、可重新生成', async ({ page }) => {
+    const port = (server.address() as AddressInfo).port
+    await seed(page)
+    await injectAiPrefs(page, {
+      enabled: true,
+      baseUrl: `http://127.0.0.1:${port}`,
+      model: 'test-model',
+      sendPreview: false,
+    })
+    await page.goto('/profile')
+    await page.getByRole('button', { name: '生成 AI 解读' }).click()
+    // 首 token 出现后点停止（server 仍在发：SLOW_PARTS 全程约 1.75s）。
+    await expect(page.locator('[data-slot="profile-ai-markdown"]')).toBeVisible()
+    await page.getByRole('button', { name: '停止生成' }).click()
+    // 已生成部分保留为结果展示（小节标题可见），无失败 toast，按钮切回「重新生成」。
+    await expect(page.getByRole('heading', { name: '分类偏好' })).toBeVisible()
+    await expect(page.getByText(/AI 解读生成失败/)).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '重新生成' })).toBeVisible()
   })
 })
 
@@ -417,6 +462,7 @@ test.describe('AI thinking 渲染（reasoning_content 思考过程，ai-features
         res.write(`data: ${parts[i]}\n\n`)
         i += 1
       }, 250)
+      res.on('error', () => {})
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   })

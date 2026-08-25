@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (collapsed by default, expandable while streaming) while the model reasons;
   the chat timeout is now a TTFB/idle double window (reset on every received
   byte) so long reasoning streams are not aborted.
+- **Streaming interactions borrowed from AI-native patterns** — a stop button
+  on the in-flight bar aborts generation (partial output is kept as the
+  result, no error toast); a static caret `▍` marks the streaming tail (no
+  blinking, per the no-animation constraint); a copy button on the finalized
+  result writes the markdown to the clipboard with a confirmation toast.
 - **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
   (adaptation of the Bookology Stats calendar, see `docs/bookology-benchmark.md`
   §5.1): each day cell counts distinct books held in borrow that day (UTC day

@@ -63,6 +63,8 @@ export interface UseAiInsightsState {
   confirmGenerate: () => Promise<void>
   /** 预览取消：仅关闭预览门，不置 error。 */
   cancelGenerate: () => void
+  /** 停止生成（§4.1）：中止上送请求；已生成部分保留为结果展示，静默不报错。 */
+  stop: () => void
 }
 
 type EntityTuple = [
@@ -135,6 +137,11 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   const [streamingReasoning, setStreamingReasoning] = useState<string | null>(null)
   // 并发防护：上送在途时忽略重复的 generate/confirm 触发。
   const busyRef = useRef(false)
+  // 主动停止（§4.1）：abort 上送中的请求；stopped 标记区分「用户取消」与真实错误。
+  const abortRef = useRef<AbortController | null>(null)
+  const stoppedRef = useRef(false)
+  // 最近一次流式文本：主动停止时提升为部分结果展示。
+  const streamingRef = useRef<string | null>(null)
 
   /**
    * 上送（§3.1 ⑤⑥）：绑定 provider 的 chat 门面，由管线 submitInsightPayload 调用；
@@ -153,6 +160,8 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       setPendingPreview(null)
       setStreamingMarkdown(null)
       setStreamingReasoning(null)
+      const controller = new AbortController()
+      abortRef.current = controller
       try {
         const prefs = readPreferences()
         const provider = createAiProvider({
@@ -171,17 +180,19 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
         // （失败抛 ZodError，管线按 validation 分级）。
         let text = ''
         let reasoning = ''
-        for await (const chunk of provider.chatStream(messages)) {
+        for await (const chunk of provider.chatStream(messages, { signal: controller.signal })) {
           if (chunk.kind === 'reasoning') {
             reasoning += chunk.text
             if (onReasoning) onReasoning(reasoning)
           } else {
             text += chunk.text
+            streamingRef.current = text
             if (onPartial) onPartial(text)
           }
         }
         return validateProfileInsightsMarkdown(text)
       } finally {
+        abortRef.current = null
         busyRef.current = false
         setLoading(false)
       }
@@ -201,6 +212,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   const generate = useCallback(
     async (bypassCache = false) => {
       if (busyRef.current || pendingPreview) return
+      stoppedRef.current = false
       const prefs = readPreferences()
       // 编排核心（缓存检查→装配→预览门→上送→错误分级）在 insight-pipeline.ts：
       // 未启用/聚合无数据 → skipped（静默，不清 error）；未配置端点/模型 → unconfigured；
@@ -219,7 +231,10 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           key: CACHE_KEY,
         },
         pipelineDeps,
-        (partial) => setStreamingMarkdown(partial),
+        (partial) => {
+          streamingRef.current = partial
+          setStreamingMarkdown(partial)
+        },
         (partial) => setStreamingReasoning(partial),
       )
       switch (result.status) {
@@ -244,8 +259,14 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           setMarkdown(result.markdown)
           return
         case 'error':
-          setStreamingMarkdown(null)
           setStreamingReasoning(null)
+          if (stoppedRef.current) {
+            // 主动停止（§4.1）：保留已生成的部分内容，静默不置 error、不写缓存。
+            setStreamingMarkdown(null)
+            setMarkdown(streamingRef.current)
+            return
+          }
+          setStreamingMarkdown(null)
           setError(result.error)
           return
       }
@@ -265,18 +286,27 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
 
   const confirmGenerate = useCallback(async () => {
     if (busyRef.current || !pendingPreview) return
+    stoppedRef.current = false
     // 上送对象与预览展示对象同一引用（§3.3）。
     const result = await submitInsightPayload(
       pendingPreview,
       { locale, scene: CACHE_SCENE, key: CACHE_KEY },
       pipelineDeps,
-      (partial) => setStreamingMarkdown(partial),
+      (partial) => {
+        streamingRef.current = partial
+        setStreamingMarkdown(partial)
+      },
       (partial) => setStreamingReasoning(partial),
     )
     if (result.status === 'success') {
       setStreamingMarkdown(null)
       setStreamingReasoning(null)
       setMarkdown(result.markdown)
+    } else if (stoppedRef.current) {
+      // 主动停止（§4.1）：保留部分内容，静默。
+      setStreamingMarkdown(null)
+      setStreamingReasoning(null)
+      setMarkdown(streamingRef.current)
     } else {
       setStreamingMarkdown(null)
       setStreamingReasoning(null)
@@ -286,6 +316,14 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
 
   const cancelGenerate = useCallback(() => {
     setPendingPreview(null)
+  }, [])
+
+  /** 停止生成（§4.1）：中止上送请求；已生成部分保留为结果展示。 */
+  const stop = useCallback(() => {
+    if (abortRef.current) {
+      stoppedRef.current = true
+      abortRef.current.abort()
+    }
   }, [])
 
   return {
@@ -298,5 +336,6 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
     generate,
     confirmGenerate,
     cancelGenerate,
+    stop,
   }
 }

@@ -939,6 +939,14 @@ body {
   color: var(--primary);
   text-decoration: underline;
 }
+
+/* AI 流式打字光标（ai-features §4.1）：静态指示，无闪烁动效（DESIGN §4.5 无动效约束）。 */
+.ai-markdown-caret {
+  display: inline-block;
+  margin-left: 0.125rem;
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
 .ai-markdown table {
   width: 100%;
   margin: 0.5rem 0;

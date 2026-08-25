@@ -45,6 +45,7 @@ export function AiInsightsSection({
     generate,
     confirmGenerate,
     cancelGenerate,
+    stop,
   } = useAiInsights({ classificationSystem, displayTimezone, calendarAnchor })
 
   // 错误分级 toast（§5.4）：网络失败/超时、响应校验失败、未配置端点/模型；
@@ -77,6 +78,15 @@ export function AiInsightsSection({
     toast({ title: t('profile.ai.cacheCleared') })
   }
 
+  const handleCopy = () => {
+    if (markdown === null) return
+    // 剪贴板不可用（权限/非安全上下文）时静默降级。
+    navigator.clipboard?.writeText(markdown).then(
+      () => toast({ title: t('profile.ai.copied') }),
+      () => undefined,
+    )
+  }
+
   return (
     <>
       <section
@@ -93,6 +103,9 @@ export function AiInsightsSection({
             </Button>
           ) : (
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleCopy}>
+                {t('profile.ai.copy')}
+              </Button>
               <Button variant="outline" size="sm" onClick={() => generate(true)} disabled={loading}>
                 {t('profile.ai.regenerate')}
               </Button>
@@ -130,18 +143,18 @@ export function AiInsightsSection({
               </Collapsible>
             )}
             {streamingMarkdown !== null && streamingMarkdown.length > 0 ? (
-              <>
-                <MarkdownBody text={streamingMarkdown} />
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  {t('profile.ai.generating')}
-                </div>
-              </>
+              <MarkdownBody text={streamingMarkdown} streaming />
             ) : (
               <div className="mt-3">
                 <Skeleton className="h-24 w-full" />
-                <p className="mt-2 text-sm text-muted-foreground">{t('profile.ai.generating')}</p>
               </div>
             )}
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+              <span>{t('profile.ai.generating')}</span>
+              <Button variant="outline" size="sm" onClick={stop} data-slot="profile-ai-stop">
+                {t('profile.ai.stop')}
+              </Button>
+            </div>
           </>
         ) : (
           markdown !== null && (
@@ -165,13 +178,22 @@ export function AiInsightsSection({
 }
 
 /** Markdown 渲染体（ReactMarkdown + remark-gfm）：流式增量与定稿共用；样式见 index.css .ai-markdown。 */
-function MarkdownBody({ text }: { text: string }) {
+function MarkdownBody({ text, streaming = false }: { text: string; streaming?: boolean }) {
   return (
     <div
       className="ai-markdown mt-3 rounded-lg border border-border p-3"
       data-slot="profile-ai-markdown"
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      {streaming && (
+        <span
+          className="ai-markdown-caret"
+          data-slot="profile-ai-caret"
+          aria-hidden="true"
+        >
+          ▍
+        </span>
+      )}
     </div>
   )
 }

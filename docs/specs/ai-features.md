@@ -93,6 +93,10 @@ src/
 - **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；自由文本的引用真实性**不可强校验**——规格明示诚实边界。
 - **端点容错**（2026-08-25）：SSE 解析为**行独立事件**宽松语义——每行 `data:` 独立成事件（空行/字段行/注释/下一个 data 行均结束当前事件，兼容单换行分隔端点），裸 JSON 行（无 `data:` 前缀）容错为事件值，`choices[0].message.content` 兼容（整体 JSON 被分块传输的端点）；规范多行 data 拼接语义不做支持（OpenAI 兼容端点均为单行 data 事件）。骨架屏仅存于 TTFB/首 token 窗口，窗口内显示「生成中」文案。
 - **thinking 模型（qwen3-reasoning / deepseek-r1 等）**：`delta.reasoning_content` 思考过程经独立通道（`ChatStreamDelta.kind='reasoning'`）渐进渲染为灰色思考块（`profile-ai-reasoning`，**默认折叠**，点标题展开后内容随流式增长），仅展示不参与定稿/缓存；思考期间字节不断流，空闲超时不会误杀长思考。
+- **流式交互（2026-08-26，借鉴 AI 界共识模式）**：
+  - **停止生成**：流式中占位条内嵌「停止生成」按钮（`profile-ai-stop`）——AbortController 中止请求；**主动停止静默处理**：保留已生成的部分内容（提升为结果展示，不写缓存、不置 error、不 toast），可重新生成。
+  - **打字光标**：流式内容尾部静态 `▍` 指示（`profile-ai-caret`，无闪烁动效——对齐 DESIGN §4.5 无动效约束），定稿后消失。
+  - **复制结果**：定稿后标题行「复制」按钮（`profile-ai-copy`）——`navigator.clipboard.writeText` + 已复制 toast。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
