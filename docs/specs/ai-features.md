@@ -92,6 +92,7 @@ src/
 - **口径**：固定全量口径（与概览卡一致），**不与 range 联动**——避免 range 切换反复调用 API；缓存键含 range 以预留联动（§5.3）。
 - **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；自由文本的引用真实性**不可强校验**——规格明示诚实边界。
 - **端点容错**（2026-08-25）：SSE 解析为**行独立事件**宽松语义——每行 `data:` 独立成事件（空行/字段行/注释/下一个 data 行均结束当前事件，兼容单换行分隔端点），裸 JSON 行（无 `data:` 前缀）容错为事件值，`choices[0].message.content` 兼容（整体 JSON 被分块传输的端点）；规范多行 data 拼接语义不做支持（OpenAI 兼容端点均为单行 data 事件）。骨架屏仅存于 TTFB/首 token 窗口，窗口内显示「生成中」文案。
+- **thinking 模型（qwen3-reasoning / deepseek-r1 等）**：`delta.reasoning_content` 思考过程经独立通道（`ChatStreamDelta.kind='reasoning'`）渐进渲染为灰色思考块（`profile-ai-reasoning`），仅展示不参与定稿/缓存；思考期间字节不断流，空闲超时不会误杀长思考。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
@@ -134,7 +135,7 @@ src/
 ### 5.4 端点契约与降级
 
 - 端点：用户配置的 OpenAI 兼容 `{baseUrl}/v1/chat/completions`；`baseUrl` 去尾斜杠；**已含 `/v1` 后缀（如 placeholder `https://api.example.com/v1`）自动识别、不重复拼接**（网关前缀路径如 `/proxy/v1` 同样保留前缀且不叠加）；不支持空端点调用（连接测试除外）。
-- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 超时 + 可重试：**chat 60s `CHAT_TIMEOUT_MS`、连接测试 15s `DEFAULT_TIMEOUT_MS`**——云端 LLM 生成耗时远超连接测试，15s 易误伤）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案（**/profile 错误 toast 附诊断 message**：401/429/HTTP 状态/CORS 区分；超时 AbortError 给「请求超时」文案，避免固定 network 文案把鉴权失败误报成跨域），不写库、不缓存失败结果。**fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一为 `AiNetworkError`，与超时 `AbortError` 区分**；连接测试 toast 对 CORS 给出可操作指引（云端端点需支持 CORS、本地服务放行来源、或自托管反代）。
+- 错误分级：未启用/未配置（入口不渲染）、网络失败/超时（`AbortController` 超时 + 可重试：**chat 60s `CHAT_TIMEOUT_MS`（TTFB 与「无字节空闲」双窗口：收到响应字节即重置，thinking 模型长思考不断流不误杀）、连接测试 15s `DEFAULT_TIMEOUT_MS`**——云端 LLM 生成耗时远超连接测试，15s 易误伤）、HTTP 非 2xx（含 401/429）、响应 Zod 校验失败——UI 均 toast 明确文案（**/profile 错误 toast 附诊断 message**：401/429/HTTP 状态/CORS 区分；超时 AbortError 给「请求超时」文案，避免固定 network 文案把鉴权失败误报成跨域），不写库、不缓存失败结果。**fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一为 `AiNetworkError`，与超时 `AbortError` 区分**；连接测试 toast 对 CORS 给出可操作指引（云端端点需支持 CORS、本地服务放行来源、或自托管反代）。
 - 断网：AI 区块降级/禁用提示，页面其余功能不受影响（对齐「纯前端离线可用」主原则）。
 - **CORS 与代理**：`pnpm dev` 下 AI 请求经 Vite 同源代理（`vite.config.ts` `aiDevProxyPlugin`，路径 `/__ai-proxy/<encodeURIComponent(完整 URL)>`）转发任意 https / http 回环端点，同源消除 CORS（前端 `buildRequestUrl` 挂代理路径，构建期 `__AI_DEV_PROXY__` 开关仅 dev 开启）；**生产构建 / preview / E2E 直连**——云端端点需支持 CORS，否则沿用 `AiNetworkError` 指引（换端点或自托管反代）。代理仅放行 https 与 http 回环地址（拒绝任意 http 内网目标）；上游失败中断连接 → 浏览器 fetch `TypeError` → 前端归一 `AiNetworkError`（与直连语义一致）。E2E 有意以跨源 mock 验证真实 CORS 预检流程，不受 dev 代理影响。
 
@@ -157,7 +158,7 @@ src/
 - `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
 - `sanitize.ts` 每书字段：payload 中每书含题名/作者/借阅次数且不含 `isbn13`/`tags`/`price`/借还日期（字段级断言）；借阅次数来自本地聚合（与 `profile-stats` 同源计数一致）。
 - `sanitize.ts` 装配边界：空库/无借阅时 payload 结构完整（`books=[]`）；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT` 时全量进 payload（与源 Book 一一对应）；超过阈值触发分层采样降级（每分类取代表、总上限 500、标注采样标记），采样集覆盖全部分类（无空分类桶）。
-- `ai-client.ts` `chatStream()`：`stream:true` 请求构造（body/URL/headers 同 `chat`，**body 无 `response_format`**）；mock fetch 分片 `ReadableStream` 增量产出 `delta.content`；`[DONE]` 终止；**端点容错**——单换行分隔（无空行）逐事件产出、裸 JSON 行产出、整体 JSON 分块（message.content 形态）收尾产出；HTTP 非 2xx / 超时 / TypeError 分级复用（与 `chat` 同一错误归一）。
+- `ai-client.ts` `chatStream()`：`stream:true` 请求构造（body/URL/headers 同 `chat`，**body 无 `response_format`**）；mock fetch 分片 `ReadableStream` 增量产出 `delta.content`；`[DONE]` 终止；**端点容错**——单换行分隔（无空行）逐事件产出、裸 JSON 行产出、整体 JSON 分块（message.content 形态）收尾产出；**thinking 分块（reasoning_content）产出 kind='reasoning' 增量**；**空闲超时**——慢速分片（间隔 < 60s）不中断、无字节窗口 > 60s 中止；HTTP 非 2xx / 超时 / TypeError 分级复用（与 `chat` 同一错误归一）。
 - `profile-insights.ts` 弱校验：`validateProfileInsightsMarkdown` 接受非空 markdown（trim 归一）、拒绝空/纯空白/超长（抛 ZodError）；prompt 模板只含白名单变量（无黑名单字段名）+ 显式输出纯 Markdown 指令（无 JSON 格式要求）。
 - `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`；`chatStream(messages)` 绑定配置产出内容增量（流完整拼接 == 非流式 content）。
 - `insight-pipeline.ts`：`submit` 的 `onPartial` 回调透传 markdown 文本增量（增量渲染钩子，成功/失败语义不变）。

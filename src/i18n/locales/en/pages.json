@@ -203,6 +203,7 @@
   "profile.ai.title": "AI Insights",
   "profile.ai.generate": "Generate AI insights",
   "profile.ai.regenerate": "Regenerate",
+  "profile.ai.reasoning": "Thinking…",
   "profile.ai.generating": "Generating insights…",
   "profile.ai.generated": "AI-generated from local data",
   "profile.ai.error.network": "AI insights failed: network error, CORS block, or endpoint unreachable. Please try again.",

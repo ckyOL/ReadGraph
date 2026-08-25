@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AiHttpError, AiNetworkError, buildRequestUrl, chat, chatStream, testConnection } from '@/ai/ai-client'
+import type { ChatStreamDelta } from '@/ai/ai-client'
 
 /** mock fetch：挂起直到 signal abort（与真实 fetch 行为一致）。 */
 function hangingFetch() {
@@ -311,13 +312,19 @@ function sseBody(parts: string[]): ReadableStream<Uint8Array> {
   })
 }
 
-/** 收集 chatStream 全部增量。 */
+/** 收集 chatStream 全部增量（content/reasoning 分通道）。 */
 async function collect(
-  iter: AsyncIterable<string>,
-): Promise<{ chunks: string[]; text: string }> {
-  const chunks: string[] = []
-  for await (const chunk of iter) chunks.push(chunk)
-  return { chunks, text: chunks.join('') }
+  iter: AsyncIterable<ChatStreamDelta>,
+): Promise<{ chunks: ChatStreamDelta[]; text: string; reasoning: string }> {
+  const chunks: ChatStreamDelta[] = []
+  let text = ''
+  let reasoning = ''
+  for await (const chunk of iter) {
+    chunks.push(chunk)
+    if (chunk.kind === 'content') text += chunk.text
+    else reasoning += chunk.text
+  }
+  return { chunks, text, reasoning }
 }
 
 describe('chatStream', () => {
@@ -363,7 +370,7 @@ describe('chatStream', () => {
     )
 
     const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
-    expect(chunks).toEqual([content])
+    expect(chunks).toEqual([{ kind: 'content', text: content }])
     expect(text).toBe(content)
   })
   it('多个事件各自产出（chunk 粒度 = 事件粒度，非网络分片粒度）', async () => {
@@ -373,7 +380,10 @@ describe('chatStream', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
 
     const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
-    expect(chunks).toEqual(['{"insights":', '[]}'])
+    expect(chunks).toEqual([
+      { kind: 'content', text: '{"insights":' },
+      { kind: 'content', text: '[]}' },
+    ])
     expect(text).toBe('{"insights":[]}')
   })
 
@@ -387,7 +397,10 @@ describe('chatStream', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
 
     const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
-    expect(chunks).toEqual(['{"insights":', '[]}'])
+    expect(chunks).toEqual([
+      { kind: 'content', text: '{"insights":' },
+      { kind: 'content', text: '[]}' },
+    ])
     expect(text).toBe('{"insights":[]}')
   })
 
@@ -398,7 +411,7 @@ describe('chatStream', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
 
     const { chunks } = await collect(chatStream({ ...BASE_OPTS }))
-    expect(chunks).toEqual(['a'])
+    expect(chunks).toEqual([{ kind: 'content', text: 'a' }])
   })
 
   it('HTTP 401 → AiHttpError status=401', async () => {
@@ -451,7 +464,92 @@ describe('chatStream', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
 
     const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
-    expect(chunks).toEqual(['## 分类偏好\n\n正文'])
+    expect(chunks).toEqual([{ kind: 'content', text: '## 分类偏好\n\n正文' }])
     expect(text).toBe('## 分类偏好\n\n正文')
+  })
+  it('thinking 模型：reasoning_content 分块产出 kind=reasoning，content 分块产出 kind=content', async () => {
+    const body = sseBody([
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '第一步' } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '，第二步' } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '## 结论' } }] })}\n\n`,
+      'data: [DONE]\n\n',
+    ])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+
+    const { chunks, text, reasoning } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual([
+      { kind: 'reasoning', text: '第一步' },
+      { kind: 'reasoning', text: '，第二步' },
+      { kind: 'content', text: '## 结论' },
+    ])
+    expect(reasoning).toBe('第一步，第二步')
+    expect(text).toBe('## 结论')
+  })
+
+  it('思考期间字节不断流：慢速分片（间隔 50s，总时长 > 60s）不触发空闲超时', async () => {
+    vi.useFakeTimers()
+    const encoder = new TextEncoder()
+    const parts = [
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '思考中' } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '正文' } }] })}\n\n`,
+    ]
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(parts[0]!))
+              const interval = setInterval(() => {
+                controller.enqueue(encoder.encode(parts[1]!))
+                controller.close()
+                clearInterval(interval)
+              }, 50_000)
+            },
+          }),
+        }) as Response,
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const pending = collect(chatStream({ ...BASE_OPTS }))
+    // 第二段 50s 后到达（总时长将超 60s）：字节到达重置空闲窗口，不 abort。
+    await vi.advanceTimersByTimeAsync(50_000)
+    await vi.advanceTimersByTimeAsync(50_000)
+    const { chunks, text, reasoning } = await pending
+    expect(chunks).toHaveLength(2)
+    expect(reasoning).toBe('思考中')
+    expect(text).toBe('正文')
+  })
+
+  it('流中无字节窗口 > 60s → 空闲超时中止（AbortError）', async () => {
+    vi.useFakeTimers()
+    const encoder = new TextEncoder()
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ choices: [{ delta: { content: 'a' } }] })}\n\n`,
+                ),
+              )
+              // 此后无任何字节：空闲窗口 60s 耗尽即中止（abort 联动 error 中断 read）。
+              init.signal?.addEventListener(
+                'abort',
+                () => controller.error(new DOMException('aborted', 'AbortError')),
+                { once: true },
+              )
+            },
+          })
+          resolve({ ok: true, status: 200, body } as Response)
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const pending = collect(chatStream({ ...BASE_OPTS }))
+    // 先挂断言再推进时钟：避免 rejection 在 handler 挂载前发生（unhandled）。
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await assertion
   })
 })

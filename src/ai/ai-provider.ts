@@ -4,7 +4,7 @@
 // parseSseEvents 为 ai-client 增量解析器的聚合形态（re-export，兼容既有契约）。
 // 不做 prompt 装配 / 缓存 / UI 编排（相应模块职责）。
 
-import type { AiChatMessage } from '@/ai/ai-client'
+import type { AiChatMessage, ChatStreamDelta } from '@/ai/ai-client'
 import { chat as clientChat, chatStream as clientChatStream, parseSseEvents } from '@/ai/ai-client'
 import type { z } from 'zod'
 
@@ -25,8 +25,8 @@ export interface AiChatOptions {
 
 export interface AiProvider {
   chat(messages: AiChatMessage[], opts?: AiChatOptions): Promise<unknown>
-  /** 流式 chat：绑定配置增量产出 content 文本（拼接 == 非流式 content）；不做 JSON/schema 处理（调用方自行渐进解析与最终校验）。 */
-  chatStream(messages: AiChatMessage[], opts?: { signal?: AbortSignal }): AsyncIterable<string>
+  /** 流式 chat：绑定配置增量产出 ChatStreamDelta（content/reasoning 分通道）；不做 JSON/schema 处理（调用方自行渐进解析与最终校验）。 */
+  chatStream(messages: AiChatMessage[], opts?: { signal?: AbortSignal }): AsyncIterable<ChatStreamDelta>
 }
 
 /**
@@ -48,7 +48,8 @@ export function createAiProvider(config: AiProviderConfig): AiProvider {
           temperature: config.temperature,
           signal: opts.signal,
         })) {
-          text += chunk
+          // 流式 JSON 场景只拼 content（thinking 模型 reasoning_content 不进 JSON）。
+          if (chunk.kind === 'content') text += chunk.text
         }
         const parsed: unknown = JSON.parse(text)
         if (opts.schema) {

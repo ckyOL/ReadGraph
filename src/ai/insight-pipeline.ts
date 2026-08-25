@@ -67,12 +67,14 @@ export interface InsightPipelineDeps {
   readCache(scene: string, locale: Locale, key: string): AiCacheEntry | null
   writeCache(scene: string, locale: Locale, key: string, result: unknown): void
   /** 上送：调用方绑定 provider 与 prompt 装配；弱校验失败抛 ZodError（此处分级）。
-   *  onPartial 为流式增量回调（§4.1 逐字文本流）：累积 markdown 文本逐步送达，
+   *  onPartial 为流式增量回调（§4.1 逐字文本流）：累积 markdown 文本逐步送达；
+   *  onReasoning 为 thinking 模型思考过程增量（仅展示，不参与定稿/缓存）。
    *  最终结果仍以返回值为准（校验/缓存语义不变）。 */
   submit(
     payload: ProfilePayload,
     locale: Locale,
     onPartial?: (partial: string) => void,
+    onReasoning?: (text: string) => void,
   ): Promise<string>
 }
 
@@ -115,7 +117,8 @@ export async function runInsightPipeline(
   input: InsightPipelineInput,
   deps: InsightPipelineDeps,
   onPartial?: (partial: string) => void,
-  ): Promise<InsightPipelineResult> {
+  onReasoning?: (text: string) => void,
+): Promise<InsightPipelineResult> {
   const { prefs, locale, entities, stats, classificationSystem, bypassCache, scene, key } = input
   // 未启用（§2.1 默认关闭）或聚合无数据（useLiveQuery 未就绪）→ 静默返回，不置 error。
   if (!prefs.enabled || !stats) return { status: 'skipped' }
@@ -151,7 +154,7 @@ export async function runInsightPipeline(
   const payload = serializePayload(entities, stats, { classificationSystem })
   // 预览门（§3.1 ④）：sendPreview=true 停此处等确认；false 直接走同一上送路径。
   if (prefs.sendPreview) return { status: 'pending-preview', payload }
-  return submitInsightPayload(payload, { locale, scene, key }, deps, onPartial)
+  return submitInsightPayload(payload, { locale, scene, key }, deps, onPartial, onReasoning)
 }
 
 /**
@@ -164,9 +167,10 @@ export async function submitInsightPayload(
   ctx: InsightSubmitContext,
   deps: InsightPipelineDeps,
   onPartial?: (partial: string) => void,
-  ): Promise<InsightSubmitResult> {
+  onReasoning?: (text: string) => void,
+): Promise<InsightSubmitResult> {
   try {
-    const result = await deps.submit(payload, ctx.locale, onPartial)
+    const result = await deps.submit(payload, ctx.locale, onPartial, onReasoning)
     deps.writeCache(ctx.scene, ctx.locale, ctx.key, result)
     return { status: 'success', markdown: result }
   } catch (e) {

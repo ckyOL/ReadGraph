@@ -36,6 +36,7 @@ export function AiInsightsSection({
   const {
     markdown,
     streamingMarkdown,
+    streamingReasoning,
     loading,
     error,
     pendingPreview,
@@ -100,22 +101,33 @@ export function AiInsightsSection({
           )}
         </div>
         {loading ? (
-          // 生成/重新生成 loading 态（§8 rerender-transitions）：流式已出文本时
-          // 渲染累积 markdown + 尾部「生成中」占位，否则 Skeleton 占位 + 按钮禁用，
-          // 不阻塞页面其余渲染。
-          streamingMarkdown !== null && streamingMarkdown.length > 0 ? (
-            <>
-              <MarkdownBody text={streamingMarkdown} />
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                {t('profile.ai.generating')}
+          // 生成/重新生成 loading 态（§8 rerender-transitions）：thinking 思考过程
+          // 以灰色思考块渐进显示；流式已出文本时渲染累积 markdown + 尾部「生成中」
+          // 占位，否则 Skeleton 占位 + 按钮禁用，不阻塞页面其余渲染。
+          <>
+            {streamingReasoning !== null && streamingReasoning.length > 0 && (
+              <div
+                className="mt-3 rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground"
+                data-slot="profile-ai-reasoning"
+              >
+                <p className="mb-1 font-medium">{t('profile.ai.reasoning')}</p>
+                <p className="whitespace-pre-wrap leading-relaxed">{streamingReasoning}</p>
               </div>
-            </>
-          ) : (
-            <div className="mt-3">
-              <Skeleton className="h-24 w-full" />
-              <p className="mt-2 text-sm text-muted-foreground">{t('profile.ai.generating')}</p>
-            </div>
-          )
+            )}
+            {streamingMarkdown !== null && streamingMarkdown.length > 0 ? (
+              <>
+                <MarkdownBody text={streamingMarkdown} />
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  {t('profile.ai.generating')}
+                </div>
+              </>
+            ) : (
+              <div className="mt-3">
+                <Skeleton className="h-24 w-full" />
+                <p className="mt-2 text-sm text-muted-foreground">{t('profile.ai.generating')}</p>
+              </div>
+            )}
+          </>
         ) : (
           markdown !== null && (
             <>

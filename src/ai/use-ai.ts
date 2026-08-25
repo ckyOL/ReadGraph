@@ -48,6 +48,8 @@ export interface UseAiInsightsState {
   /** 流式增量预览（§4.1 逐字文本流）：上送在途时累积 markdown 文本逐步落位；
    *  最终定稿（成功写缓存）或失败后清空。null = 无增量。 */
   streamingMarkdown: string | null
+  /** thinking 模型思考过程增量（§4.1）：仅流式中展示（灰色思考块），定稿/失败清空。 */
+  streamingReasoning: string | null
   /** 覆盖生成与重新生成（§8 rerender-transitions：Skeleton 占位 + 按钮禁用） */
   loading: boolean
   error: AiInsightError | null
@@ -129,6 +131,8 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   const [pendingPreview, setPendingPreview] = useState<ProfilePayload | null>(null)
   // 流式增量预览（§4.1 逐字文本流）：上送在途时逐步落位累积文本。
   const [streamingMarkdown, setStreamingMarkdown] = useState<string | null>(null)
+  // thinking 模型思考过程（§4.1）：reasoning_content 增量，仅展示不参与定稿。
+  const [streamingReasoning, setStreamingReasoning] = useState<string | null>(null)
   // 并发防护：上送在途时忽略重复的 generate/confirm 触发。
   const busyRef = useRef(false)
 
@@ -136,17 +140,19 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
    * 上送（§3.1 ⑤⑥）：绑定 provider 的 chat 门面，由管线 submitInsightPayload 调用；
    * payload 即预览展示的同一对象引用（§3.3）。prompt 数据区只取 payload 白名单子集
    * （summary + books，prompts 契约）。流式路径（§4.1）：chatStream 逐增量累积文本，
-   * 每次增量经 onPartial 落位（逐字渐进渲染）；流结束后完整文本过
-   * validateProfileInsightsMarkdown 弱校验（失败抛 ZodError，管线按 validation 分级）。
+   * 每次增量经 onPartial 落位（逐字渐进渲染），thinking 思考过程经 onReasoning
+   * 落位（仅展示）；流结束后完整文本过 validateProfileInsightsMarkdown 弱校验
+   * （失败抛 ZodError，管线按 validation 分级）。
    * 成功/失败与缓存写入由管线处理，此处只管理并发闸、loading 态与增量状态。
    */
   const submit = useCallback<InsightPipelineDeps['submit']>(
-    async (payload, locale, onPartial) => {
+    async (payload, locale, onPartial, onReasoning) => {
       busyRef.current = true
       setLoading(true)
       setError(null)
       setPendingPreview(null)
       setStreamingMarkdown(null)
+      setStreamingReasoning(null)
       try {
         const prefs = readPreferences()
         const provider = createAiProvider({
@@ -160,12 +166,19 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           books: payload.books,
           locale,
         })
-        // 流式路径（§4.1）：增量累积文本 → 每次增量 onPartial 落位（逐字渐进渲染）→
-        // 流结束后完整文本过弱校验（失败抛 ZodError，管线按 validation 分级）。
+        // 流式路径（§4.1）：增量累积文本 → 每次增量 onPartial/onReasoning 落位
+        // （逐字渐进渲染；thinking 思考过程分通道）→ 流结束后完整文本过弱校验
+        // （失败抛 ZodError，管线按 validation 分级）。
         let text = ''
+        let reasoning = ''
         for await (const chunk of provider.chatStream(messages)) {
-          text += chunk
-          if (onPartial) onPartial(text)
+          if (chunk.kind === 'reasoning') {
+            reasoning += chunk.text
+            if (onReasoning) onReasoning(reasoning)
+          } else {
+            text += chunk.text
+            if (onPartial) onPartial(text)
+          }
         }
         return validateProfileInsightsMarkdown(text)
       } finally {
@@ -207,6 +220,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
         },
         pipelineDeps,
         (partial) => setStreamingMarkdown(partial),
+        (partial) => setStreamingReasoning(partial),
       )
       switch (result.status) {
         case 'skipped':
@@ -226,10 +240,12 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
         case 'success':
           setError(null)
           setStreamingMarkdown(null)
+          setStreamingReasoning(null)
           setMarkdown(result.markdown)
           return
         case 'error':
           setStreamingMarkdown(null)
+          setStreamingReasoning(null)
           setError(result.error)
           return
       }
@@ -255,12 +271,15 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       { locale, scene: CACHE_SCENE, key: CACHE_KEY },
       pipelineDeps,
       (partial) => setStreamingMarkdown(partial),
+      (partial) => setStreamingReasoning(partial),
     )
     if (result.status === 'success') {
       setStreamingMarkdown(null)
+      setStreamingReasoning(null)
       setMarkdown(result.markdown)
     } else {
       setStreamingMarkdown(null)
+      setStreamingReasoning(null)
       setError(result.error)
     }
   }, [pendingPreview, locale, pipelineDeps])
@@ -272,6 +291,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   return {
     markdown,
     streamingMarkdown,
+    streamingReasoning,
     loading,
     error,
     pendingPreview,

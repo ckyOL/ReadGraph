@@ -373,4 +373,36 @@ describe('流式 onPartial 透传（ai-features §4.1 逐字文本流）', () =>
     expect(seen).toEqual(['## 分类偏好'])
     expect(deps.writeCache).not.toHaveBeenCalled()
   })
+
+  it('submitInsightPayload 把 onReasoning 透传给 deps.submit（thinking 思考增量回调）', async () => {
+    const submit = vi.fn(
+      async (
+        _payload: unknown,
+        _locale: string,
+        onPartial?: (p: string) => void,
+        onReasoning?: (t: string) => void,
+      ) => {
+        onReasoning?.('思考中')
+        onPartial?.('正文')
+        return RESULT
+      },
+    )
+    const deps = baseDeps({ submit })
+    const seenReasoning: string[] = []
+    const seenPartial: string[] = []
+
+    const result = await submitInsightPayload(
+      serializePayload(entities, stats, { classificationSystem: 'clc' }),
+      { locale: 'zh-CN', scene: SCENE, key: KEY },
+      deps,
+      (p) => seenPartial.push(p),
+      (t) => seenReasoning.push(t),
+    )
+
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
+    expect(seenReasoning).toEqual(['思考中'])
+    expect(seenPartial).toEqual(['正文'])
+    // 思考增量仅展示，不参与缓存写入（写缓存仍是完整 markdown 结果）。
+    expect(vi.mocked(deps.writeCache).mock.calls[0][3]).toBe(RESULT)
+  })
 })

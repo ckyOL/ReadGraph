@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { AiHttpError } from '@/ai/ai-client'
 import { createAiProvider, parseSseEvents } from '@/ai/ai-provider'
+import type { ChatStreamDelta } from '@/ai/ai-client'
 
 /** 200 响应工厂：返回给定 JSON/文本 body。 */
 function okResponse(body: unknown) {
@@ -248,9 +249,9 @@ describe('createAiProvider().chatStream', () => {
       temperature: 0.2,
     })
 
-    const chunks: string[] = []
+    const chunks: ChatStreamDelta[] = []
     for await (const chunk of provider.chatStream(MESSAGES)) chunks.push(chunk)
-    expect(chunks.join('')).toBe(content)
+    expect(chunks.map((c) => c.text).join('')).toBe(content)
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(JSON.parse(init.body as string)).toMatchObject({

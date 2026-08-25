@@ -17,6 +17,11 @@ export function buildRequestUrl(target: string, useProxy = __AI_DEV_PROXY__): st
 
 /** 默认请求超时（ai-features §5.4：AbortController 15s 默认超时）。 */
 export const DEFAULT_TIMEOUT_MS = 15_000
+/**
+ * 流式请求超时（ai-features §4.1）：TTFB 与「无字节空闲」双窗口 60s——收到响应
+ * 字节即重置计时器；thinking 模型思考期间持续输出 reasoning_content 不断流，
+ * 不误杀长思考。非流式 chat() 仍为总时长超时（一次性响应）。
+ */
 export const CHAT_TIMEOUT_MS = 60_000
 /** HTTP 非 2xx 响应错误：携带状态码；401/429 附显式文案。 */
 export class AiHttpError extends Error {
@@ -322,10 +327,19 @@ export async function chat(opts: AiChatOptions): Promise<string> {
   return parseChatContent(payload)
 }
 
+/** chatStream 流式增量：thinking 模型思考过程（reasoning_content）与最终内容分通道产出。 */
+export interface ChatStreamDelta {
+  kind: 'reasoning' | 'content'
+  text: string
+}
+
 /**
- * SSE 事件 → chat content 增量：解析 choices[0].delta.content；role 等无 content 分块
- *  跳过；容错 message.content（整体 JSON 被分块传输的端点）；结构非法抛解析错误。 */
-function* sseEventsToContent(events: string[]): Generator<string> {
+ * SSE 事件 → 流式增量：解析 choices[0].delta.content（kind='content'）与
+ * reasoning_content（kind='reasoning'，thinking 模型思考过程）；容错
+ * message.content/message.reasoning_content（整体 JSON 被分块传输的端点）；
+ * role 等无字段分块跳过；结构非法抛解析错误。
+ */
+function* sseEventsToDeltas(events: string[]): Generator<ChatStreamDelta> {
   for (const event of events) {
     let payload: unknown
     try {
@@ -335,28 +349,39 @@ function* sseEventsToContent(events: string[]): Generator<string> {
     }
     const obj = payload as {
       choices?: Array<{
-        delta?: { content?: unknown }
-        message?: { content?: unknown }
+        delta?: { content?: unknown; reasoning_content?: unknown }
+        message?: { content?: unknown; reasoning_content?: unknown }
       }>
     }
-    const deltaContent = obj?.choices?.[0]?.delta?.content
-    const messageContent = obj?.choices?.[0]?.message?.content
-    const content = deltaContent ?? messageContent
-    if (content === undefined || content === null) continue
-    if (typeof content !== 'string') {
-      throw new Error('AI 响应结构非法：content 非字符串')
+    const delta = obj?.choices?.[0]?.delta
+    const message = obj?.choices?.[0]?.message
+    const content = delta?.content ?? message?.content
+    if (content !== undefined && content !== null) {
+      if (typeof content !== 'string') {
+        throw new Error('AI 响应结构非法：content 非字符串')
+      }
+      yield { kind: 'content', text: content }
+      continue
     }
-    yield content
+    const reasoning = delta?.reasoning_content ?? message?.reasoning_content
+    if (reasoning !== undefined && reasoning !== null) {
+      if (typeof reasoning !== 'string') {
+        throw new Error('AI 响应结构非法：reasoning_content 非字符串')
+      }
+      yield { kind: 'reasoning', text: reasoning }
+    }
   }
 }
 
 /**
  * chat/completions 流式调用（ai-features §4.1）：`stream:true` 增量产出
- * `choices[0].delta.content`（**markdown 文本流**，拼接即完整响应文本；不携带
- * `response_format`——纯文本输出无需 JSON 模式）。60s 总超时覆盖「TTFB + 全程传输」：内部 AbortController 超时中止、
- * 外部 signal 透传，错误归一与 `chat` 一致（AbortError/AiHttpError/AiNetworkError）。
+ * ChatStreamDelta——content（**markdown 文本流**，拼接即完整响应文本）与
+ * reasoning_content（thinking 模型思考过程）分通道；不携带 `response_format`
+ * （纯文本输出无需 JSON 模式）。超时 = TTFB/空闲双窗口 60s（收到字节即重置，
+ * 长思考不断流不误杀）；内部 AbortController 中止、外部 signal 透传，错误归一
+ * 与 `chat` 一致（AbortError/AiHttpError/AiNetworkError）。
  */
-export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
+export async function* chatStream(opts: AiChatOptions): AsyncIterable<ChatStreamDelta> {
   const base = normalizeBaseUrl(opts.baseUrl)
   const body: Record<string, unknown> = {
     model: opts.model,
@@ -372,10 +397,15 @@ export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
   }
   const onOuterAbort = (): void => controller.abort()
   opts.signal?.addEventListener('abort', onOuterAbort, { once: true })
-  const timer: ReturnType<typeof setTimeout> = setTimeout(
+  // TTFB 窗口：请求发出起 60s 无响应字节即中止；收到字节后转空闲窗口（每次重置）。
+  let timer: ReturnType<typeof setTimeout> = setTimeout(
     () => controller.abort(),
     CHAT_TIMEOUT_MS,
   )
+  const resetIdleTimer = (): void => {
+    clearTimeout(timer)
+    timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
+  }
   let res: Response
   try {
     res = await fetch(buildRequestUrl(endpointUrl(base, 'chat/completions')), {
@@ -404,12 +434,13 @@ export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        yield* sseEventsToContent(parser.next(decoder.decode(value, { stream: true })))
+        resetIdleTimer()
+        yield* sseEventsToDeltas(parser.next(decoder.decode(value, { stream: true })))
       }
       // 收尾：decoder 残余多字节 + parser 残余无换行 data 行（端点未发 [DONE] 直接关流）。
       const tailText = decoder.decode()
-      if (tailText.length > 0) yield* sseEventsToContent(parser.next(tailText))
-      yield* sseEventsToContent(parser.end())
+      if (tailText.length > 0) yield* sseEventsToDeltas(parser.next(tailText))
+      yield* sseEventsToDeltas(parser.end())
     } finally {
       reader.releaseLock()
     }

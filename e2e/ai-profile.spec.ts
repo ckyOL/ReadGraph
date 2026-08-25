@@ -374,3 +374,79 @@ test.describe('AI 流式渲染：网络到达即渐进显示（ai-features §4.1
     await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'false')
   })
 })
+
+/** thinking 模式 SSE：先 reasoning_content 段（思考过程），后 content 段（最终 markdown）。 */
+test.describe('AI thinking 渲染（reasoning_content 思考过程，ai-features §4.1）', () => {
+  let server: http.Server
+
+  test.beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        })
+        res.end()
+        return
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      })
+      const reasoning = '先分析分类分布：文学类占比最高。再评估借阅节奏与时长习惯。'
+      const content =
+        '## 分类偏好\n\n藏书中文学类占比最高，共 2 本。\n\n## 一句话总结\n\n整体书单以虚构类为主。'
+      const parts = [
+        JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning.slice(0, 8) } }] }),
+        JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning.slice(8, 20) } }] }),
+        JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning.slice(20) } }] }),
+        JSON.stringify({ choices: [{ delta: { content: content.slice(0, 20) } }] }),
+        JSON.stringify({ choices: [{ delta: { content: content.slice(20) } }] }),
+      ]
+      let i = 0
+      const timer = setInterval(() => {
+        if (i >= parts.length) {
+          res.write('data: [DONE]\n\n')
+          clearInterval(timer)
+          res.end()
+          return
+        }
+        res.write(`data: ${parts[i]}\n\n`)
+        i += 1
+      }, 250)
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  })
+
+  test.afterAll(async () => {
+    await new Promise<void>((resolve, reject) =>
+      server.close((e) => (e ? reject(e) : resolve())),
+    )
+  })
+
+  test('思考过程灰色块渐进显示，定稿后消失且只留 markdown', async ({ page }) => {
+    const port = (server.address() as AddressInfo).port
+    await seed(page)
+    await injectAiPrefs(page, {
+      enabled: true,
+      baseUrl: `http://127.0.0.1:${port}`,
+      model: 'test-model',
+      sendPreview: false,
+    })
+    await page.goto('/profile')
+    await page.getByRole('button', { name: '生成 AI 解读' }).click()
+    // thinking 阶段：思考块出现（灰色，含思考过程标题与内容），流仍在进行。
+    const reasoning = page.locator('[data-slot="profile-ai-reasoning"]')
+    await expect(reasoning).toBeVisible()
+    await expect(reasoning).toContainText('思考过程')
+    await expect(reasoning).toContainText('先分析分类分布')
+    await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'true')
+    // 定稿：思考块消失，仅渲染最终 markdown。
+    await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()
+    await expect(reasoning).toHaveCount(0)
+    await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'false')
+  })
+})
