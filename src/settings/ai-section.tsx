@@ -5,7 +5,6 @@ import { testConnection, AiHttpError, AiNetworkError } from '@/ai/ai-client'
 import { readPreferences, writePreferences, type UserPreferencesInput } from '@/lib/preferences'
 import { readAiApiKey, writeAiApiKey } from '@/lib/ai-api-key'
 import { clearAiModelList, readAiModelList, writeAiModelList } from '@/lib/ai-model-list'
-import { clearAiCache } from '@/lib/ai-cache'
 import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,8 +26,9 @@ function testErrorKey(e: unknown): { key: string; options?: Record<string, unkno
 }
 
 /**
- * AI 区（ai-features §4.2）：启用开关（默认关）→ 启用后展开端点 URL / API Key（独立存储）/
- * 模型名（用户自填）/「测试连接」/ 隐私说明（§2.3）/「发送预览」开关（默认开）/「清除 AI 缓存」。
+ * AI 区（ai-features §4.2）：启用开关（默认关）→ 启用后展开端点 URL（含「测试并获取模型」按钮）/
+ * API Key（独立存储）/ 模型名（用户自填）/「发送预览」开关（默认开）/「清除 AI 缓存」（独立一行）；
+ * 隐私承诺文案不设于此——发送预览弹窗展示（§2.3）。
  * 配置输入即写即存（偏好 + 独立 Key key，Key 不进偏好）；错误与结果经 toast 呈现。
  */
 export function AiSection() {
@@ -116,11 +116,6 @@ export function AiSection() {
     }
   }
 
-  const handleClearCache = () => {
-    clearAiCache()
-    toast({ title: t('settings.ai.cacheCleared') })
-  }
-
   return (
     <section className="space-y-4 border-t pt-4">
       <h2 className="text-sm font-semibold">{t('settings.ai.title')}</h2>
@@ -150,6 +145,13 @@ export function AiSection() {
               className="w-72"
               aria-label={t('settings.ai.endpoint')}
             />
+            <Button
+              variant="outline"
+              onClick={() => void runTest()}
+              disabled={!baseUrl.trim() || testing}
+            >
+              {testing ? t('settings.ai.testing') : t('settings.ai.test')}
+            </Button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -196,23 +198,6 @@ export function AiSection() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => void runTest()}
-              disabled={!baseUrl.trim() || testing}
-            >
-              {testing ? t('settings.ai.testing') : t('settings.ai.test')}
-            </Button>
-            <Button variant="outline" onClick={handleClearCache}>
-              {t('settings.ai.clearCache')}
-            </Button>
-          </div>
-
-          <p className="max-w-xl text-xs text-muted-foreground">
-            {t('settings.ai.privacyNotice')}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3">
             <span className="w-32 shrink-0 text-sm text-muted-foreground">
               {t('settings.ai.preview')}
             </span>
@@ -223,6 +208,7 @@ export function AiSection() {
             />
             <p className="text-xs text-muted-foreground">{t('settings.ai.previewDesc')}</p>
           </div>
+
         </>
       )}
     </section>

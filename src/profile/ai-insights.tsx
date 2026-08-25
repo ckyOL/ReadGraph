@@ -1,7 +1,8 @@
 // AI 解读区（ai-features §4.1）：价值卡行之下、图表 Tabs 之上；与价值卡行同构
 // （窄卡、不卡片套卡片、不抢图表全幅）。fact 窄卡 = 标题 + 正文 + 维度 chip
 // （点击激活对应图表 tab = 引用定位）；taste 全宽评价段（Phase 1 非流式整段）；
-// 固定全量口径、不与 range 联动；整体可重新生成；每条标注「AI 生成，基于本地数据」。
+// 固定全量口径、不与 range 联动；整体可重新生成；每条标注「AI 生成，基于本地数据」；
+// 「清除 AI 缓存」（§4.1，原设置页 §4.2）在标题行「重新生成」旁，仅已有结果时显示。
 // 条件渲染（§2.1/§8）：ai.enabled !== true 时返回 null——未启用时全站无 AI 痕迹
 // （含 loading 态也不渲染）；配合路由侧 lazy + 开关门控，AI 默认关闭不拉主包。
 import { useEffect, useState } from 'react'
@@ -13,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/use-toast'
+import { clearAiCache } from '@/lib/ai-cache'
 import { readPreferences } from '@/lib/preferences'
 import type { ClassificationSystem } from '@/types/entities'
 
@@ -79,6 +81,11 @@ export function AiInsightsSection({
   // 未启用（§2.1）：全站无 AI 痕迹——含 loading 态也不渲染。
   if (aiEnabled !== true) return null
 
+  const handleClearCache = () => {
+    clearAiCache()
+    toast({ title: t('profile.ai.cacheCleared') })
+  }
+
   return (
     <>
       <section
@@ -94,9 +101,14 @@ export function AiInsightsSection({
               {t('profile.ai.generate')}
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => generate(true)} disabled={loading}>
-              {t('profile.ai.regenerate')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => generate(true)} disabled={loading}>
+                {t('profile.ai.regenerate')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleClearCache}>
+                {t('profile.ai.clearCache')}
+              </Button>
+            </div>
           )}
         </div>
         {loading ? (

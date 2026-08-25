@@ -2,7 +2,7 @@
 // 受控组件：open/payload/onConfirm/onCancel 均由 use-ai Hook 驱动（F-1）；展示的
 // payload 与实际上送为同一装配函数产物（§3.3 防漂移）。
 // 超阈值分层采样时（payload.sampled 存在）标注「已采样（N/M 本）」（§3.2 极端档案防护）；
-// 隐私承诺文案复用设置页 settings.ai.privacyNotice（§2.3 共用 i18n）。
+// 隐私承诺文案（§2.3）：发送预览弹窗专属展示，i18n key profile.ai.privacyNotice。
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -66,7 +66,7 @@ export function AiSendPreviewDialog({
             <pre className="max-h-80 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs break-all whitespace-pre-wrap">
               {payloadText}
             </pre>
-            <p className="text-xs text-muted-foreground">{t('settings.ai.privacyNotice')}</p>
+            <p className="text-xs text-muted-foreground">{t('profile.ai.privacyNotice')}</p>
           </>
         )}
         <DialogFooter>
