@@ -1,4 +1,5 @@
-// AI 端点客户端（ai-features §5.4）：OpenAI 兼容端点 fetch 薄封装，纯函数可单测。
+// 职责边界：URL/headers/body 构造、超时与中止、HTTP 状态分级、SSE 解析（一次性
+// 兜底 extractLastSseData / 增量解析器 createSseParser / chatStream 流式产出）。
 // 职责边界：URL/headers/body 构造、超时与中止、HTTP 状态分级、SSE 兜底解析。
 // 不做 schema 校验 / Provider 抽象（C-2 波次2）。错误分级：网络失败/超时 → AbortError，
 // HTTP 非 2xx → AiHttpError（401/429 显式文案），响应结构非法 → 解析错误；
@@ -16,9 +17,7 @@ export function buildRequestUrl(target: string, useProxy = __AI_DEV_PROXY__): st
 
 /** 默认请求超时（ai-features §5.4：AbortController 15s 默认超时）。 */
 export const DEFAULT_TIMEOUT_MS = 15_000
-/** chat 生成超时：云端 LLM 生成耗时远超连接测试（长 prompt + 完整 JSON 输出），15s 易误伤，取 60s。 */
 export const CHAT_TIMEOUT_MS = 60_000
-
 /** HTTP 非 2xx 响应错误：携带状态码；401/429 附显式文案。 */
 export class AiHttpError extends Error {
   readonly status: number
@@ -36,6 +35,78 @@ export class AiNetworkError extends Error {
     super(message)
     this.name = 'AiNetworkError'
   }
+}
+
+/**
+ * SSE 增量解析器（ai-features §4.1 流式）：逐 chunk 喂入，返回本 chunk 内完成的
+ * 事件 data 值数组。`data:` 行可跨 chunk 断行——内部缓冲重组；空行结束一个事件，
+ * `data: [DONE]` 终止解析（此后输入忽略），事件内多行 data 以换行拼接。
+ * `end()` 收尾无换行结尾的残余行（幂等）。纯函数无网络/时钟/DOM。
+ */
+export function createSseParser(): { next(chunk: string): string[]; end(): string[] } {
+  let buffer = ''
+  let current: string[] = []
+  let done = false
+
+  const flushEvent = (): string[] => {
+    if (current.length === 0) return []
+    const event = current.join('\n')
+    current = []
+    return [event]
+  }
+
+  const consumeLine = (line: string, events: string[]): void => {
+    if (done || line === '') {
+      if (line === '') events.push(...flushEvent())
+      return
+    }
+    if (!line.startsWith('data:')) return
+    let value = line.slice('data:'.length)
+    if (value.startsWith(' ')) value = value.slice(1)
+    if (value === '[DONE]') {
+      done = true
+      return
+    }
+    current.push(value)
+  }
+
+  const next = (chunk: string): string[] => {
+    if (done) return []
+    buffer += chunk
+    const events: string[] = []
+    let nl = buffer.indexOf('\n')
+    while (nl !== -1 && !done) {
+      let line = buffer.slice(0, nl)
+      if (line.endsWith('\r')) line = line.slice(0, -1)
+      buffer = buffer.slice(nl + 1)
+      consumeLine(line, events)
+      nl = buffer.indexOf('\n')
+    }
+    return events
+  }
+
+  const end = (): string[] => {
+    if (done) return []
+    const events: string[] = []
+    if (buffer.length > 0) {
+      consumeLine(buffer, events)
+      buffer = ''
+    }
+    // 残余行无空行终止：收尾 flush 未闭合事件（与「末尾无换行 data 行仍收尾」语义一致）。
+    events.push(...flushEvent())
+    return events
+  }
+
+  return { next, end }
+}
+
+/** 一次性 SSE 解析（兼容既有契约）：输入网络分片，返回全部事件 data 值（含末尾无换行行）。 */
+export function parseSseEvents(chunks: Iterable<string>): string[] {
+  const parser = createSseParser()
+  const events: string[] = []
+  for (const chunk of chunks) events.push(...parser.next(chunk))
+  events.push(...parser.end())
+  return events
 }
 
 export interface AiChatMessage {
@@ -97,6 +168,26 @@ function buildHeaders(apiKey?: string): Record<string, string> {
  * 超时或外部中止统一归一为 DOMException AbortError；fetch TypeError（端点不可达 /
  * CORS 拦截）归一为 AiNetworkError；其余网络错误透传原错误。
  */
+/** fetch 异常归一：内部超时/外部 signal 中止 → AbortError；TypeError（端点不可达/CORS 拦截）→ AiNetworkError；其余透传。 */
+function throwFetchError(e: unknown, signal: AbortSignal): never {
+  if (signal.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  if (e instanceof TypeError) {
+    // fetch 网络失败/跨域拦截统一抛 TypeError：给用户可操作诊断文案。
+    throw new AiNetworkError(
+      'AI 端点网络请求失败：端点不可达，或跨域（CORS）被浏览器拦截。' +
+        '云端端点需支持 CORS；本地服务（如 Ollama）需放行来源；或改用自托管反向代理。',
+    )
+  }
+  throw e
+}
+
+/**
+ * fetch + 超时/中止封装：内部 AbortController 兜底 15s 超时，外部 signal 透传；
+ * 超时或外部中止统一归一为 DOMException AbortError；fetch TypeError（端点不可达 /
+ * CORS 拦截）归一为 AiNetworkError；其余网络错误透传原错误。
+ */
 async function request(
   url: string,
   init: RequestInit,
@@ -116,17 +207,7 @@ async function request(
   try {
     return await fetch(url, { ...init, signal: controller.signal })
   } catch (e) {
-    if (controller.signal.aborted) {
-      throw new DOMException('Aborted', 'AbortError')
-    }
-    if (e instanceof TypeError) {
-      // fetch 网络失败/跨域拦截统一抛 TypeError：给用户可操作诊断文案。
-      throw new AiNetworkError(
-        'AI 端点网络请求失败：端点不可达，或跨域（CORS）被浏览器拦截。' +
-          '云端端点需支持 CORS；本地服务（如 Ollama）需放行来源；或改用自托管反向代理。',
-      )
-    }
-    throw e
+    return throwFetchError(e, controller.signal)
   } finally {
     clearTimeout(timer)
     externalSignal?.removeEventListener('abort', onOuterAbort)
@@ -221,6 +302,97 @@ export async function chat(opts: AiChatOptions): Promise<string> {
   }
   return parseChatContent(payload)
 }
+
+/** SSE 事件 → chat content 增量：解析 choices[0].delta.content；role 等无 content 分块跳过；结构非法抛解析错误。 */
+function* sseEventsToContent(events: string[]): Generator<string> {
+  for (const event of events) {
+    let payload: unknown
+    try {
+      payload = JSON.parse(event)
+    } catch {
+      throw new Error('AI 响应结构非法：SSE data 行非 JSON')
+    }
+    const obj = payload as { choices?: Array<{ delta?: { content?: unknown } }> }
+    const content = obj?.choices?.[0]?.delta?.content
+    if (content === undefined || content === null) continue
+    if (typeof content !== 'string') {
+      throw new Error('AI 响应结构非法：delta.content 非字符串')
+    }
+    yield content
+  }
+}
+
+/**
+ * chat/completions 流式调用（ai-features §4.1）：`stream:true` + `response_format`
+ * JSON 模式，SSE 响应逐 chunk 增量产出 `choices[0].delta.content`（拼接即非流式
+ * content）。60s 总超时覆盖「TTFB + 全程传输」：内部 AbortController 超时中止、
+ * 外部 signal 透传，错误归一与 `chat` 一致（AbortError/AiHttpError/AiNetworkError）。
+ */
+export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
+  const base = normalizeBaseUrl(opts.baseUrl)
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages,
+    stream: true,
+    response_format: { type: 'json_object' },
+  }
+  if (opts.temperature !== undefined) {
+    body.temperature = opts.temperature
+  }
+  const controller = new AbortController()
+  if (opts.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const onOuterAbort = (): void => controller.abort()
+  opts.signal?.addEventListener('abort', onOuterAbort, { once: true })
+  const timer: ReturnType<typeof setTimeout> = setTimeout(
+    () => controller.abort(),
+    CHAT_TIMEOUT_MS,
+  )
+  let res: Response
+  try {
+    res = await fetch(buildRequestUrl(endpointUrl(base, 'chat/completions')), {
+      method: 'POST',
+      headers: buildHeaders(opts.apiKey),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } catch (e) {
+    throwFetchError(e, controller.signal)
+  }
+  try {
+    if (!res.ok) {
+      throw new AiHttpError(
+        res.status,
+        HTTP_STATUS_MESSAGES[res.status] ?? `AI 端点请求失败（HTTP ${res.status}）`,
+      )
+    }
+    if (!res.body) {
+      throw new Error('AI 响应结构非法：流式响应无 body')
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    const parser = createSseParser()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        yield* sseEventsToContent(parser.next(decoder.decode(value, { stream: true })))
+      }
+      // 收尾：decoder 残余多字节 + parser 残余无换行 data 行（端点未发 [DONE] 直接关流）。
+      const tailText = decoder.decode()
+      if (tailText.length > 0) yield* sseEventsToContent(parser.next(tailText))
+      yield* sseEventsToContent(parser.end())
+    } finally {
+      reader.releaseLock()
+    }
+  } finally {
+    clearTimeout(timer)
+    opts.signal?.removeEventListener('abort', onOuterAbort)
+  }
+}
+
+/** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → 返回模型 ID 列表（端点未提供时为空数组），否则抛带状态错误。 */
 
 /** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → 返回模型 ID 列表（端点未提供时为空数组），否则抛带状态错误。 */
 export async function testConnection(opts: AiTestConnectionOptions): Promise<string[]> {

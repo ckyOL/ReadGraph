@@ -1,7 +1,7 @@
 // AI 客户端（src/ai/ai-client.ts）单测：OpenAI 兼容端点 fetch 薄封装（ai-features §5.4 / §7）。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AiHttpError, AiNetworkError, buildRequestUrl, chat, testConnection } from '@/ai/ai-client'
+import { AiHttpError, AiNetworkError, buildRequestUrl, chat, chatStream, testConnection } from '@/ai/ai-client'
 
 /** mock fetch：挂起直到 signal abort（与真实 fetch 行为一致）。 */
 function hangingFetch() {
@@ -299,17 +299,150 @@ describe('testConnection', () => {
     ])
   })
 
-  it('2xx 但响应非 JSON / 无模型结构 → 返回空数组（连接成功但端点未提供列表）', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({ ok: true, status: 200, text: async () => '<html>gateway</html>' })),
-    )
-    await expect(testConnection({ baseUrl: 'https://api.example.com' })).resolves.toEqual([])
+})
+/** SSE 事件分片 body 工厂：text/event-stream 语义，按给定片段逐次 enqueue。 */
+function sseBody(parts: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const part of parts) controller.enqueue(encoder.encode(part))
+      controller.close()
+    },
+  })
+}
 
+/** 收集 chatStream 全部增量。 */
+async function collect(
+  iter: AsyncIterable<string>,
+): Promise<{ chunks: string[]; text: string }> {
+  const chunks: string[] = []
+  for await (const chunk of iter) chunks.push(chunk)
+  return { chunks, text: chunks.join('') }
+}
+
+describe('chatStream', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('请求构造：POST 同 chat 的 URL/headers，body stream:true + response_format 保留', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: sseBody(['data: [DONE]\n\n']),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    await collect(chatStream({ ...BASE_OPTS, apiKey: 'sk-test' }))
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/v1/chat/completions')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer sk-test',
+    })
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: 'gpt-4o-mini',
+      messages: MESSAGES,
+      stream: true,
+      response_format: { type: 'json_object' },
+    })
+  })
+
+  it('分片 SSE（data 行跨分片断行）→ 增量产出 delta.content，拼接与非流式 content 一致', async () => {
+    const delta = (content: string): string =>
+      `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+    const content = '{"insights":[{"kind":"fact","body":"文"}]}'
+    // 分片刻意在 data 行中间断开（SSE 断行重组路径）。
+    const full = delta(content)
+    const parts = [full.slice(0, 17), full.slice(17, 53), full.slice(53)]
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ ok: true, status: 200, text: async () => '{"hello":"world"}' })),
+      vi.fn(async () => ({ ok: true, status: 200, body: sseBody(parts) })),
     )
-    await expect(testConnection({ baseUrl: 'https://api.example.com' })).resolves.toEqual([])
+
+    const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual([content])
+    expect(text).toBe(content)
+  })
+  it('多个事件各自产出（chunk 粒度 = 事件粒度，非网络分片粒度）', async () => {
+    const delta = (content: string): string =>
+      `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+    const body = sseBody([delta('{"insights":'), delta('[]}'), 'data: [DONE]\n\n'])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+
+    const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual(['{"insights":', '[]}'])
+    expect(text).toBe('{"insights":[]}')
+  })
+
+  it('role 分块（delta.content 缺省）跳过不产出；多个 content 增量顺序拼接', async () => {
+    const body = sseBody([
+      'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"{\\"insights\\":"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"[]}"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+
+    const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual(['{"insights":', '[]}'])
+    expect(text).toBe('{"insights":[]}')
+  })
+
+  it('[DONE] 终止：后续 data 行不再产出', async () => {
+    const delta = (content: string): string =>
+      `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+    const body = sseBody([delta('a'), 'data: [DONE]\n\n', delta('b')])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+
+    const { chunks } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual(['a'])
+  })
+
+  it('HTTP 401 → AiHttpError status=401', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401 })))
+    await expect(collect(chatStream({ ...BASE_OPTS }))).rejects.toMatchObject({
+      name: 'AiHttpError',
+      status: 401,
+    })
+  })
+
+  it('fetch TypeError（CORS/不可达）→ AiNetworkError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(collect(chatStream({ ...BASE_OPTS }))).rejects.toBeInstanceOf(AiNetworkError)
+  })
+
+  it('SSE 事件 data 非 JSON 或缺 choices[0].delta → 抛解析错误', async () => {
+    const body = sseBody(['data: not-json\n\n', 'data: {"choices":[]}\n\n', 'data: [DONE]\n\n'])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+    await expect(collect(chatStream({ ...BASE_OPTS }))).rejects.toThrow(/AI 响应结构非法/)
+  })
+
+  it('挂起超过 60s（生成超时阈值）→ 抛 AbortError', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', hangingFetch())
+    const iter = chatStream({ ...BASE_OPTS })[Symbol.asyncIterator]()
+    const pending = iter.next()
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await assertion
+  })
+
+  it('外部 signal 中止 → 抛 AbortError', async () => {
+    const ctrl = new AbortController()
+    vi.stubGlobal('fetch', hangingFetch())
+    const iter = chatStream({ ...BASE_OPTS, signal: ctrl.signal })[Symbol.asyncIterator]()
+    const pending = iter.next()
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    ctrl.abort()
+    await assertion
   })
 })

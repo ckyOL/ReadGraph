@@ -2,7 +2,7 @@
 // 生成/上送编排逻辑（缓存检查→装配→预览门→上送→错误分级）下沉为本纯函数模块，
 // 实体/聚合/偏好/缓存/上送全部依赖注入；不读 Date.now()/IndexedDB/localStorage/DOM，
 // 同入参 + 同 deps 产出确定阶段结果。React 状态管理（loading/busy/insights/error/
-// pendingPreview）保留在 Hook（use-ai.ts），本模块不感知。
+// pendingPreview/streamingInsights）保留在 Hook（use-ai.ts），本模块不感知。
 import { ZodError } from 'zod'
 
 import { AiHttpError } from '@/ai/ai-client'
@@ -67,8 +67,14 @@ export interface InsightPipelineInput {
 export interface InsightPipelineDeps {
   readCache(scene: string, locale: Locale, key: string): AiCacheEntry | null
   writeCache(scene: string, locale: Locale, key: string, result: unknown): void
-  /** 上送：调用方绑定 provider 与 prompt 装配；schema 校验失败抛 ZodError（此处分级） */
-  submit(payload: ProfilePayload, locale: Locale): Promise<ProfileInsights>
+  /** 上送：调用方绑定 provider 与 prompt 装配；schema 校验失败抛 ZodError（此处分级）。
+   *  onPartial 为流式增量回调（§4.1 条目级渐进渲染）：流中已闭合条目逐步送达，
+   *  最终结果仍以返回值为准（校验/缓存语义不变）。 */
+  submit(
+    payload: ProfilePayload,
+    locale: Locale,
+    onPartial?: (partial: AIInsight[]) => void,
+  ): Promise<ProfileInsights>
 }
 
 /** 生成路径阶段结果。 */
@@ -104,10 +110,12 @@ export type InsightSubmitResult =
  * 未命中 → serializePayload 装配 → sendPreview=true 停预览门（pending-preview，
  * 与上送同一装配产物引用），false 直接走上送（success/error，成功写缓存）。
  * 「重新生成」bypassCache=true 跳过缓存读取，重新请求并覆盖缓存（§4.1）。
+ * onPartial 透传上送路径（流式增量渲染钩子，§4.1）。
  */
 export async function runInsightPipeline(
   input: InsightPipelineInput,
   deps: InsightPipelineDeps,
+  onPartial?: (partial: AIInsight[]) => void,
 ): Promise<InsightPipelineResult> {
   const { prefs, locale, entities, stats, classificationSystem, bypassCache, scene, key } = input
   // 未启用（§2.1 默认关闭）或聚合无数据（useLiveQuery 未就绪）→ 静默返回，不置 error。
@@ -135,21 +143,22 @@ export async function runInsightPipeline(
   const payload = serializePayload(entities, stats, { classificationSystem })
   // 预览门（§3.1 ④）：sendPreview=true 停此处等确认；false 直接走同一上送路径。
   if (prefs.sendPreview) return { status: 'pending-preview', payload }
-  return submitInsightPayload(payload, { locale, scene, key }, deps)
+  return submitInsightPayload(payload, { locale, scene, key }, deps, onPartial)
 }
 
 /**
  * 上送路径（§3.1 ⑤⑥）：预览确认（confirmGenerate）与直接生成（sendPreview=false）
  * 共用；payload 即预览展示的同一对象引用（§3.3）。成功写缓存，失败分级——
- * 失败结果不写缓存（§5.4）。
+ * 失败结果不写缓存（§5.4）。onPartial 透传流式增量回调（§4.1）。
  */
 export async function submitInsightPayload(
   payload: ProfilePayload,
   ctx: InsightSubmitContext,
   deps: InsightPipelineDeps,
+  onPartial?: (partial: AIInsight[]) => void,
 ): Promise<InsightSubmitResult> {
   try {
-    const result = await deps.submit(payload, ctx.locale)
+    const result = await deps.submit(payload, ctx.locale, onPartial)
     deps.writeCache(ctx.scene, ctx.locale, ctx.key, result)
     return { status: 'success', insights: result.insights }
   } catch (e) {

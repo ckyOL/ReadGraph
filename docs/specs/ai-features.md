@@ -53,7 +53,7 @@ src/
   → ② 数据装配器：从 IndexedDB 只提取白名单字段
   → ③ 敏感字段断言：黑名单字段绝不出现在 payload（测试强制）
   → ④ 发送预览：UI 展示将发送的 payload JSON（与实际上送同一装配函数产物）
-  → ⑤ POST 用户配置端点（OpenAI 兼容 /v1/chat/completions；Phase 1 stream:false）
+  → ⑤ POST 用户配置端点（OpenAI 兼容 /v1/chat/completions；stream:true + SSE，画像场景先行落地）
   → ⑥ 响应 Zod 校验 → 渲染（标注「AI 生成，基于本地数据」）
   → ⑦ 云端原文不持久化；本地缓存仅存生成结果并标注
 ```
@@ -98,10 +98,11 @@ interface AIInsight {
 }
 ```
 
-- 生成 2–4 条洞察（含 0–1 条 `taste`）：fact 渲染为窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）；taste 渲染为一段全宽评价文字（Phase 1 非流式整段呈现，Phase 2 逐句流式）。
+- 生成 2–4 条洞察（含 0–1 条 `taste`）：fact 渲染为窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）；taste 渲染为一段全宽评价文字（整段到达即渲染）。
 - **口径**：固定全量口径（与概览卡一致），**不与 range 联动**——避免 range 切换反复调用 API；缓存键含 range 以预留联动（§5.3）。
 - **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；`kind='taste'` 自由文本的引用真实性**不可强校验**——规格明示诚实边界（区别于 fact 条目的数字强校验）。
-- **非流式**（Phase 1）：`stream:false` + `response_format` JSON 模式，响应过 `insightSchema.safeParse`，失败提示重试。
+- **流式**：`stream:true` + SSE（`ai-client.chatStream` 增量产出 `delta.content`，`response_format` JSON 模式保留）；**条目级渐进渲染**——流中已闭合的完整 insight 条目立即渲染、尾部「生成中」占位，最终完整 JSON 过 `profileInsightsSchema.safeParse` 成功才定稿并写缓存；校验失败清空增量、走错误分级（不写缓存）。taste 与 fact 同为条目粒度（整段/整卡到达即渲染，不做逐字逐句）。
+- 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 
 ### 4.2 设置页 AI 区（/settings，Phase 1）
@@ -165,7 +166,11 @@ interface AIInsight {
 - `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
 - `sanitize.ts` 每书字段：payload 中每书含题名/作者/借阅次数且不含 `isbn13`/`tags`/`price`/借还日期（字段级断言）；借阅次数来自本地聚合（与 `profile-stats` 同源计数一致）。
 - `sanitize.ts` 装配边界：空库/无借阅时 payload 结构完整（`books=[]`）；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT` 时全量进 payload（与源 Book 一一对应）；超过阈值触发分层采样降级（每分类取代表、总上限 500、标注采样标记），采样集覆盖全部分类（无空分类桶）。
-- `ai-client.ts`：`chat()` 构造正确 URL/headers/body（`Authorization` 仅在有 Key 时携带；`baseUrl` 去尾斜杠；**`/v1` 结尾不重复拼接**；`buildRequestUrl`：dev 代理前缀编码 / 生产直连）；`stream:false` 普通 JSON 响应解析；**SSE 响应解析**（mock fetch 返回分片 `data:` 行：完整事件、事件间空行、`[DONE]`、断行重组）；Abort 中断抛 `AbortError`；超时触发 abort；HTTP 非 2xx 抛带状态错误；无鉴权端点（无 Key）请求不带头；**fetch `TypeError` → `AiNetworkError`（端点不可达 / CORS 拦截）**。
+- `ai-client.ts` `chatStream()`：`stream:true` 请求构造（body/URL/headers 同 `chat`）；mock fetch 分片 `ReadableStream` 增量产出 `delta.content`；`[DONE]` 终止；HTTP 非 2xx / 超时 / TypeError 分级复用（与 `chat` 同一错误归一）。
+- `stream-json.ts` 增量解析（纯函数）：累积文本分片喂入，逐步产出已闭合完整条目（含字符串内 `}`/`[` 不误判、字段截断中间态不产出、数组闭合产出全集、最终形态与 `JSON.parse` 一致）。
+- `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`；`chatStream(messages)` 绑定配置产出内容增量（流完整拼接 == 非流式 content）。
+- `insight-pipeline.ts`：`submit` 增 `onPartial` 回调透传（增量渲染钩子，成功/失败语义不变）。
+- `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
 - `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`。
 - `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
 - `ai-cache.ts`：缓存键含 scene/locale/key；写读回环；清除只删 `ai:` 前缀键；不随 `exportDatabase` 导出。
@@ -173,7 +178,7 @@ interface AIInsight {
 
 **Playwright（E2E，统一 UI 里程碑接入）**
 
-- route mock 端点：未启用 AI → `/profile` 无 AI 区块；启用 + 触发 → 预览内容与实际请求 body 一致（拦截断言）；确认后渲染 fact 卡 + taste 段；taste/fact 均标注 AI 生成；重新生成覆盖；断网 mock 失败 → 错误 toast 且不渲染结果。
+- 流式（`chatStream`）：chat 请求 body `stream:true`；SSE 分片响应（`text/event-stream` data 行 + `[DONE]`）→ 最终渲染成功。条目级「逐条出现」时序断言归 Vitest（渐进解析器 + Hook 单测），E2E 不依赖时序。
 
 ## 8. React 性能规则引用
 
@@ -192,7 +197,7 @@ interface AIInsight {
   - **「年度叙事」AI 区**：与 /profile「AI 解读区」同构（fact/taste、AI 生成标注、重新生成、发送预览），是年度视图内的区块而非独立孤岛。
 - **输入契约**：`computeYearSlice` 切片指标（[reading-profile §2.7](./reading-profile.md#2-统计维度与聚合契约) 年度切片契约；口径 = bookology-benchmark §6 语义边界：`borrowedAt ∈ 本年` UTC 左闭右开、独立 Book 去重、设备排除、不依赖 `status='returned'`）+ 年度切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小，通常远低于阈值）→ 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。叙事、目标卡、回顾三个消费方共用同一 `yearSlice` 产物——数字同源，LLM 只转译（§2.6 统计一致性）。
 - **白名单边界**：年度场景 = 同一白名单形态（§3.2 每书字段集 + `yearSlice` 聚合输出），切片替代全量；**年度目标值（`UserPreferences` 用户设置）不进 payload**——非聚合统计、非书目字段，叙事不提「距目标还差 N 本」；如需纳入须显式扩展白名单并声明。
-- 流式输出（`stream:true` + SSE 拼接）、`Abort`、按 year/range/locale 缓存；taste 段逐句呈现。
+- 流式输出（`stream:true` + SSE 拼接——画像场景已先行落地同一链路，见 §4.1）、`Abort`、按 year/range/locale 缓存；年度叙事为自由文本段落，呈现粒度可到逐句（画像为条目粒度）。
 - 脱敏断言覆盖年度场景（与 §3.2 同白名单形态，切片替代全量）；`prompts/year-narrative.ts` 就位。
 
 ### 9.2 Phase 3：本地服务后端（可选）

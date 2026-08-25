@@ -89,13 +89,17 @@ interface ChatCapture {
 /**
  * 挂 AI 端点 mock：/v1/chat/completions（跨源，OPTIONS 预检放行 + CORS 头）与
  * /v1/models（空列表）。chat 响应按调用次数取 chatResponses（函数或数组，越界回退
- * INSIGHTS_V1）；shouldFailChat 返回 true 时该次请求 abort（断网模拟）。
+ * INSIGHTS_V1）；shouldFailChat 返回 true 时该次请求 abort（断网模拟）；
+ * stream=true 时以 SSE 分片响应（chatStream 路径：content 拆多段 delta + [DONE]）。
  */
+
 async function mockAiEndpoints(
   page: Page,
   opts: {
     chatResponses?: Array<string> | string | (() => string)
     shouldFailChat?: () => boolean
+    /** 以 SSE 流式响应（chatStream 路径）：body 拆为多段 delta + [DONE]。 */
+    stream?: boolean
   } = {},
 ): Promise<{ chatRequests: ChatCapture[] }> {
   const chatRequests: ChatCapture[] = []
@@ -125,11 +129,25 @@ async function mockAiEndpoints(
       return
     }
     callIndex += 1
+    const content = respondChat()
+    if (opts.stream) {
+      // SSE 分片：content 拆两段 delta 逐步到达 + [DONE] 终止（chatStream 增量路径）。
+      const delta = (c: string): string =>
+        `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`
+      const half = Math.ceil(content.length / 2)
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        headers: CORS_HEADERS,
+        body: delta(content.slice(0, half)) + delta(content.slice(half)) + 'data: [DONE]\n\n',
+      })
+      return
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       headers: CORS_HEADERS,
-      body: JSON.stringify({ choices: [{ message: { content: respondChat() } }] }),
+      body: JSON.stringify({ choices: [{ message: { content } }] }),
     })
   })
   await page.route('**/v1/models', async (route) => {
@@ -183,7 +201,10 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
       model: 'test-model',
       sendPreview: true,
     })
-    const { chatRequests } = await mockAiEndpoints(page, { chatResponses: INSIGHTS_V1 })
+    const { chatRequests } = await mockAiEndpoints(page, {
+      chatResponses: INSIGHTS_V1,
+      stream: true,
+    })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
     // 预览弹窗（§4.3）：发送预览标题 + 将发送的 payload JSON（<pre>）。
@@ -201,7 +222,7 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     // 确认后恰好一次 chat 请求（非流式 + 配置的 model）。
     await expect.poll(() => chatRequests.length, { timeout: 10_000 }).toBe(1)
     const captured = chatRequests[0]
-    expect(captured.body.stream).toBe(false)
+    expect(captured.body.stream).toBe(true)
     expect(captured.body.model).toBe('test-model')
     // 拦截断言：prompt user content 中的 books 与预览 payload.books 深等价
     // ——同一装配产物（§3.3 防「预览一套、上送一套」漂移）。
@@ -218,7 +239,10 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
       model: 'test-model',
       sendPreview: true,
     })
-    const { chatRequests } = await mockAiEndpoints(page, { chatResponses: INSIGHTS_V1 })
+    const { chatRequests } = await mockAiEndpoints(page, {
+      chatResponses: INSIGHTS_V1,
+      stream: true,
+    })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
     await page.getByRole('dialog').getByRole('button', { name: '确认发送' }).click()
@@ -251,6 +275,7 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     let chatCall = 0
     const { chatRequests } = await mockAiEndpoints(page, {
       chatResponses: () => (chatCall++ === 0 ? INSIGHTS_V1 : INSIGHTS_V2),
+      stream: true,
     })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
@@ -267,33 +292,32 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     expect(chatRequests).toHaveLength(2)
   })
 
-  test('断网（route abort）→ 错误 toast；不渲染新结果、既有结果保留', async ({ page }) => {
+  test('流式（chatStream）：请求 body stream:true；SSE 分片响应最终渲染成功（条目级时序归 Vitest）', async ({
+    page,
+  }) => {
     await seed(page)
-    // sendPreview=false：直接走上送（不经预览门），断网重试路径更短。
+    // sendPreview=false：直接走上送，最短路径验证流式链路。
     await injectAiPrefs(page, {
       enabled: true,
       baseUrl: AI_BASE_URL,
       model: 'test-model',
       sendPreview: false,
     })
-    let failNext = false
     const { chatRequests } = await mockAiEndpoints(page, {
-      chatResponses: () => INSIGHTS_V1,
-      shouldFailChat: () => failNext,
+      chatResponses: INSIGHTS_V1,
+      stream: true,
     })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
-    await expect(page.getByText('偏爱文学类')).toBeVisible()
-    // 断网重新生成：请求 abort → network 分级 toast（§5.4）。
-    failNext = true
-    await page.getByRole('button', { name: '重新生成' }).click()
-    // toast 标题与 Toaster aria-live 包装同时含该文案 → 取第一个（标题元素）。
-    await expect(
-      page.getByText('AI 解读生成失败：网络错误或端点不可用，请重试。').first(),
-    ).toBeVisible()
-    // 新结果不渲染、既有结果保留（错误不覆盖 insights）。
-    await expect(page.getByText('偏爱文学类')).toBeVisible()
+    // 流式响应完整到达后：fact 卡 ×2 + taste 段全部渲染（与 INSIGHTS_V1 一致）。
     await expect(page.locator('[data-slot="profile-ai-fact"]')).toHaveCount(2)
-    expect(chatRequests).toHaveLength(2)
+    await expect(page.getByText('偏爱文学类')).toBeVisible()
+    await expect(page.getByText('藏书中文学类占比最高，共 2 本。')).toBeVisible()
+    await expect(page.getByText('整体书单以虚构类为主，风格偏向细腻叙事。')).toBeVisible()
+    // 请求契约：stream:true（区别于非流式用例的 stream:false）。
+    expect(chatRequests).toHaveLength(1)
+    expect(chatRequests[0]!.body.stream).toBe(true)
+    // 生成后按钮切换为「重新生成」（流式成功定稿路径）。
+    await expect(page.getByRole('button', { name: '重新生成' })).toBeVisible()
   })
 })

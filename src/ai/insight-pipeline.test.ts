@@ -316,3 +316,72 @@ describe('缓存键 locale 隔离（§5.3）', () => {
     expect(typeof zhEntry.generatedAt).toBe('number')
   })
 })
+describe('流式 onPartial 透传（ai-features §4.1 条目级渐进渲染）', () => {
+  it('submitInsightPayload 把 onPartial 透传给 deps.submit（逐步回调已闭合条目）', async () => {
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
+      onPartial?.([INSIGHTS[0]!])
+      onPartial?.([INSIGHTS[0]!, INSIGHTS[1]!])
+      return RESULT
+    })
+    const deps = baseDeps({ submit })
+    const seen: AIInsight[][] = []
+
+    const result = await submitInsightPayload(
+      serializePayload(entities, stats, { classificationSystem: 'clc' }),
+      { locale: 'zh-CN', scene: SCENE, key: KEY },
+      deps,
+      (partial) => seen.push(partial),
+    )
+
+    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(seen).toEqual([[INSIGHTS[0]], [INSIGHTS[0], INSIGHTS[1]]])
+    // 成功路径：onPartial 只是增量渲染钩子，不改变写缓存/成功语义。
+    expect(vi.mocked(deps.writeCache)).toHaveBeenCalledOnce()
+  })
+
+  it('runInsightPipeline 直发路径（sendPreview=false）同样透传 onPartial', async () => {
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
+      onPartial?.([INSIGHTS[0]!])
+      return RESULT
+    })
+    const deps = baseDeps({ submit })
+    const seen: AIInsight[][] = []
+
+    const result = await runInsightPipeline(baseInput(), deps, (partial) => seen.push(partial))
+
+    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(seen).toEqual([[INSIGHTS[0]]])
+  })
+
+  it('不传 onPartial（非流式兼容）→ submit 收到 undefined，行为不变', async () => {
+    const deps = baseDeps()
+    const result = await submitInsightPayload(
+      serializePayload(entities, stats, { classificationSystem: 'clc' }),
+      { locale: 'zh-CN', scene: SCENE, key: KEY },
+      deps,
+    )
+    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(vi.mocked(deps.submit).mock.calls[0][2]).toBeUndefined()
+  })
+
+  it('上送失败 → onPartial 已产生的增量不回滚给调用方（错误路径语义不变）', async () => {
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
+      onPartial?.([INSIGHTS[0]!])
+      throw new AiHttpError(500, 'server error')
+    })
+    const deps = baseDeps({ submit })
+    const seen: AIInsight[][] = []
+
+    const result = await submitInsightPayload(
+      serializePayload(entities, stats, { classificationSystem: 'clc' }),
+      { locale: 'zh-CN', scene: SCENE, key: KEY },
+      deps,
+      (partial) => seen.push(partial),
+    )
+
+    expect(result.status).toBe('error')
+    // 透传语义保持：onPartial 回调仍然被调用（Hook 侧负责失败时清空增量）。
+    expect(seen).toEqual([[INSIGHTS[0]]])
+    expect(deps.writeCache).not.toHaveBeenCalled()
+  })
+})

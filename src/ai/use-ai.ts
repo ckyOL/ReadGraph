@@ -1,6 +1,6 @@
 // AI 阅读画像编排 Hook（ai-features §3.1 管道流程 ①–⑦ / §4.1 / §5.3 / §5.4）。
 // 职责边界：响应式聚合（与 use-profile-stats 同源实体，range 固定 null = 全量口径）、
-// 状态管理（insights/loading/error/pendingPreview/并发闸）与预览门接线；
+// 状态管理（insights/loading/error/pendingPreview/streamingInsights/并发闸）与预览门接线；
 // 编排核心（缓存检查→装配→预览门→上送→错误分级）为纯函数，落在
 // insight-pipeline.ts（依赖注入可单测），本 Hook 只做数据源接入与状态落位。
 // 输入独立性（§2.7）：生成输入只消费本地实体+聚合+payload，insights 状态绝不参与
@@ -17,8 +17,9 @@ import {
   buildProfileInsightsPrompt,
   profileInsightsSchema,
 } from '@/ai/prompts/profile-insights'
-import type { AIInsight, ProfileInsights } from '@/ai/prompts/profile-insights'
+import type { AIInsight } from '@/ai/prompts/profile-insights'
 import type { ProfilePayload } from '@/ai/sanitize'
+import { extractCompletedInsights } from '@/ai/stream-json'
 import { db } from '@/db/db-instance'
 import { readAiApiKey } from '@/lib/ai-api-key'
 import { readAiCache, writeAiCache } from '@/lib/ai-cache'
@@ -45,6 +46,9 @@ export type { AiInsightError } from '@/ai/insight-pipeline'
 export interface UseAiInsightsState {
   /** 生成结果；未生成/无数据时为 null */
   insights: AIInsight[] | null
+  /** 流式增量预览（§4.1 条目级渐进渲染）：上送在途时已闭合的完整条目；
+   *  最终定稿（成功写缓存）或失败后清空。null = 无增量。 */
+  streamingInsights: AIInsight[] | null
   /** 覆盖生成与重新生成（§8 rerender-transitions：Skeleton 占位 + 按钮禁用） */
   loading: boolean
   error: AiInsightError | null
@@ -124,37 +128,63 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AiInsightError | null>(null)
   const [pendingPreview, setPendingPreview] = useState<ProfilePayload | null>(null)
+  // 流式增量预览（§4.1 条目级渐进渲染）：上送在途时逐步落位已闭合条目。
+  const [streamingInsights, setStreamingInsights] = useState<AIInsight[] | null>(null)
   // 并发防护：上送在途时忽略重复的 generate/confirm 触发。
   const busyRef = useRef(false)
 
   /**
    * 上送（§3.1 ⑤⑥）：绑定 provider 的 chat 门面，由管线 submitInsightPayload 调用；
    * payload 即预览展示的同一对象引用（§3.3）。prompt 数据区只取 payload 白名单子集
-   * （summary + books，prompts 契约）；schema 校验失败 provider 抛 ZodError，管线按
-   * validation 分级。成功/失败与缓存写入由管线处理，此处只管理并发闸与 loading 态。
+   * （summary + books，prompts 契约）。流式路径（§4.1）：chatStream 逐增量累积文本，
+   * 渐进解析已闭合条目经 onPartial 回调（增量渲染）；流结束后完整 JSON 过
+   * profileInsightsSchema 校验（失败抛 ZodError，管线按 validation 分级）。
+   * 成功/失败与缓存写入由管线处理，此处只管理并发闸、loading 态与增量状态。
    */
-  const submit = useCallback<InsightPipelineDeps['submit']>(async (payload, locale) => {
-    busyRef.current = true
-    setLoading(true)
-    setError(null)
-    setPendingPreview(null)
-    try {
-      const prefs = readPreferences()
-      const provider = createAiProvider({
-        baseUrl: prefs.ai.baseUrl,
-        apiKey: readAiApiKey(),
-        model: prefs.ai.model,
-        temperature: PROFILE_TEMPERATURE,
-      })
-      return (await provider.chat(
-        buildProfileInsightsPrompt({ summary: payload.summary, books: payload.books, locale }),
-        { schema: profileInsightsSchema },
-      )) as ProfileInsights
-    } finally {
-      busyRef.current = false
-      setLoading(false)
-    }
-  }, [])
+  const submit = useCallback<InsightPipelineDeps['submit']>(
+    async (payload, locale, onPartial) => {
+      busyRef.current = true
+      setLoading(true)
+      setError(null)
+      setPendingPreview(null)
+      setStreamingInsights(null)
+      try {
+        const prefs = readPreferences()
+        const provider = createAiProvider({
+          baseUrl: prefs.ai.baseUrl,
+          apiKey: readAiApiKey(),
+          model: prefs.ai.model,
+          temperature: PROFILE_TEMPERATURE,
+        })
+        const messages = buildProfileInsightsPrompt({
+          summary: payload.summary,
+          books: payload.books,
+          locale,
+        })
+        // 流式路径（§4.1）：增量累积文本 → 渐进解析已闭合条目（onPartial 增量渲染）→
+        // 流结束后完整 JSON 过 profileInsightsSchema 校验（失败抛 ZodError，管线按
+        // validation 分级）。
+        let text = ''
+        for await (const chunk of provider.chatStream(messages)) {
+          text += chunk
+          if (onPartial) {
+            const partial = extractCompletedInsights(text)
+            if (partial !== null) onPartial(partial)
+          }
+        }
+        const parsed: unknown = JSON.parse(text)
+        const result = profileInsightsSchema.safeParse(parsed)
+        if (!result.success) {
+          throw result.error
+        }
+        return result.data
+      } finally {
+        busyRef.current = false
+        setLoading(false)
+      }
+    },
+    [],
+  )
 
   const pipelineDeps = useMemo<InsightPipelineDeps>(
     () => ({
@@ -165,60 +195,67 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
     [submit],
   )
 
-  const generate = useCallback(async (bypassCache = false) => {
-    if (busyRef.current || pendingPreview) return
-    const prefs = readPreferences()
-    // 编排核心（缓存检查→装配→预览门→上送→错误分级）在 insight-pipeline.ts：
-    // 未启用/聚合无数据 → skipped（静默，不清 error）；未配置端点/模型 → unconfigured；
-    // 缓存命中（损坏视为未命中）→ cache-hit 直出；未命中 → 装配 → 预览门或直接上送。
-    // 「重新生成」bypassCache=true 绕过缓存重新请求并覆盖缓存（§4.1）。
-    const result = await runInsightPipeline(
-      {
-        prefs: prefs.ai,
-        locale,
-        entities: { books, catalogRecords, borrowCycles, sources },
-        stats,
-        classificationSystem: opts.classificationSystem,
-        bypassCache,
-        scene: CACHE_SCENE,
-        key: CACHE_KEY,
-      },
+  const generate = useCallback(
+    async (bypassCache = false) => {
+      if (busyRef.current || pendingPreview) return
+      const prefs = readPreferences()
+      // 编排核心（缓存检查→装配→预览门→上送→错误分级）在 insight-pipeline.ts：
+      // 未启用/聚合无数据 → skipped（静默，不清 error）；未配置端点/模型 → unconfigured；
+      // 缓存命中（损坏视为未命中）→ cache-hit 直出；未命中 → 装配 → 预览门或直接上送。
+      // 「重新生成」bypassCache=true 绕过缓存重新请求并覆盖缓存（§4.1）。
+      // 流式增量（§4.1）：上送在途时 onPartial 落位 streamingInsights，定稿/失败清空。
+      const result = await runInsightPipeline(
+        {
+          prefs: prefs.ai,
+          locale,
+          entities: { books, catalogRecords, borrowCycles, sources },
+          stats,
+          classificationSystem: opts.classificationSystem,
+          bypassCache,
+          scene: CACHE_SCENE,
+          key: CACHE_KEY,
+        },
+        pipelineDeps,
+        (partial) => setStreamingInsights(partial),
+      )
+      switch (result.status) {
+        case 'skipped':
+          // 静默返回，不置 error。
+          return
+        case 'unconfigured':
+          setError(result.error)
+          return
+        case 'cache-hit':
+          setError(null)
+          setInsights(result.insights)
+          return
+        case 'pending-preview':
+          setError(null)
+          setPendingPreview(result.payload)
+          return
+        case 'success':
+          setError(null)
+          setStreamingInsights(null)
+          setInsights(result.insights)
+          return
+        case 'error':
+          setStreamingInsights(null)
+          setError(result.error)
+          return
+      }
+    },
+    [
+      stats,
+      books,
+      catalogRecords,
+      borrowCycles,
+      sources,
+      locale,
+      opts.classificationSystem,
+      pendingPreview,
       pipelineDeps,
-    )
-    switch (result.status) {
-      case 'skipped':
-        // 静默返回，不置 error。
-        return
-      case 'unconfigured':
-        setError(result.error)
-        return
-      case 'cache-hit':
-        setError(null)
-        setInsights(result.insights)
-        return
-      case 'pending-preview':
-        setError(null)
-        setPendingPreview(result.payload)
-        return
-      case 'success':
-        setError(null)
-        setInsights(result.insights)
-        return
-      case 'error':
-        setError(result.error)
-        return
-    }
-  }, [
-    stats,
-    books,
-    catalogRecords,
-    borrowCycles,
-    sources,
-    locale,
-    opts.classificationSystem,
-    pendingPreview,
-    pipelineDeps,
-  ])
+    ],
+  )
 
   const confirmGenerate = useCallback(async () => {
     if (busyRef.current || !pendingPreview) return
@@ -227,9 +264,15 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       pendingPreview,
       { locale, scene: CACHE_SCENE, key: CACHE_KEY },
       pipelineDeps,
+      (partial) => setStreamingInsights(partial),
     )
-    if (result.status === 'success') setInsights(result.insights)
-    else setError(result.error)
+    if (result.status === 'success') {
+      setStreamingInsights(null)
+      setInsights(result.insights)
+    } else {
+      setStreamingInsights(null)
+      setError(result.error)
+    }
   }, [pendingPreview, locale, pipelineDeps])
 
   const cancelGenerate = useCallback(() => {
@@ -238,6 +281,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
 
   return {
     insights,
+    streamingInsights,
     loading,
     error,
     pendingPreview,

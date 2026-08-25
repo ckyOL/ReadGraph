@@ -148,7 +148,18 @@ function aiDevProxyPlugin(): Plugin {
           up.headers.forEach((value, key) => {
             if (!(key in PROXY_STRIP_HEADERS)) res.setHeader(key, value)
           })
-          res.end(Buffer.from(await up.arrayBuffer()))
+          // 流式转发（ai-features §4.1 chatStream）：SSE 上游边生成边推送，整体缓冲
+          // 会憋到响应完整才出——逐 chunk 转发让首 token 尽早到达浏览器。
+          // content-length 已在 PROXY_STRIP_HEADERS 剥离，Node 自动用 chunked 编码。
+          if (up.body) {
+            for await (const chunk of up.body) {
+              if (res.destroyed) break
+              res.write(Buffer.from(chunk))
+            }
+            res.end()
+          } else {
+            res.end(Buffer.from(await up.arrayBuffer()))
+          }
         } catch {
           // 上游不可达：中断连接 → 浏览器 fetch TypeError → AiNetworkError。
           res.destroy()

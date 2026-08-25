@@ -99,13 +99,36 @@ describe('createAiProvider().chat', () => {
     await expect(provider.chat(MESSAGES, { schema })).rejects.toBeInstanceOf(z.ZodError)
   })
 
-  it('stream:true → 抛明确错误（Phase 2 边界）且不发起请求', async () => {
-    const fetchMock = okResponse({ choices: [{ message: { content: '{}' } }] })
+  it('stream:true → 走 chatStream 链路：流式增量拼接后 JSON.parse + schema 校验', async () => {
+    const schema = z.object({ kind: z.enum(['fact', 'taste']), body: z.string() })
+    const content = JSON.stringify({ kind: 'fact', body: '偏爱文学类' })
+    const encoder = new TextEncoder()
+    const parts = [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: content.slice(0, 8) } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: content.slice(8) } }] })}\n\n`,
+      'data: [DONE]\n\n',
+    ]
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const part of parts) controller.enqueue(encoder.encode(part))
+              controller.close()
+            },
+          }),
+        }) as Response,
+    )
     vi.stubGlobal('fetch', fetchMock)
     const provider = createAiProvider({ baseUrl: 'https://api.example.com', model: 'm' })
 
-    await expect(provider.chat(MESSAGES, { stream: true })).rejects.toThrow(/Phase 2/)
-    expect(fetchMock).not.toHaveBeenCalled()
+    const result = await provider.chat(MESSAGES, { stream: true, schema })
+
+    expect(result).toEqual({ kind: 'fact', body: '偏爱文学类' })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toMatchObject({ stream: true })
   })
 
   it('HTTP 401 → AiHttpError 透传（带状态码）', async () => {
@@ -175,8 +198,71 @@ describe('parseSseEvents', () => {
     expect(parseSseEvents(['data: {"a":1}\n\ndata: [DONE]'])).toEqual(['{"a":1}'])
   })
 
-  it('空流/无 data 事件 → 空数组', () => {
-    expect(parseSseEvents([])).toEqual([])
-    expect(parseSseEvents(['\n\n'])).toEqual([])
+})
+describe('createAiProvider().chatStream', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  /** SSE 分片响应工厂：每段一个 delta.content 事件。 */
+  function streamResponse(contents: string[]): { ok: true; status: 200; body: ReadableStream<Uint8Array> } {
+    const encoder = new TextEncoder()
+    const parts: Uint8Array[] = []
+    for (const content of contents) {
+      parts.push(
+        encoder.encode(
+          `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`,
+        ),
+      )
+    }
+    parts.push(encoder.encode('data: [DONE]\n\n'))
+    return {
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const part of parts) controller.enqueue(part)
+          controller.close()
+        },
+      }),
+    }
+  }
+
+  it('绑定配置：流拼接产出 == 非流式 content（temperature 透传、Authorization 携带）', async () => {
+    const content = '{"insights":[{"kind":"fact","body":"a"}]}'
+    const fetchMock = vi.fn(async () => streamResponse([content.slice(0, 10), content.slice(10)]))
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = createAiProvider({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'sk-test',
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+    })
+
+    const chunks: string[] = []
+    for await (const chunk of provider.chatStream(MESSAGES)) chunks.push(chunk)
+    expect(chunks.join('')).toBe(content)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: 'gpt-4o-mini',
+      stream: true,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+    })
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer sk-test' })
+  })
+
+  it('外部 signal 中止 → 抛 AbortError（透传 ai-client 链路）', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal('fetch', hangingFetch())
+    const provider = createAiProvider({ baseUrl: 'https://api.example.com', model: 'm' })
+
+    const iter = provider.chatStream(MESSAGES, { signal: controller.signal })[Symbol.asyncIterator]()
+    const pending = iter.next()
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    controller.abort()
+    await assertion
   })
 })

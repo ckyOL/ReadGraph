@@ -199,6 +199,7 @@
   "profile.ai.title": "AI 解读",
   "profile.ai.generate": "生成 AI 解读",
   "profile.ai.regenerate": "重新生成",
+  "profile.ai.generating": "AI 正在生成解读…",
   "profile.ai.generated": "AI 生成，基于本地数据",
   "profile.ai.error.network": "AI 解读生成失败：网络错误、跨域（CORS）拦截或端点不可用，请重试。",
   "profile.ai.error.timeout": "请求超时或已中止，请重试（生成耗时较长时可稍后重试）。",

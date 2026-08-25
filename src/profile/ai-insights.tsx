@@ -1,13 +1,16 @@
 // AI 解读区（ai-features §4.1）：价值卡行之下、图表 Tabs 之上；与价值卡行同构
 // （窄卡、不卡片套卡片、不抢图表全幅）。fact 窄卡 = 标题 + 正文 + 维度 chip
-// （点击激活对应图表 tab = 引用定位）；taste 全宽评价段（Phase 1 非流式整段）；
+// （点击激活对应图表 tab = 引用定位）；taste 全宽评价段（整段到达即渲染）；
+// 流式（§4.1 条目级渐进渲染）：上送在途时已闭合条目逐步渲染、尾部「生成中」占位；
 // 固定全量口径、不与 range 联动；整体可重新生成；每条标注「AI 生成，基于本地数据」；
 // 「清除 AI 缓存」（§4.1，原设置页 §4.2）在标题行「重新生成」旁，仅已有结果时显示。
 // 条件渲染（§2.1/§8）：ai.enabled !== true 时返回 null——未启用时全站无 AI 痕迹
 // （含 loading 态也不渲染）；配合路由侧 lazy + 开关门控，AI 默认关闭不拉主包。
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { AIInsight } from '@/ai/prompts/profile-insights'
 import { useAiInsights } from '@/ai/use-ai'
 import { AiSendPreviewDialog } from '@/components/ai-send-preview'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +51,7 @@ export function AiInsightsSection({
   const [aiEnabled] = useState(() => readPreferences().ai.enabled)
   const {
     insights,
+    streamingInsights,
     loading,
     error,
     pendingPreview,
@@ -112,54 +116,25 @@ export function AiInsightsSection({
           )}
         </div>
         {loading ? (
-          // 生成/重新生成 loading 态（§8 rerender-transitions）：Skeleton 占位 +
-          // 按钮禁用，不阻塞页面其余渲染。
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-24 w-full md:col-span-2" />
-          </div>
-        ) : (
-          insights !== null && (
+          // 生成/重新生成 loading 态（§8 rerender-transitions）：流式增量已出条目时
+          // 渲染真实卡 + 尾部「生成中」占位，否则 Skeleton 占位 + 按钮禁用，
+          // 不阻塞页面其余渲染。
+          streamingInsights !== null && streamingInsights.length > 0 ? (
+            <>
+              {renderInsightGrid(streamingInsights, onActivateTab, t)}
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                {t('profile.ai.generating')}
+              </div>
+            </>
+          ) : (
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {insights.map((insight, i) =>
-                insight.kind === 'fact' ? (
-                  <article
-                    key={i}
-                    className="rounded-lg border border-border p-3"
-                    data-slot="profile-ai-fact"
-                  >
-                    {insight.title && (
-                      <h3 className="text-sm font-medium">{insight.title}</h3>
-                    )}
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {insight.body}
-                    </p>
-                    {insight.dimension && (
-                      <DimensionChip
-                        dimension={insight.dimension}
-                        onActivateTab={onActivateTab}
-                      />
-                    )}
-                    <p className="mt-2 text-xs text-muted-foreground/70">
-                      {t('profile.ai.generated')}
-                    </p>
-                  </article>
-                ) : (
-                  <article
-                    key={i}
-                    className="rounded-lg border border-border p-3 md:col-span-2"
-                    data-slot="profile-ai-taste"
-                  >
-                    <p className="text-sm leading-relaxed">{insight.body}</p>
-                    <p className="mt-2 text-xs text-muted-foreground/70">
-                      {t('profile.ai.generated')}
-                    </p>
-                  </article>
-                ),
-              )}
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-24 w-full md:col-span-2" />
             </div>
           )
+        ) : (
+          insights !== null && renderInsightGrid(insights, onActivateTab, t)
         )}
       </section>
       <AiSendPreviewDialog
@@ -169,6 +144,49 @@ export function AiInsightsSection({
         onCancel={cancelGenerate}
       />
     </>
+  )
+}
+
+/** 洞察卡网格：fact 窄卡（标题+正文+维度 chip）+ taste 全宽段；定稿结果与流式增量共用同一渲染。 */
+function renderInsightGrid(
+  insights: AIInsight[],
+  onActivateTab: (tab: string) => void,
+  t: (key: string) => string,
+): ReactNode {
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+      {insights.map((insight, i) =>
+        insight.kind === 'fact' ? (
+          <article
+            key={i}
+            className="rounded-lg border border-border p-3"
+            data-slot="profile-ai-fact"
+          >
+            {insight.title && (
+              <h3 className="text-sm font-medium">{insight.title}</h3>
+            )}
+            <p className="mt-1 text-sm text-muted-foreground">{insight.body}</p>
+            {insight.dimension && (
+              <DimensionChip dimension={insight.dimension} onActivateTab={onActivateTab} />
+            )}
+            <p className="mt-2 text-xs text-muted-foreground/70">
+              {t('profile.ai.generated')}
+            </p>
+          </article>
+        ) : (
+          <article
+            key={i}
+            className="rounded-lg border border-border p-3 md:col-span-2"
+            data-slot="profile-ai-taste"
+          >
+            <p className="text-sm leading-relaxed">{insight.body}</p>
+            <p className="mt-2 text-xs text-muted-foreground/70">
+              {t('profile.ai.generated')}
+            </p>
+          </article>
+        ),
+      )}
+    </div>
   )
 }
 
