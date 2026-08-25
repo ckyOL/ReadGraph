@@ -162,9 +162,9 @@ describe('parseSseEvents', () => {
     expect(parseSseEvents(['data: {"a":1}\n\n'])).toEqual(['{"a":1}'])
   })
 
-  it('事件间空行分隔多个事件；事件内多行 data 以换行拼接', () => {
+  it('行独立事件：连续 data 行（单换行分隔）各自产出', () => {
     const chunks = ['data: line1\ndata: line2\n\ndata: {"b":2}\n\n']
-    expect(parseSseEvents(chunks)).toEqual(['line1\nline2', '{"b":2}'])
+    expect(parseSseEvents(chunks)).toEqual(['line1', 'line2', '{"b":2}'])
   })
 
   it('[DONE] 终止：后续分片/事件被忽略且不含在结果内', () => {
@@ -177,9 +177,9 @@ describe('parseSseEvents', () => {
     expect(parseSseEvents(chunks)).toEqual(['{"a":1}', '{"b":2}'])
   })
 
-  it('分片内部任意切分：多行 data 与事件间空行均可跨分片', () => {
+  it('分片内部任意切分：data 行跨分片重组为行独立事件', () => {
     const chunks = ['data: h', 'ello\ndata: w', 'orld\n', '\n']
-    expect(parseSseEvents(chunks)).toEqual(['hello\nworld'])
+    expect(parseSseEvents(chunks)).toEqual(['hello', 'world'])
   })
 
   it('非 data 字段与注释忽略；data: 后前导空格剥离', () => {
@@ -188,6 +188,14 @@ describe('parseSseEvents', () => {
       ' spaced',
     ])
   })
+  it('单换行分隔（无空行）→ 每行 data 独立产出（非标准端点容错）', () => {
+    expect(parseSseEvents(['data: {"a":1}\ndata: {"b":2}\n'])).toEqual(['{"a":1}', '{"b":2}'])
+  })
+
+  it('裸 JSON 行（无 data: 前缀）容错为事件值（整体 JSON 分块传输端点）', () => {
+    expect(parseSseEvents(['{"a":1}\n{"b":2}\n'])).toEqual(['{"a":1}', '{"b":2}'])
+  })
+
 
   it('CRLF 行尾按同一规则解析', () => {
     expect(parseSseEvents(['data: {"a":1}\r\n\r\n'])).toEqual(['{"a":1}'])
@@ -249,7 +257,6 @@ describe('createAiProvider().chatStream', () => {
       model: 'gpt-4o-mini',
       stream: true,
       temperature: 0.2,
-      response_format: { type: 'json_object' },
     })
     expect(init.headers).toMatchObject({ Authorization: 'Bearer sk-test' })
   })

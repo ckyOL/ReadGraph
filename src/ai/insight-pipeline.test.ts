@@ -9,8 +9,7 @@ import type {
   InsightPipelineDeps,
   InsightPipelineInput,
 } from '@/ai/insight-pipeline'
-import { profileInsightsSchema } from '@/ai/prompts/profile-insights'
-import type { AIInsight, ProfileInsights } from '@/ai/prompts/profile-insights'
+import { validateProfileInsightsMarkdown } from '@/ai/prompts/profile-insights'
 import { serializePayload } from '@/ai/sanitize'
 import { readAiCache, writeAiCache } from '@/lib/ai-cache'
 import { makeBook, makeCatalog, makeCycle, makeSource } from '@/db/test-helpers'
@@ -29,13 +28,11 @@ const BASE_PREFS = {
   sendPreview: false,
 }
 
-const INSIGHTS: AIInsight[] = [
-  { kind: 'fact', title: '偏爱文学类', body: '藏书中文学类占比最高，共 2 本。', dimension: 'classification' },
-  { kind: 'fact', body: '最近 30 天内借阅了 2 本。', dimension: 'volume' },
-  { kind: 'taste', body: '整体书单以虚构类为主，风格偏向细腻叙事。' },
-]
+/** 合法 markdown 生成结果（弱校验：非空 + 长度上限）。 */
+const MARKDOWN =
+  '## 分类偏好\n\n藏书中文学类占比最高，共 2 本。\n\n## 借阅节奏\n\n最近 30 天内借阅了 2 本。\n\n## 一句话总结\n\n整体书单以虚构类为主，风格偏向细腻叙事。'
 
-const RESULT: ProfileInsights = { insights: INSIGHTS }
+const RESULT = MARKDOWN
 
 /** 迷你实体集：2 本书 × 各 1 编目 + 1 返回周期（跨 CLC 一级类目）。 */
 function buildEntities(): ProfileStatsInput {
@@ -90,38 +87,38 @@ function baseDeps(overrides: Partial<InsightPipelineDeps> = {}): InsightPipeline
   }
 }
 
-/** 构造真实 ZodError：对非法响应 safeParse 取 error（与 provider 抛错同型）。 */
+/** 构造真实 ZodError：对非法文本调用弱校验取 error（与 Hook 上送抛错同型）。 */
 function zodError(): ZodError {
-  const parsed = profileInsightsSchema.safeParse({ insights: [] })
-  if (parsed.success) throw new Error('unreachable')
-  return parsed.error
+  try {
+    validateProfileInsightsMarkdown('')
+    throw new Error('unreachable')
+  } catch (e) {
+    return e as ZodError
+  }
 }
 
 describe('runInsightPipeline — 缓存（§5.3）', () => {
   it('缓存命中直出：返回缓存结果，不调用上送、不写缓存', async () => {
     const deps = baseDeps({ readCache: vi.fn(() => ({ result: RESULT, generatedAt: 123 })) })
     const result = await runInsightPipeline(baseInput(), deps)
-    expect(result).toEqual({ status: 'cache-hit', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'cache-hit', markdown: MARKDOWN })
     expect(deps.submit).not.toHaveBeenCalled()
     expect(deps.writeCache).not.toHaveBeenCalled()
   })
 
-  it('缓存结果不满足 schema（条数不足）→ 视为未命中继续生成', async () => {
+  it('缓存结果不满足弱校验（纯空白）→ 视为未命中继续生成', async () => {
     const deps = baseDeps({
-      readCache: vi.fn(() => ({
-        result: { insights: [{ kind: 'fact', body: '只有一条' }] },
-        generatedAt: 1,
-      })),
+      readCache: vi.fn(() => ({ result: '   \n ', generatedAt: 1 })),
     })
     const result = await runInsightPipeline(baseInput(), deps)
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit)).toHaveBeenCalledOnce()
   })
 
-  it('缓存结果非对象（损坏 JSON）→ 视为未命中继续生成', async () => {
-    const deps = baseDeps({ readCache: vi.fn(() => ({ result: 'garbage', generatedAt: 1 })) })
+  it('缓存结果非字符串（损坏 JSON）→ 视为未命中继续生成', async () => {
+    const deps = baseDeps({ readCache: vi.fn(() => ({ result: 42, generatedAt: 1 })) })
     const result = await runInsightPipeline(baseInput(), deps)
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit)).toHaveBeenCalledOnce()
   })
 })
@@ -148,14 +145,14 @@ describe('runInsightPipeline — 预览门（§3.1 ④ / §3.3）', () => {
       { locale: 'zh-CN', scene: SCENE, key: KEY },
       deps,
     )
-    expect(confirmed).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(confirmed).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit).mock.calls[0][0]).toBe(result.payload)
   })
 
   it('sendPreview=false → 直接走上送（不经预览门），成功写缓存（writeAiCache 收到 result）', async () => {
     const deps = baseDeps()
     const result = await runInsightPipeline(baseInput(), deps)
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit)).toHaveBeenCalledOnce()
     // 上送产物与 serializePayload 直接调用产物深等价（同一装配函数）。
     const submitted = vi.mocked(deps.submit).mock.calls[0][0]
@@ -199,18 +196,10 @@ describe('runInsightPipeline — 重新生成（§4.1）', () => {
   it('bypassCache=true → 跳过缓存读取，直接装配+上送并覆盖缓存', async () => {
     const deps = baseDeps({
       // 存在合法缓存（正常路径会命中），bypass 后必须忽略。
-      readCache: vi.fn(() => ({
-        result: {
-          insights: [
-            { kind: 'fact', body: '旧缓存一' },
-            { kind: 'fact', body: '旧缓存二' },
-          ],
-        },
-        generatedAt: 1,
-      })),
+      readCache: vi.fn(() => ({ result: '## 分类偏好\n\n旧缓存', generatedAt: 1 })),
     })
     const result = await runInsightPipeline(baseInput({ bypassCache: true }), deps)
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
     // 绕过缓存：完全不读缓存（与「命中则直出」路径互斥）。
     expect(deps.readCache).not.toHaveBeenCalled()
     expect(vi.mocked(deps.submit)).toHaveBeenCalledOnce()
@@ -293,19 +282,19 @@ describe('缓存键 locale 隔离（§5.3）', () => {
     const deps = baseDeps({ readCache: readAiCache, writeCache: writeAiCache })
     // zh-CN 首次生成 → 写 zh 缓存（键形态 ai:profile:zh-CN:all）。
     const zhFirst = await runInsightPipeline(baseInput(), deps)
-    expect(zhFirst).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(zhFirst).toEqual({ status: 'success', markdown: MARKDOWN })
     const zhKey = `ai:${SCENE}:zh-CN:${KEY}`
     const enKey = `ai:${SCENE}:en:${KEY}`
     const zhRaw = store.get(zhKey)
     expect(zhRaw).toBeDefined()
     // en 生成 → 独立 en 键落盘（ai:profile:en:all），且不覆盖 zh 条目（locale 隔离）。
     const enFirst = await runInsightPipeline(baseInput({ locale: 'en' }), deps)
-    expect(enFirst).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(enFirst).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(store.get(enKey)).toBeDefined()
     expect(store.get(zhKey)).toBe(zhRaw)
     // zh 再次生成 → 命中 zh 缓存直出（不再上送）；en 缓存不受影响。
     const zhAgain = await runInsightPipeline(baseInput(), deps)
-    expect(zhAgain).toEqual({ status: 'cache-hit', insights: INSIGHTS })
+    expect(zhAgain).toEqual({ status: 'cache-hit', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit)).toHaveBeenCalledTimes(2)
     // 缓存条目 = 生成结果 + 时间戳（原文存储）。
     const zhEntry = JSON.parse(store.get(zhKey) ?? 'null') as {
@@ -316,15 +305,15 @@ describe('缓存键 locale 隔离（§5.3）', () => {
     expect(typeof zhEntry.generatedAt).toBe('number')
   })
 })
-describe('流式 onPartial 透传（ai-features §4.1 条目级渐进渲染）', () => {
-  it('submitInsightPayload 把 onPartial 透传给 deps.submit（逐步回调已闭合条目）', async () => {
-    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
-      onPartial?.([INSIGHTS[0]!])
-      onPartial?.([INSIGHTS[0]!, INSIGHTS[1]!])
+describe('流式 onPartial 透传（ai-features §4.1 逐字文本流）', () => {
+  it('submitInsightPayload 把 onPartial 透传给 deps.submit（逐步回调累积 markdown 文本）', async () => {
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: string) => void) => {
+      onPartial?.('## 分类偏好')
+      onPartial?.('## 分类偏好\n\n藏书中文学类占比最高，共 2 本。')
       return RESULT
     })
     const deps = baseDeps({ submit })
-    const seen: AIInsight[][] = []
+    const seen: string[] = []
 
     const result = await submitInsightPayload(
       serializePayload(entities, stats, { classificationSystem: 'clc' }),
@@ -333,24 +322,24 @@ describe('流式 onPartial 透传（ai-features §4.1 条目级渐进渲染）',
       (partial) => seen.push(partial),
     )
 
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
-    expect(seen).toEqual([[INSIGHTS[0]], [INSIGHTS[0], INSIGHTS[1]]])
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
+    expect(seen).toEqual(['## 分类偏好', '## 分类偏好\n\n藏书中文学类占比最高，共 2 本。'])
     // 成功路径：onPartial 只是增量渲染钩子，不改变写缓存/成功语义。
     expect(vi.mocked(deps.writeCache)).toHaveBeenCalledOnce()
   })
 
   it('runInsightPipeline 直发路径（sendPreview=false）同样透传 onPartial', async () => {
-    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
-      onPartial?.([INSIGHTS[0]!])
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: string) => void) => {
+      onPartial?.('## 分类偏好')
       return RESULT
     })
     const deps = baseDeps({ submit })
-    const seen: AIInsight[][] = []
+    const seen: string[] = []
 
     const result = await runInsightPipeline(baseInput(), deps, (partial) => seen.push(partial))
 
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
-    expect(seen).toEqual([[INSIGHTS[0]]])
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
+    expect(seen).toEqual(['## 分类偏好'])
   })
 
   it('不传 onPartial（非流式兼容）→ submit 收到 undefined，行为不变', async () => {
@@ -360,17 +349,17 @@ describe('流式 onPartial 透传（ai-features §4.1 条目级渐进渲染）',
       { locale: 'zh-CN', scene: SCENE, key: KEY },
       deps,
     )
-    expect(result).toEqual({ status: 'success', insights: INSIGHTS })
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
     expect(vi.mocked(deps.submit).mock.calls[0][2]).toBeUndefined()
   })
 
   it('上送失败 → onPartial 已产生的增量不回滚给调用方（错误路径语义不变）', async () => {
-    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: AIInsight[]) => void) => {
-      onPartial?.([INSIGHTS[0]!])
+    const submit = vi.fn(async (_payload: unknown, _locale: string, onPartial?: (p: string) => void) => {
+      onPartial?.('## 分类偏好')
       throw new AiHttpError(500, 'server error')
     })
     const deps = baseDeps({ submit })
-    const seen: AIInsight[][] = []
+    const seen: string[] = []
 
     const result = await submitInsightPayload(
       serializePayload(entities, stats, { classificationSystem: 'clc' }),
@@ -381,7 +370,7 @@ describe('流式 onPartial 透传（ai-features §4.1 条目级渐进渲染）',
 
     expect(result.status).toBe('error')
     // 透传语义保持：onPartial 回调仍然被调用（Hook 侧负责失败时清空增量）。
-    expect(seen).toEqual([[INSIGHTS[0]]])
+    expect(seen).toEqual(['## 分类偏好'])
     expect(deps.writeCache).not.toHaveBeenCalled()
   })
 })

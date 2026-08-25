@@ -326,7 +326,7 @@ describe('chatStream', () => {
     vi.unstubAllGlobals()
   })
 
-  it('请求构造：POST 同 chat 的 URL/headers，body stream:true + response_format 保留', async () => {
+  it('请求构造：POST 同 chat 的 URL/headers，body stream:true （无 response_format——markdown 文本流）', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -347,7 +347,6 @@ describe('chatStream', () => {
       model: 'gpt-4o-mini',
       messages: MESSAGES,
       stream: true,
-      response_format: { type: 'json_object' },
     })
   })
 
@@ -444,5 +443,15 @@ describe('chatStream', () => {
     const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
     ctrl.abort()
     await assertion
+  })
+  it('整体 JSON 被分块传输（无 data: 前缀、无换行，message.content 形态）→ 收尾产出完整 content', async () => {
+    const content = JSON.stringify({ choices: [{ message: { content: '## 分类偏好\n\n正文' } }] })
+    // 裸 JSON 分片：无 data: 前缀、无换行——parser 缓冲至流结束，end() 收尾产出。
+    const body = sseBody([content.slice(0, 12), content.slice(12)])
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })))
+
+    const { chunks, text } = await collect(chatStream({ ...BASE_OPTS }))
+    expect(chunks).toEqual(['## 分类偏好\n\n正文'])
+    expect(text).toBe('## 分类偏好\n\n正文')
   })
 })

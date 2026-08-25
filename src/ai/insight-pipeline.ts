@@ -1,13 +1,12 @@
 // AI 阅读画像编排核心（ai-features §3.1 ①–⑦ / §4.1 / §5.3 / §5.4）：use-ai.ts 的
 // 生成/上送编排逻辑（缓存检查→装配→预览门→上送→错误分级）下沉为本纯函数模块，
 // 实体/聚合/偏好/缓存/上送全部依赖注入；不读 Date.now()/IndexedDB/localStorage/DOM，
-// 同入参 + 同 deps 产出确定阶段结果。React 状态管理（loading/busy/insights/error/
-// pendingPreview/streamingInsights）保留在 Hook（use-ai.ts），本模块不感知。
+// 同入参 + 同 deps 产出确定阶段结果。React 状态管理（loading/busy/markdown/error/
+// pendingPreview/streamingMarkdown）保留在 Hook（use-ai.ts），本模块不感知。
 import { ZodError } from 'zod'
 
 import { AiHttpError } from '@/ai/ai-client'
-import { profileInsightsSchema } from '@/ai/prompts/profile-insights'
-import type { AIInsight, ProfileInsights } from '@/ai/prompts/profile-insights'
+import { validateProfileInsightsMarkdown } from '@/ai/prompts/profile-insights'
 import { serializePayload } from '@/ai/sanitize'
 import type { ProfilePayload } from '@/ai/sanitize'
 import type { AiCacheEntry } from '@/lib/ai-cache'
@@ -67,14 +66,14 @@ export interface InsightPipelineInput {
 export interface InsightPipelineDeps {
   readCache(scene: string, locale: Locale, key: string): AiCacheEntry | null
   writeCache(scene: string, locale: Locale, key: string, result: unknown): void
-  /** 上送：调用方绑定 provider 与 prompt 装配；schema 校验失败抛 ZodError（此处分级）。
-   *  onPartial 为流式增量回调（§4.1 条目级渐进渲染）：流中已闭合条目逐步送达，
+  /** 上送：调用方绑定 provider 与 prompt 装配；弱校验失败抛 ZodError（此处分级）。
+   *  onPartial 为流式增量回调（§4.1 逐字文本流）：累积 markdown 文本逐步送达，
    *  最终结果仍以返回值为准（校验/缓存语义不变）。 */
   submit(
     payload: ProfilePayload,
     locale: Locale,
-    onPartial?: (partial: AIInsight[]) => void,
-  ): Promise<ProfileInsights>
+    onPartial?: (partial: string) => void,
+  ): Promise<string>
 }
 
 /** 生成路径阶段结果。 */
@@ -83,12 +82,12 @@ export type InsightPipelineResult =
   | { status: 'skipped' }
   /** 端点/模型未配置 */
   | { status: 'unconfigured'; error: AiInsightError }
-  /** 缓存命中（过 schema 校验）直出 */
-  | { status: 'cache-hit'; insights: AIInsight[] }
+  /** 缓存命中（过 弱校验）直出 */
+  | { status: 'cache-hit'; markdown: string }
   /** 预览门（§3.1 ④）：payload 即 serializePayload 装配产物（§3.3 防漂移） */
   | { status: 'pending-preview'; payload: ProfilePayload }
   /** 上送成功（已写缓存） */
-  | { status: 'success'; insights: AIInsight[] }
+  | { status: 'success'; markdown: string }
   /** 上送失败（分级，未写缓存） */
   | { status: 'error'; error: AiInsightError }
 
@@ -101,7 +100,7 @@ export interface InsightSubmitContext {
 
 /** 上送路径结果。 */
 export type InsightSubmitResult =
-  | { status: 'success'; insights: AIInsight[] }
+  | { status: 'success'; markdown: string }
   | { status: 'error'; error: AiInsightError }
 
 /**
@@ -115,8 +114,8 @@ export type InsightSubmitResult =
 export async function runInsightPipeline(
   input: InsightPipelineInput,
   deps: InsightPipelineDeps,
-  onPartial?: (partial: AIInsight[]) => void,
-): Promise<InsightPipelineResult> {
+  onPartial?: (partial: string) => void,
+  ): Promise<InsightPipelineResult> {
   const { prefs, locale, entities, stats, classificationSystem, bypassCache, scene, key } = input
   // 未启用（§2.1 默认关闭）或聚合无数据（useLiveQuery 未就绪）→ 静默返回，不置 error。
   if (!prefs.enabled || !stats) return { status: 'skipped' }
@@ -130,13 +129,22 @@ export async function runInsightPipeline(
       },
     }
   }
-  // 缓存命中（§5.3）：结果过 schema 校验，缓存损坏视为未命中继续生成。
+  // 缓存命中（§5.3）：结果过弱校验，缓存损坏视为未命中继续生成。
   // 「重新生成」绕过缓存（§4.1 整体可重新生成、§6 可重新生成覆盖）——重新请求并覆盖缓存。
   if (!bypassCache) {
     const cached = deps.readCache(scene, locale, key)
     if (cached) {
-      const parsed = profileInsightsSchema.safeParse(cached.result)
-      if (parsed.success) return { status: 'cache-hit', insights: parsed.data.insights }
+      try {
+        // 弱校验：非字符串/空/超长均视为损坏（未命中继续生成）。
+        return {
+          status: 'cache-hit',
+          markdown: validateProfileInsightsMarkdown(
+            typeof cached.result === 'string' ? cached.result : '',
+          ),
+        }
+      } catch {
+        // 缓存损坏视为未命中
+      }
     }
   }
   // 装配（§3.1 ②）：预览展示与上送共用同一 serializePayload 产物（§3.3 防漂移）。
@@ -155,12 +163,12 @@ export async function submitInsightPayload(
   payload: ProfilePayload,
   ctx: InsightSubmitContext,
   deps: InsightPipelineDeps,
-  onPartial?: (partial: AIInsight[]) => void,
-): Promise<InsightSubmitResult> {
+  onPartial?: (partial: string) => void,
+  ): Promise<InsightSubmitResult> {
   try {
     const result = await deps.submit(payload, ctx.locale, onPartial)
     deps.writeCache(ctx.scene, ctx.locale, ctx.key, result)
-    return { status: 'success', insights: result.insights }
+    return { status: 'success', markdown: result }
   } catch (e) {
     return { status: 'error', error: classifyError(e) }
   }

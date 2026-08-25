@@ -1,9 +1,9 @@
 // AI 阅读画像编排 Hook（ai-features §3.1 管道流程 ①–⑦ / §4.1 / §5.3 / §5.4）。
 // 职责边界：响应式聚合（与 use-profile-stats 同源实体，range 固定 null = 全量口径）、
-// 状态管理（insights/loading/error/pendingPreview/streamingInsights/并发闸）与预览门接线；
+// 状态管理（markdown/loading/error/pendingPreview/streamingMarkdown/并发闸）与预览门接线；
 // 编排核心（缓存检查→装配→预览门→上送→错误分级）为纯函数，落在
 // insight-pipeline.ts（依赖注入可单测），本 Hook 只做数据源接入与状态落位。
-// 输入独立性（§2.7）：生成输入只消费本地实体+聚合+payload，insights 状态绝不参与
+// 输入独立性（§2.7）：生成输入只消费本地实体+聚合+payload，markdown 状态绝不参与
 // 生成输入——防幻觉传播。
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -15,11 +15,9 @@ import type { AiInsightError, InsightPipelineDeps } from '@/ai/insight-pipeline'
 import {
   PROFILE_TEMPERATURE,
   buildProfileInsightsPrompt,
-  profileInsightsSchema,
+  validateProfileInsightsMarkdown,
 } from '@/ai/prompts/profile-insights'
-import type { AIInsight } from '@/ai/prompts/profile-insights'
 import type { ProfilePayload } from '@/ai/sanitize'
-import { extractCompletedInsights } from '@/ai/stream-json'
 import { db } from '@/db/db-instance'
 import { readAiApiKey } from '@/lib/ai-api-key'
 import { readAiCache, writeAiCache } from '@/lib/ai-cache'
@@ -29,9 +27,10 @@ import { computeProfileStats } from '@/lib/profile-stats'
 import type { ProfileStatsInput, ProfileStatsResult } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
 
-/** 画像场景缓存键（§5.3）：scene/key 形态固定；Phase 1 全量口径固定 'all'，range 预留。 */
+/** 画像场景缓存键（§5.3）：scene/key 形态固定；Phase 1 全量口径固定 'all-v2'，
+ *  range 预留。'all-v2'：2026-08-25 markdown 切换 bump——旧 JSON 条目缓存失效。 */
 const CACHE_SCENE = 'profile'
-const CACHE_KEY = 'all'
+const CACHE_KEY = 'all-v2'
 
 export interface UseAiInsightsOptions {
   classificationSystem: ClassificationSystem | null
@@ -44,11 +43,11 @@ export interface UseAiInsightsOptions {
 export type { AiInsightError } from '@/ai/insight-pipeline'
 
 export interface UseAiInsightsState {
-  /** 生成结果；未生成/无数据时为 null */
-  insights: AIInsight[] | null
-  /** 流式增量预览（§4.1 条目级渐进渲染）：上送在途时已闭合的完整条目；
+  /** 生成结果（markdown 文本）；未生成/无数据时为 null */
+  markdown: string | null
+  /** 流式增量预览（§4.1 逐字文本流）：上送在途时累积 markdown 文本逐步落位；
    *  最终定稿（成功写缓存）或失败后清空。null = 无增量。 */
-  streamingInsights: AIInsight[] | null
+  streamingMarkdown: string | null
   /** 覆盖生成与重新生成（§8 rerender-transitions：Skeleton 占位 + 按钮禁用） */
   loading: boolean
   error: AiInsightError | null
@@ -124,12 +123,12 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
     opts.calendarAnchor,
   ])
 
-  const [insights, setInsights] = useState<AIInsight[] | null>(null)
+  const [markdown, setMarkdown] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AiInsightError | null>(null)
   const [pendingPreview, setPendingPreview] = useState<ProfilePayload | null>(null)
-  // 流式增量预览（§4.1 条目级渐进渲染）：上送在途时逐步落位已闭合条目。
-  const [streamingInsights, setStreamingInsights] = useState<AIInsight[] | null>(null)
+  // 流式增量预览（§4.1 逐字文本流）：上送在途时逐步落位累积文本。
+  const [streamingMarkdown, setStreamingMarkdown] = useState<string | null>(null)
   // 并发防护：上送在途时忽略重复的 generate/confirm 触发。
   const busyRef = useRef(false)
 
@@ -137,8 +136,8 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
    * 上送（§3.1 ⑤⑥）：绑定 provider 的 chat 门面，由管线 submitInsightPayload 调用；
    * payload 即预览展示的同一对象引用（§3.3）。prompt 数据区只取 payload 白名单子集
    * （summary + books，prompts 契约）。流式路径（§4.1）：chatStream 逐增量累积文本，
-   * 渐进解析已闭合条目经 onPartial 回调（增量渲染）；流结束后完整 JSON 过
-   * profileInsightsSchema 校验（失败抛 ZodError，管线按 validation 分级）。
+   * 每次增量经 onPartial 落位（逐字渐进渲染）；流结束后完整文本过
+   * validateProfileInsightsMarkdown 弱校验（失败抛 ZodError，管线按 validation 分级）。
    * 成功/失败与缓存写入由管线处理，此处只管理并发闸、loading 态与增量状态。
    */
   const submit = useCallback<InsightPipelineDeps['submit']>(
@@ -147,7 +146,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       setLoading(true)
       setError(null)
       setPendingPreview(null)
-      setStreamingInsights(null)
+      setStreamingMarkdown(null)
       try {
         const prefs = readPreferences()
         const provider = createAiProvider({
@@ -161,23 +160,14 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           books: payload.books,
           locale,
         })
-        // 流式路径（§4.1）：增量累积文本 → 渐进解析已闭合条目（onPartial 增量渲染）→
-        // 流结束后完整 JSON 过 profileInsightsSchema 校验（失败抛 ZodError，管线按
-        // validation 分级）。
+        // 流式路径（§4.1）：增量累积文本 → 每次增量 onPartial 落位（逐字渐进渲染）→
+        // 流结束后完整文本过弱校验（失败抛 ZodError，管线按 validation 分级）。
         let text = ''
         for await (const chunk of provider.chatStream(messages)) {
           text += chunk
-          if (onPartial) {
-            const partial = extractCompletedInsights(text)
-            if (partial !== null) onPartial(partial)
-          }
+          if (onPartial) onPartial(text)
         }
-        const parsed: unknown = JSON.parse(text)
-        const result = profileInsightsSchema.safeParse(parsed)
-        if (!result.success) {
-          throw result.error
-        }
-        return result.data
+        return validateProfileInsightsMarkdown(text)
       } finally {
         busyRef.current = false
         setLoading(false)
@@ -203,7 +193,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       // 未启用/聚合无数据 → skipped（静默，不清 error）；未配置端点/模型 → unconfigured；
       // 缓存命中（损坏视为未命中）→ cache-hit 直出；未命中 → 装配 → 预览门或直接上送。
       // 「重新生成」bypassCache=true 绕过缓存重新请求并覆盖缓存（§4.1）。
-      // 流式增量（§4.1）：上送在途时 onPartial 落位 streamingInsights，定稿/失败清空。
+      // 流式增量（§4.1）：上送在途时 onPartial 落位 streamingMarkdown，定稿/失败清空。
       const result = await runInsightPipeline(
         {
           prefs: prefs.ai,
@@ -216,7 +206,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           key: CACHE_KEY,
         },
         pipelineDeps,
-        (partial) => setStreamingInsights(partial),
+        (partial) => setStreamingMarkdown(partial),
       )
       switch (result.status) {
         case 'skipped':
@@ -227,7 +217,7 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           return
         case 'cache-hit':
           setError(null)
-          setInsights(result.insights)
+          setMarkdown(result.markdown)
           return
         case 'pending-preview':
           setError(null)
@@ -235,11 +225,11 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
           return
         case 'success':
           setError(null)
-          setStreamingInsights(null)
-          setInsights(result.insights)
+          setStreamingMarkdown(null)
+          setMarkdown(result.markdown)
           return
         case 'error':
-          setStreamingInsights(null)
+          setStreamingMarkdown(null)
           setError(result.error)
           return
       }
@@ -264,13 +254,13 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
       pendingPreview,
       { locale, scene: CACHE_SCENE, key: CACHE_KEY },
       pipelineDeps,
-      (partial) => setStreamingInsights(partial),
+      (partial) => setStreamingMarkdown(partial),
     )
     if (result.status === 'success') {
-      setStreamingInsights(null)
-      setInsights(result.insights)
+      setStreamingMarkdown(null)
+      setMarkdown(result.markdown)
     } else {
-      setStreamingInsights(null)
+      setStreamingMarkdown(null)
       setError(result.error)
     }
   }, [pendingPreview, locale, pipelineDeps])
@@ -280,8 +270,8 @@ export function useAiInsights(opts: UseAiInsightsOptions): UseAiInsightsState {
   }, [])
 
   return {
-    insights,
-    streamingInsights,
+    markdown,
+    streamingMarkdown,
     loading,
     error,
     pendingPreview,

@@ -68,7 +68,19 @@ pnpm dlx shadcn@latest add <name>   # 按需生成 shadcn 组件：dlx 临时下
 # 设 dangerouslyAllowAllBuilds: true 或关闭 blockExoticSubdeps/strictDepBuilds
 ```
 
-> `pnpm dlx shadcn@latest add <name>` 只是临时下载 CLI、运行后即弃，不写入 `package.json` / `pnpm-lock.yaml`，因此新增组件**不是**依赖事件、无需走上方清单；但生成的组件源码仍按仓库规则人工审查。
+**归档结论（2026-08-25）**：`react-markdown@10.1.0` + `remark-gfm@4.0.1`（AI 解读区 Markdown 渲染，ai-features §4.1）
+
+- [x] 必要性：项目此前无任何 Markdown 解析/渲染库；自写受限渲染器可零依赖替代，但未来 AI 小节扩展（表格/引用等）受限，选 unified 生态标准实现
+- [x] 包名拼写：与 npm 官方页逐字核对（react-markdown / remark-gfm）
+- [x] 维护者：unified 集体（wooorm/johno/remcohaszing），remarkjs 官方仓库（react-markdown / remark-gfm），持续活跃
+- [x] 下载量：周下载 3288 万 / 3816 万（npm API，2026-08-24 周），主流库无疑
+- [x] 依赖树：unified 生态（micromark / mdast-util / hast-util 系列，+97 包），全部为只读解析/序列化库，无运行时网络行为；`pnpm why` 核验无意外传递
+- [x] 构建脚本：两包 scripts 仅 build/test/prepack，**无 install/postinstall/preinstall lifecycle 脚本**，无需 `allowBuilds` 放行
+- [x] 行为分析：无 install 脚本即无安装期代码执行面；react-markdown 默认不渲染 raw HTML（XSS 安全），CSP `script-src 'self'` 不受影响
+- [x] 许可证：MIT（两者），与项目兼容
+- [x] 发布时间：react-markdown 10.1.0（2025-03-07）、remark-gfm 4.0.1（2025-02-10），远超 7 天冷却
+
+## 4. Lockfile 纪律
 
 更新带构建脚本的受信任包时尤其谨慎（账户劫持投毒窗口，见 [nx 案例](https://socket.dev/blog/nx-packages-compromised)）。
 

@@ -862,3 +862,92 @@ body {
 @utility tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+/* AI 解读区 Markdown 渲染（ai-features §4.1）：流式增量与定稿共用。
+   排版对齐画像页冷静灰调：正文 muted、标题/加粗加深、列表缩进。 */
+.ai-markdown {
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.625;
+  color: var(--muted-foreground);
+}
+
+.ai-markdown > :first-child {
+  margin-top: 0;
+}
+.ai-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3 {
+  margin: 1rem 0 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.ai-markdown h1:first-child,
+.ai-markdown h2:first-child,
+.ai-markdown h3:first-child {
+  margin-top: 0;
+}
+
+.ai-markdown p {
+  margin: 0.375rem 0;
+}
+.ai-markdown strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.ai-markdown ul,
+.ai-markdown ol {
+  margin: 0.375rem 0;
+  padding-left: 1.25rem;
+}
+.ai-markdown ul {
+  list-style: disc;
+}
+.ai-markdown ol {
+  list-style: decimal;
+}
+.ai-markdown li {
+  margin: 0.25rem 0;
+}
+.ai-markdown blockquote {
+  margin: 0.375rem 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+.ai-markdown code {
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--muted);
+  font-size: 0.8125em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ai-markdown pre {
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.375rem;
+  background: var(--muted);
+}
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+.ai-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.ai-markdown table {
+  width: 100%;
+  margin: 0.5rem 0;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.ai-markdown th,
+.ai-markdown td {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}

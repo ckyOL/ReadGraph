@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **AI insights streamed as Markdown** — profile AI insights switched from
+  chunked JSON insight cards to a progressive Markdown text stream
+  (`react-markdown` + `remark-gfm`, see `docs/specs/ai-features.md` §4.1): text
+  renders word by word as it arrives, the final result is weakly validated
+  (non-empty, length-capped) instead of the Zod insight schema, and new analysis
+  sections need only a prompt addition — no UI changes. Dimension chips that
+  jumped to chart tabs were removed with the structured output; AI cache key
+  bumped to `all-v2` (old entries regenerate).
+  SSE parsing is lenient (line-per-event, bare JSON lines, `message.content`
+  fallback), so single-newline or buffered endpoints still stream progressively
+  instead of showing a skeleton until the stream finishes.
 - **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
   (adaptation of the Bookology Stats calendar, see `docs/bookology-benchmark.md`
   §5.1): each day cell counts distinct books held in borrow that day (UTC day

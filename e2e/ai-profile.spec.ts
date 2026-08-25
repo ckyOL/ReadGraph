@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
+
 import { buildDesensitizedFixture } from './fixtures'
 
 /**
@@ -26,33 +29,13 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400',
 }
 
-/** 端点 mock 响应 content（过 profileInsightsSchema：2–4 条、taste ≤ 1）。 */
-const INSIGHTS_V1 = JSON.stringify({
-  insights: [
-    {
-      kind: 'fact',
-      title: '偏爱文学类',
-      body: '藏书中文学类占比最高，共 2 本。',
-      dimension: 'classification',
-    },
-    { kind: 'fact', body: '最近 30 天内借阅了 2 本。', dimension: 'volume' },
-    { kind: 'taste', body: '整体书单以虚构类为主，风格偏向细腻叙事。' },
-  ],
-})
+/** 端点 mock 响应 content（markdown 文本，过弱校验：非空 + 长度上限）。 */
+const INSIGHTS_V1 =
+  '## 分类偏好\n\n藏书中文学类占比最高，共 2 本。\n\n## 借阅节奏\n\n最近 30 天内借阅了 2 本。\n\n## 一句话总结\n\n整体书单以虚构类为主，风格偏向细腻叙事。'
 
 /** 重新生成用第二份响应：内容与 V1 完全不同（覆盖渲染断言）。 */
-const INSIGHTS_V2 = JSON.stringify({
-  insights: [
-    {
-      kind: 'fact',
-      title: '偏爱历史类',
-      body: '历史类书籍借阅次数最多。',
-      dimension: 'classification',
-    },
-    { kind: 'fact', body: '全年借阅节奏稳定。', dimension: 'duration' },
-    { kind: 'taste', body: '书单呈现出对长篇小说体裁的偏好。' },
-  ],
-})
+const INSIGHTS_V2 =
+  '## 分类偏好\n\n历史类书籍借阅次数最多。\n\n## 借阅节奏\n\n全年借阅节奏稳定。\n\n## 一句话总结\n\n书单呈现出对长篇小说体裁的偏好。'
 
 async function seed(page: Page): Promise<void> {
   const payload = JSON.stringify(buildDesensitizedFixture())
@@ -219,19 +202,18 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     const previewPayload = JSON.parse((await pre.textContent()) ?? '') as { books: unknown[] }
     expect(previewPayload.books.length).toBeGreaterThan(0)
     await dialog.getByRole('button', { name: '确认发送' }).click()
-    // 确认后恰好一次 chat 请求（非流式 + 配置的 model）。
+    // 确认后恰好一次 chat 请求（流式 + 配置的 model；markdown 文本流无 response_format）。
     await expect.poll(() => chatRequests.length, { timeout: 10_000 }).toBe(1)
     const captured = chatRequests[0]
     expect(captured.body.stream).toBe(true)
     expect(captured.body.model).toBe('test-model')
+    expect(captured.body).not.toHaveProperty('response_format')
     // 拦截断言：prompt user content 中的 books 与预览 payload.books 深等价
     // ——同一装配产物（§3.3 防「预览一套、上送一套」漂移）。
     expect(JSON.parse(captured.booksJson)).toEqual(previewPayload.books)
   })
 
-  test('确认生成 → fact 卡（title/body/维度 chip）+ taste 段，每条含「AI 生成」标注', async ({
-    page,
-  }) => {
+  test('确认生成 → Markdown 渲染（小节标题/正文/总结）+「AI 生成」标注', async ({ page }) => {
     await seed(page)
     await injectAiPrefs(page, {
       enabled: true,
@@ -246,19 +228,16 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
     await page.getByRole('dialog').getByRole('button', { name: '确认发送' }).click()
-    // fact 卡 ×2：title + body + 维度 chip（引用定位，命中图表 Tabs 值集合 → 可点击）。
-    const factCards = page.locator('[data-slot="profile-ai-fact"]')
-    await expect(factCards).toHaveCount(2)
-    await expect(page.getByText('偏爱文学类')).toBeVisible()
+    // Markdown 单块渲染：小节标题（## → heading）+ 正文 + 一句话总结。
+    const markdown = page.locator('[data-slot="profile-ai-markdown"]')
+    await expect(markdown).toBeVisible()
+    await expect(page.getByRole('heading', { name: '分类偏好' })).toBeVisible()
     await expect(page.getByText('藏书中文学类占比最高，共 2 本。')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'classification' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'volume' })).toBeVisible()
-    // taste 全宽段 ×1。
-    const taste = page.locator('[data-slot="profile-ai-taste"]')
-    await expect(taste).toHaveCount(1)
+    await expect(page.getByText('最近 30 天内借阅了 2 本。')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()
     await expect(page.getByText('整体书单以虚构类为主，风格偏向细腻叙事。')).toBeVisible()
-    // 每条标注「AI 生成，基于本地数据」（fact×2 + taste×1）。
-    await expect(page.getByText('AI 生成，基于本地数据')).toHaveCount(3)
+    // 定稿标注「AI 生成，基于本地数据」（单块 markdown 尾部 ×1）。
+    await expect(page.getByText('AI 生成，基于本地数据')).toHaveCount(1)
     // 生成后按钮切换为「重新生成」。
     await expect(page.getByRole('button', { name: '重新生成' })).toBeVisible()
     expect(chatRequests).toHaveLength(1)
@@ -280,19 +259,19 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
     await page.getByRole('dialog').getByRole('button', { name: '确认发送' }).click()
-    await expect(page.getByText('偏爱文学类')).toBeVisible()
+    await expect(page.getByText('藏书中文学类占比最高，共 2 本。')).toBeVisible()
     // 重新生成（§6-4）：按预览开关再次走预览 → 确认 → 第二次请求。
     await page.getByRole('button', { name: '重新生成' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('dialog').getByRole('button', { name: '确认发送' }).click()
     // 新内容渲染、旧内容消失（覆盖，§4.1 整体可重新生成）。
-    await expect(page.getByText('偏爱历史类')).toBeVisible()
-    await expect(page.getByText('偏爱文学类')).toHaveCount(0)
     await expect(page.getByText('历史类书籍借阅次数最多。')).toBeVisible()
+    await expect(page.getByText('藏书中文学类占比最高，共 2 本。')).toHaveCount(0)
+    await expect(page.getByText('全年借阅节奏稳定。')).toBeVisible()
     expect(chatRequests).toHaveLength(2)
   })
 
-  test('流式（chatStream）：请求 body stream:true；SSE 分片响应最终渲染成功（条目级时序归 Vitest）', async ({
+  test('流式（chatStream）：请求 body stream:true；SSE 分片响应最终渲染成功（逐字时序归 Vitest）', async ({
     page,
   }) => {
     await seed(page)
@@ -309,9 +288,9 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     })
     await page.goto('/profile')
     await page.getByRole('button', { name: '生成 AI 解读' }).click()
-    // 流式响应完整到达后：fact 卡 ×2 + taste 段全部渲染（与 INSIGHTS_V1 一致）。
-    await expect(page.locator('[data-slot="profile-ai-fact"]')).toHaveCount(2)
-    await expect(page.getByText('偏爱文学类')).toBeVisible()
+    // 流式响应完整到达后：markdown 小节与正文全部渲染（与 INSIGHTS_V1 一致）。
+    await expect(page.locator('[data-slot="profile-ai-markdown"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '分类偏好' })).toBeVisible()
     await expect(page.getByText('藏书中文学类占比最高，共 2 本。')).toBeVisible()
     await expect(page.getByText('整体书单以虚构类为主，风格偏向细腻叙事。')).toBeVisible()
     // 请求契约：stream:true（区别于非流式用例的 stream:false）。
@@ -319,5 +298,79 @@ test.describe('AI 阅读画像（ai-features §4.1）', () => {
     expect(chatRequests[0]!.body.stream).toBe(true)
     // 生成后按钮切换为「重新生成」（流式成功定稿路径）。
     await expect(page.getByRole('button', { name: '重新生成' })).toBeVisible()
+  })
+})
+/** 慢速标准 SSE 响应分段：总时长约 2s（每段 250ms），供流式中途断言。 */
+const SLOW_PARTS = [
+  '## 分类偏好\n\n',
+  '藏书中文学类占比最高，共 ',
+  '**2**',
+  ' 本。\n\n',
+  '## 借阅节奏\n\n最近 30 天内借阅了 2 本。\n\n',
+  '## 一句话总结\n\n整体书单以虚构类为主，风格偏向细腻叙事。',
+]
+
+test.describe('AI 流式渲染：网络到达即渐进显示（ai-features §4.1 逐字）', () => {
+  let server: http.Server
+
+  test.beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        })
+        res.end()
+        return
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      })
+      let i = 0
+      const timer = setInterval(() => {
+        if (i >= SLOW_PARTS.length) {
+          res.write('data: [DONE]\n\n')
+          clearInterval(timer)
+          res.end()
+          return
+        }
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: SLOW_PARTS[i] } }] })}\n\n`)
+        i += 1
+      }, 250)
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  })
+
+  test.afterAll(async () => {
+    await new Promise<void>((resolve, reject) =>
+      server.close((e) => (e ? reject(e) : resolve())),
+    )
+  })
+
+  test('流式进行中 markdown 已可见（非骨架屏），定稿后完整', async ({ page }) => {
+    const port = (server.address() as AddressInfo).port
+    await seed(page)
+    await injectAiPrefs(page, {
+      enabled: true,
+      baseUrl: `http://127.0.0.1:${port}`,
+      model: 'test-model',
+      sendPreview: false,
+    })
+    await page.goto('/profile')
+    await page.getByRole('button', { name: '生成 AI 解读' }).click()
+    // 首 token 到达即渲染增量文本（骨架屏仅在 TTFB 窗口）。
+    await expect(page.locator('[data-slot="profile-ai-markdown"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '分类偏好' })).toBeVisible()
+    // 此刻流仍在进行（增量渲染，而非最终一次性出现）。
+    await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByText(/正在生成/)).toBeVisible()
+    // 最终完整定稿（busy 归 false、总结小节出现）。
+    await expect(page.getByRole('heading', { name: '一句话总结' })).toBeVisible()
+    await expect(page.getByText('整体书单以虚构类为主，风格偏向细腻叙事。')).toBeVisible()
+    await expect(page.locator('[data-slot="profile-ai"]')).toHaveAttribute('aria-busy', 'false')
   })
 })

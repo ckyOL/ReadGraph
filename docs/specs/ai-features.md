@@ -1,12 +1,12 @@
 # AI 功能规格（阅读画像分析）
 
-> 本文件由 [research/ai-integration-research.md](../research/ai-integration-research.md)（技术调研）衍生，遵循 SDD + TDD。调研确立的架构路线：**云端高智能 + 发送前脱敏（anonymize-before-send）为主力**，本地服务为可选后端（同一 OpenAI 兼容契约）；浏览器内推理（WebLLM / Transformers.js）已否决、模型选型不做建议（端点与模型是用户自己的事）。本规格只定义 **Phase 1** 落地契约（脱敏管道 + 设置页 AI 区 + 阅读画像分析）；Phase 2（年度叙事 / 流式）、Phase 3（本地后端）边界见 §9。
+> 本文件由 [research/ai-integration-research.md](../research/ai-integration-research.md)（技术调研）衍生，遵循 SDD + TDD。调研确立的架构路线：**云端高智能 + 发送前脱敏（anonymize-before-send）为主力**，本地服务为可选后端（同一 OpenAI 兼容契约）；浏览器内推理（WebLLM / Transformers.js）已否决、模型选型不做建议（端点与模型是用户自己的事）。本规格只定义 **Phase 1** 落地契约（脱敏管道 + 设置页 AI 区 + 阅读画像分析）；Phase 2（年度叙事）、Phase 3（本地后端）边界见 §9。
 > 关联：[design-decisions](../design-decisions.md)（纯前端/隐私原则）、[reading-profile](./reading-profile.md)（画像聚合契约）、[settings](./settings.md)（设置页落点）、[data-layer](./data-layer.md#8-用户偏好)（偏好持久化）、[npm-supply-chain-security](../npm-supply-chain-security.md)（依赖审查）。
 > 返回 [app-spec.md](../app-spec.md)。
 
 ## 1. 范围与依赖
 
-**范围**：定义 AI 功能的默认关闭开关、脱敏管道（场景白名单装配 + 黑名单断言）、OpenAI 兼容端点薄客户端（fetch + SSE 解析 + Abort + 端点校验）、阅读画像分析（`insight[]`：`kind='fact'` 事实洞察 + `kind='taste'` 审美点评，同次生成、同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区。
+**范围**：定义 AI 功能的默认关闭开关、脱敏管道（场景白名单装配 + 黑名单断言）、OpenAI 兼容端点薄客户端（fetch + SSE 解析 + Abort + 端点校验）、阅读画像分析（Markdown 文本洞察：2–4 小节 + 一句话总结，流式逐字渲染）、发送预览、结果缓存、设置页 AI 区。
 
 **不实现**（本规格明确排除）：
 
@@ -16,7 +16,7 @@
 - 模型选型建议、默认端点、榜单（项目不提供）
 - 单本/列表级批量点评（对齐 design-decisions §6「不做批量」；详情页单本点评入口已删除）
 
-**依赖**（Phase 1）：**零新增运行时依赖**——`fetch` 薄封装 + 脱敏纯函数 + 既有 `zod`（响应校验、场景 schema）。后续若引入任何包，须先过 [npm-supply-chain-security §3](../npm-supply-chain-security.md) 审查 + `pnpm verify`/`audit`。
+**依赖**（Phase 1）：`fetch` 薄封装 + 脱敏纯函数 + 既有 `zod`（场景 schema）。Markdown 渲染（§4.1）新增 `react-markdown` + `remark-gfm`，供应链审查结论归档见 [npm-supply-chain-security §3](../npm-supply-chain-security.md)；后续若再引入任何包，须先过同一清单审查 + `pnpm verify`/`audit`。
 
 **代码落点**（调研 §7 草案）：
 
@@ -27,9 +27,9 @@ src/
 │  ├─ ai-client.ts            # OpenAI 兼容 fetch 薄封装：SSE 解析、Abort、timeout、schema→response_format（纯函数可单测）
 │  ├─ sanitize.ts             # 脱敏管道：场景 Schema → 白名单装配 + 黑名单断言（纯函数）
 │  ├─ prompts/
-│  │  ├─ profile-insights.ts  # 画像分析 prompt + Zod schema（insight[]，fact/taste 条目）
-│  │  └─ year-narrative.ts    # 年度总结叙事 prompt + Zod schema（Phase 2，仅落位）
-│  └─ use-ai.ts               # Hook：编排、loading/error/重试、流式拼接（Phase 2）、缓存
+│  │  ├─ profile-insights.ts  # 画像分析 prompt + 弱校验（markdown 文本：非空 + 长度上限）
+│  │  └─ year-narrative.ts    # 年度总结叙事 prompt + 弱校验（Phase 2，仅落位）
+│  └─ use-ai.ts               # Hook：编排、loading/error/重试、流式拼接、缓存
 └─ lib/ai-cache.ts            # 生成结果缓存（localStorage，按场景+键+locale）
 ```
 
@@ -53,7 +53,7 @@ src/
   → ② 数据装配器：从 IndexedDB 只提取白名单字段
   → ③ 敏感字段断言：黑名单字段绝不出现在 payload（测试强制）
   → ④ 发送预览：UI 展示将发送的 payload JSON（与实际上送同一装配函数产物）
-  → ⑤ POST 用户配置端点（OpenAI 兼容 /v1/chat/completions；stream:true + SSE，画像场景先行落地）
+  → ⑤ POST 用户配置端点（OpenAI 兼容 /v1/chat/completions；stream:true + SSE，画像场景先行落地）（markdown 文本流，无 response_format）
   → ⑥ 响应 Zod 校验 → 渲染（标注「AI 生成，基于本地数据」）
   → ⑦ 云端原文不持久化；本地缓存仅存生成结果并标注
 ```
@@ -87,21 +87,12 @@ src/
 ### 4.1 阅读画像分析（/profile「AI 解读」区，Phase 1）
 
 - **落点**：价值卡行之下、图表 Tabs 之上，与价值卡行同构（窄卡、不卡片套卡片、不抢图表全幅）；整体可重新生成；标题行「重新生成」旁「清除 AI 缓存」按钮（仅已有结果时显示；结果缓存就地管理，自设置页移入，§4.2/§5.3）。
-- **输出契约**（`src/ai/prompts/profile-insights.ts`，Zod 强校验）：
-
-```ts
-interface AIInsight {
-  kind: 'fact' | 'taste'       // taste 条目即审美点评（调研 §6.1）
-  title?: string               // 仅 fact：洞察标题（如「偏爱文学类」）
-  body: string                 // fact 为陈述+数字；taste 为一段评价性文字
-  dimension?: string           // 仅 fact：关联维度 chip（分类偏好/借阅节奏/时长习惯/复借最多…）
-}
-```
-
-- 生成 2–4 条洞察（含 0–1 条 `taste`）：fact 渲染为窄卡（标题+正文+维度 chip，点击激活对应图表 tab = 引用定位）；taste 渲染为一段全宽评价文字（整段到达即渲染）。
+- **输出契约**（`src/ai/prompts/profile-insights.ts`，2026-08-25 由 JSON 条目切换）：**Markdown 纯文本**（2–4 个 `##` 小节 + 结尾「## 一句话总结」，关键数字 `**加粗**`）；弱校验 `validateProfileInsightsMarkdown`：非空 + 长度上限（`PROFILE_MARKDOWN_MAX_LENGTH`），空/超长抛 ZodError → validation 错误分级。
+- **渲染**：`ReactMarkdown` + `remark-gfm` 单块排版（样式 `.ai-markdown`，`index.css`），块尾标注「AI 生成，基于本地数据」；**维度 chip → 图表 tab 引用定位交互已移除**（自由文本无可靠结构解析路径，验收故事 #4 修订）。
 - **口径**：固定全量口径（与概览卡一致），**不与 range 联动**——避免 range 切换反复调用 API；缓存键含 range 以预留联动（§5.3）。
-- **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；`kind='taste'` 自由文本的引用真实性**不可强校验**——规格明示诚实边界（区别于 fact 条目的数字强校验）。
-- **流式**：`stream:true` + SSE（`ai-client.chatStream` 增量产出 `delta.content`，`response_format` JSON 模式保留）；**条目级渐进渲染**——流中已闭合的完整 insight 条目立即渲染、尾部「生成中」占位，最终完整 JSON 过 `profileInsightsSchema.safeParse` 成功才定稿并写缓存；校验失败清空增量、走错误分级（不写缓存）。taste 与 fact 同为条目粒度（整段/整卡到达即渲染，不做逐字逐句）。
+- **幻觉控制**：prompt 限定「仅可引用发送书单内的书目，不虚构书名/作者/情节」；数字只转译不生成；temperature 低；自由文本的引用真实性**不可强校验**——规格明示诚实边界。
+- **端点容错**（2026-08-25）：SSE 解析为**行独立事件**宽松语义——每行 `data:` 独立成事件（空行/字段行/注释/下一个 data 行均结束当前事件，兼容单换行分隔端点），裸 JSON 行（无 `data:` 前缀）容错为事件值，`choices[0].message.content` 兼容（整体 JSON 被分块传输的端点）；规范多行 data 拼接语义不做支持（OpenAI 兼容端点均为单行 data 事件）。骨架屏仅存于 TTFB/首 token 窗口，窗口内显示「生成中」文案。
+- 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 - 不做列表级批量（对齐 design-decisions §6）。
 
@@ -136,7 +127,7 @@ interface AIInsight {
 
 ### 5.3 结果缓存（src/lib/ai-cache.ts）
 
-- 缓存键：`ai:{scene}:{locale}:{key}`（画像场景 key 含 range 以预留联动；Phase 1 全量口径固定键）。缓存内容：生成结果 JSON + 生成时间戳。
+- 缓存键：`ai:{scene}:{locale}:{key}`（画像场景 key 含 range 以预留联动；Phase 1 全量口径固定键）。缓存内容：生成结果（markdown 文本字符串）+ 生成时间戳。**2026-08-25 格式切换**：缓存键 bump 为 `all-v2`（旧 JSON 条目缓存自动失效，重新生成即可）。
 - 生命周期：localStorage，/profile AI 解读区「清除 AI 缓存」可清（§4.1）；**不随备份导出**。
 - 命中缓存直接渲染（仍标注「AI 生成」）；断网时缓存可读（AI 功能降级提示，核心功能不受影响）。
 
@@ -151,8 +142,8 @@ interface AIInsight {
 
 1. 作为新用户，未启用 AI → `/profile` 无任何 AI 痕迹（无「AI 解读」区、无入口文案），`/settings` 仅有默认关闭的 AI 区开关。
 2. 作为用户，在 `/settings` 填入任意 OpenAI 兼容端点（BYOK）与模型名、保存 → 点「测试连接」→ 端点可达时成功、不可达/鉴权失败时明确错误 toast；刷新后配置保留。
-3. 作为用户，首次在 `/profile` 触发「AI 解读」→ 弹出发送预览，展示将发送的 payload；确认后生成 2–4 条洞察，fact 卡数字与本地概览卡一致，taste 为一段评价文字；响应标注「AI 生成」。
-4. 作为用户，点击 fact 卡维度 chip → 激活对应图表 tab（引用定位）；点「重新生成」→ 再次走发送预览（或按预览开关直接生成）并覆盖结果。
+3. 作为用户，首次在 `/profile` 触发「AI 解读」→ 弹出发送预览，展示将发送的 payload；确认后生成 Markdown 洞察（2–4 小节 + 一句话总结），数字与本地概览卡一致；响应标注「AI 生成」。
+4. 作为用户，点「重新生成」→ 再次走发送预览（或按预览开关直接生成）并覆盖结果（维度 chip 引用定位已随 Markdown 切换移除，见 §4.1）。
 5. 作为用户，生成成功后切换中英 locale → 缓存按 locale 隔离，各自生成对应语言内容（prompt 控制）；再次进入同 locale → 命中缓存秒开（可重新生成覆盖）。
 6. 作为用户，断网/端点不可用触发生成 → 明确错误提示，不写库、不缓存失败；已有缓存结果仍可读。
 7. 作为用户，在 `/settings` 清除 AI 缓存 → 再进入 `/profile` 需重新生成。
@@ -166,19 +157,17 @@ interface AIInsight {
 - `sanitize.ts` 脱敏断言：给定含 cardno/barcode/借还日期/馆名/rawRecords/单条周期的实体数组 → payload 仅含白名单字段；黑名单值在序列化文本中**逐值穷举**断言不出现；`serializePayload` 同输入两次调用深等价（纯函数性）。
 - `sanitize.ts` 每书字段：payload 中每书含题名/作者/借阅次数且不含 `isbn13`/`tags`/`price`/借还日期（字段级断言）；借阅次数来自本地聚合（与 `profile-stats` 同源计数一致）。
 - `sanitize.ts` 装配边界：空库/无借阅时 payload 结构完整（`books=[]`）；分类缺失归并；书目 ≤ `BOOKLIST_FULL_LIMIT` 时全量进 payload（与源 Book 一一对应）；超过阈值触发分层采样降级（每分类取代表、总上限 500、标注采样标记），采样集覆盖全部分类（无空分类桶）。
-- `ai-client.ts` `chatStream()`：`stream:true` 请求构造（body/URL/headers 同 `chat`）；mock fetch 分片 `ReadableStream` 增量产出 `delta.content`；`[DONE]` 终止；HTTP 非 2xx / 超时 / TypeError 分级复用（与 `chat` 同一错误归一）。
-- `stream-json.ts` 增量解析（纯函数）：累积文本分片喂入，逐步产出已闭合完整条目（含字符串内 `}`/`[` 不误判、字段截断中间态不产出、数组闭合产出全集、最终形态与 `JSON.parse` 一致）。
+- `ai-client.ts` `chatStream()`：`stream:true` 请求构造（body/URL/headers 同 `chat`，**body 无 `response_format`**）；mock fetch 分片 `ReadableStream` 增量产出 `delta.content`；`[DONE]` 终止；**端点容错**——单换行分隔（无空行）逐事件产出、裸 JSON 行产出、整体 JSON 分块（message.content 形态）收尾产出；HTTP 非 2xx / 超时 / TypeError 分级复用（与 `chat` 同一错误归一）。
+- `profile-insights.ts` 弱校验：`validateProfileInsightsMarkdown` 接受非空 markdown（trim 归一）、拒绝空/纯空白/超长（抛 ZodError）；prompt 模板只含白名单变量（无黑名单字段名）+ 显式输出纯 Markdown 指令（无 JSON 格式要求）。
 - `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`；`chatStream(messages)` 绑定配置产出内容增量（流完整拼接 == 非流式 content）。
-- `insight-pipeline.ts`：`submit` 增 `onPartial` 回调透传（增量渲染钩子，成功/失败语义不变）。
-- `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
-- `ai-provider.ts` 契约：`chat(messages, { schema })` 响应过 schema 校验，非法响应抛 `ZodError`。
-- `profile-insights.ts`：`insightSchema` 接受合法 fact/taste 条目、拒绝缺 `kind`/`body` 或非法 `kind`；prompt 模板只含白名单变量（无黑名单字段名）。
+- `insight-pipeline.ts`：`submit` 的 `onPartial` 回调透传 markdown 文本增量（增量渲染钩子，成功/失败语义不变）。
+- `profile-insights.ts`：`validateProfileInsightsMarkdown` 弱校验（非空 + 长度上限）；prompt 模板只含白名单变量（无黑名单字段名）。
 - `ai-cache.ts`：缓存键含 scene/locale/key；写读回环；清除只删 `ai:` 前缀键；不随 `exportDatabase` 导出。
 - 偏好扩展：`ai` 非法值（如 `baseUrl` 非字符串）降级默认；`readgraph:ai-api-key` 独立读写、不进 `userPreferencesSchema`。
 
 **Playwright（E2E，统一 UI 里程碑接入）**
 
-- 流式（`chatStream`）：chat 请求 body `stream:true`；SSE 分片响应（`text/event-stream` data 行 + `[DONE]`）→ 最终渲染成功。条目级「逐条出现」时序断言归 Vitest（渐进解析器 + Hook 单测），E2E 不依赖时序。
+- 流式（`chatStream`）：chat 请求 body `stream:true`（无 `response_format`）；SSE 分片响应（`text/event-stream` data 行 + `[DONE]`）→ 最终 markdown 渲染成功。逐字流式时序断言归 Vitest（onPartial 字符串透传 + Hook 单测），E2E 不依赖时序。
 
 ## 8. React 性能规则引用
 
@@ -197,7 +186,7 @@ interface AIInsight {
   - **「年度叙事」AI 区**：与 /profile「AI 解读区」同构（fact/taste、AI 生成标注、重新生成、发送预览），是年度视图内的区块而非独立孤岛。
 - **输入契约**：`computeYearSlice` 切片指标（[reading-profile §2.7](./reading-profile.md#2-统计维度与聚合契约) 年度切片契约；口径 = bookology-benchmark §6 语义边界：`borrowedAt ∈ 本年` UTC 左闭右开、独立 Book 去重、设备排除、不依赖 `status='returned'`）+ 年度切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小，通常远低于阈值）→ 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）。叙事、目标卡、回顾三个消费方共用同一 `yearSlice` 产物——数字同源，LLM 只转译（§2.6 统计一致性）。
 - **白名单边界**：年度场景 = 同一白名单形态（§3.2 每书字段集 + `yearSlice` 聚合输出），切片替代全量；**年度目标值（`UserPreferences` 用户设置）不进 payload**——非聚合统计、非书目字段，叙事不提「距目标还差 N 本」；如需纳入须显式扩展白名单并声明。
-- 流式输出（`stream:true` + SSE 拼接——画像场景已先行落地同一链路，见 §4.1）、`Abort`、按 year/range/locale 缓存；年度叙事为自由文本段落，呈现粒度可到逐句（画像为条目粒度）。
+- 流式输出（`stream:true` + SSE 拼接——画像场景已先行落地同一链路，见 §4.1）、`Abort`、按 year/range/locale 缓存；年度叙事与画像同为 **Markdown 文本流**（共用 ReactMarkdown + `.ai-markdown` 渲染，见 §4.1），呈现粒度逐字。
 - 脱敏断言覆盖年度场景（与 §3.2 同白名单形态，切片替代全量）；`prompts/year-narrative.ts` 就位。
 
 ### 9.2 Phase 3：本地服务后端（可选）

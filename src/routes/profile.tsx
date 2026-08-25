@@ -318,7 +318,6 @@ function ProfilePage() {
                 classificationSystem={classificationSystem}
                 displayTimezone={displayTimezone}
                 calendarAnchor={new Date(sessionNow)}
-                onActivateTab={setActiveTab}
               />
             </Suspense>
           )}

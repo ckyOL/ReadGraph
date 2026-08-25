@@ -1,11 +1,11 @@
-
 import { describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import {
-  buildProfileInsightsPrompt,
-  insightSchema,
+  PROFILE_MARKDOWN_MAX_LENGTH,
   PROFILE_TEMPERATURE,
-  profileInsightsSchema,
+  buildProfileInsightsPrompt,
+  validateProfileInsightsMarkdown,
 } from './profile-insights'
 import profileInsightsSource from './profile-insights.ts?raw'
 
@@ -28,74 +28,36 @@ const BLACKLISTED_FIELD_NAMES = [
   'borrowLocation',
 ] as const
 
-const validFact = {
-  kind: 'fact' as const,
-  title: '偏爱文学类',
-  body: '文学类占比 41%。',
-  dimension: '分类偏好',
-}
-const validFactNoOptional = { kind: 'fact' as const, body: '平均每次借阅 2.3 本。' }
-const validTaste = { kind: 'taste' as const, body: '选书整体偏文艺，值得尝试更多科幻。' }
-
 function promptText(locale: 'zh-CN' | 'en'): string {
   return buildProfileInsightsPrompt({ summary: {}, books: [], locale })
     .map((message) => message.content)
     .join('\n')
 }
 
-describe('insightSchema', () => {
-  it('接受合法 fact（含可选 title/dimension 与纯 body 两种形态）', () => {
-    expect(insightSchema.safeParse(validFact).success).toBe(true)
-    expect(insightSchema.safeParse(validFactNoOptional).success).toBe(true)
+describe('validateProfileInsightsMarkdown（§4.1 弱校验）', () => {
+  it('接受合法非空 markdown，返回 trim 后文本', () => {
+    expect(validateProfileInsightsMarkdown('## 分类偏好\n\n正文')).toBe('## 分类偏好\n\n正文')
+    expect(validateProfileInsightsMarkdown('  正文  ')).toBe('正文')
   })
 
-  it('接受合法 taste（无 title/dimension）', () => {
-    expect(insightSchema.safeParse(validTaste).success).toBe(true)
+  it('拒绝空串/纯空白（抛 ZodError → 管线 validation 分级）', () => {
+    expect(() => validateProfileInsightsMarkdown('')).toThrow(ZodError)
+    expect(() => validateProfileInsightsMarkdown('   \n\t ')).toThrow(ZodError)
   })
 
-  it('拒绝缺 kind', () => {
-    expect(insightSchema.safeParse({ body: '缺 kind。' }).success).toBe(false)
-  })
-
-  it('拒绝缺 body 或空 body', () => {
-    expect(insightSchema.safeParse({ kind: 'fact' }).success).toBe(false)
-    expect(insightSchema.safeParse({ kind: 'fact', body: '' }).success).toBe(false)
-  })
-
-  it('拒绝非法 kind 值', () => {
-    expect(insightSchema.safeParse({ kind: 'opinion', body: 'x' }).success).toBe(false)
-  })
-
-  it('拒绝 taste 携带 title 或 dimension', () => {
-    expect(insightSchema.safeParse({ ...validTaste, title: '品味' }).success).toBe(false)
-    expect(insightSchema.safeParse({ ...validTaste, dimension: '审美' }).success).toBe(false)
-  })
-})
-
-describe('profileInsightsSchema', () => {
-  it('接受 2–4 条、taste ≤ 1 的合法响应', () => {
-    const twoFacts = { insights: [validFact, validFactNoOptional] }
-    const twoFactsPlusTaste = { insights: [validFact, validFactNoOptional, validTaste] }
-    expect(profileInsightsSchema.safeParse(twoFacts).success).toBe(true)
-    expect(profileInsightsSchema.safeParse(twoFactsPlusTaste).success).toBe(true)
-  })
-
-  it('拒绝条数 < 2 或 > 4', () => {
-    expect(profileInsightsSchema.safeParse({ insights: [validFact] }).success).toBe(false)
-    const fiveFacts = { insights: [validFact, validFact, validFact, validFact, validFact] }
-    expect(profileInsightsSchema.safeParse(fiveFacts).success).toBe(false)
-  })
-
-  it('拒绝 taste 超过 1 条', () => {
-    const twoTastes = { insights: [validTaste, validTaste, validFact] }
-    expect(profileInsightsSchema.safeParse(twoTastes).success).toBe(false)
+  it('拒绝超长文本（> PROFILE_MARKDOWN_MAX_LENGTH）；恰好等于上限可通过', () => {
+    expect(() => validateProfileInsightsMarkdown('x'.repeat(PROFILE_MARKDOWN_MAX_LENGTH + 1))).toThrow(
+      ZodError,
+    )
+    const atLimit = validateProfileInsightsMarkdown('x'.repeat(PROFILE_MARKDOWN_MAX_LENGTH))
+    expect(atLimit).toHaveLength(PROFILE_MARKDOWN_MAX_LENGTH)
   })
 })
 
 describe('profile-insights.ts 源码审计（黑名单断言）', () => {
   it('源码文本不含任何黑名单字段名', () => {
     for (const name of BLACKLISTED_FIELD_NAMES) {
-            expect(profileInsightsSource).not.toContain(name)
+      expect(profileInsightsSource).not.toContain(name)
     }
   })
 })
@@ -111,6 +73,16 @@ describe('buildProfileInsightsPrompt', () => {
   it('输出语言随 locale：zh-CN → 中文，en → English', () => {
     expect(promptText('zh-CN')).toContain('简体中文')
     expect(promptText('en')).toContain('English')
+  })
+
+  it('输出契约为纯 Markdown：二级标题小节 + 一句话总结，禁代码围栏/表格，无 JSON 要求', () => {
+    const text = promptText('zh-CN')
+    expect(text).toContain('Markdown')
+    expect(text).toContain('##')
+    expect(text).toContain('一句话总结')
+    expect(text).toContain('不使用代码围栏')
+    expect(text).toContain('不使用表格')
+    expect(text).not.toContain('JSON')
   })
 
   it('数据区只描述白名单变量（summary + books 每书 8 字段）', () => {

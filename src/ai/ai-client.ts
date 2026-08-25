@@ -39,8 +39,11 @@ export class AiNetworkError extends Error {
 
 /**
  * SSE 增量解析器（ai-features §4.1 流式）：逐 chunk 喂入，返回本 chunk 内完成的
- * 事件 data 值数组。`data:` 行可跨 chunk 断行——内部缓冲重组；空行结束一个事件，
- * `data: [DONE]` 终止解析（此后输入忽略），事件内多行 data 以换行拼接。
+ * 事件 data 值数组。`data:` 行可跨 chunk 断行——内部缓冲重组；**每行独立成事件**：
+ * 空行/`event:`/`id:`/`retry:`/注释行/下一个 data 行均结束当前事件——兼容
+ * 单换行分隔与非标准端点（OpenAI 兼容端点均为单行 data 事件，规范多行 data
+ * 拼接语义不做支持）；裸 JSON 行（无 `data:` 前缀）容错为事件值（兼容整体
+ * JSON 被分块传输的端点）；`data: [DONE]` 终止解析（此后输入忽略）。
  * `end()` 收尾无换行结尾的残余行（幂等）。纯函数无网络/时钟/DOM。
  */
 export function createSseParser(): { next(chunk: string): string[]; end(): string[] } {
@@ -56,17 +59,33 @@ export function createSseParser(): { next(chunk: string): string[]; end(): strin
   }
 
   const consumeLine = (line: string, events: string[]): void => {
-    if (done || line === '') {
-      if (line === '') events.push(...flushEvent())
+    if (done) return
+    // 空行（规范分隔）/字段行/注释：结束当前事件（字段行宽松视为分隔，兼容单换行端点）。
+    if (
+      line === '' ||
+      line.startsWith('event:') ||
+      line.startsWith('id:') ||
+      line.startsWith('retry:') ||
+      line.startsWith(':')
+    ) {
+      events.push(...flushEvent())
       return
     }
-    if (!line.startsWith('data:')) return
-    let value = line.slice('data:'.length)
-    if (value.startsWith(' ')) value = value.slice(1)
+    let value: string
+    if (line.startsWith('data:')) {
+      value = line.slice('data:'.length)
+      if (value.startsWith(' ')) value = value.slice(1)
+    } else {
+      // 容错：裸 JSON 行（无 data: 前缀）也作为事件值。
+      value = line
+    }
     if (value === '[DONE]') {
+      events.push(...flushEvent())
       done = true
       return
     }
+    // 行独立语义：data 行本身也结束上一事件（无空行分隔时逐事件产出）。
+    events.push(...flushEvent())
     current.push(value)
   }
 
@@ -303,7 +322,9 @@ export async function chat(opts: AiChatOptions): Promise<string> {
   return parseChatContent(payload)
 }
 
-/** SSE 事件 → chat content 增量：解析 choices[0].delta.content；role 等无 content 分块跳过；结构非法抛解析错误。 */
+/**
+ * SSE 事件 → chat content 增量：解析 choices[0].delta.content；role 等无 content 分块
+ *  跳过；容错 message.content（整体 JSON 被分块传输的端点）；结构非法抛解析错误。 */
 function* sseEventsToContent(events: string[]): Generator<string> {
   for (const event of events) {
     let payload: unknown
@@ -312,20 +333,27 @@ function* sseEventsToContent(events: string[]): Generator<string> {
     } catch {
       throw new Error('AI 响应结构非法：SSE data 行非 JSON')
     }
-    const obj = payload as { choices?: Array<{ delta?: { content?: unknown } }> }
-    const content = obj?.choices?.[0]?.delta?.content
+    const obj = payload as {
+      choices?: Array<{
+        delta?: { content?: unknown }
+        message?: { content?: unknown }
+      }>
+    }
+    const deltaContent = obj?.choices?.[0]?.delta?.content
+    const messageContent = obj?.choices?.[0]?.message?.content
+    const content = deltaContent ?? messageContent
     if (content === undefined || content === null) continue
     if (typeof content !== 'string') {
-      throw new Error('AI 响应结构非法：delta.content 非字符串')
+      throw new Error('AI 响应结构非法：content 非字符串')
     }
     yield content
   }
 }
 
 /**
- * chat/completions 流式调用（ai-features §4.1）：`stream:true` + `response_format`
- * JSON 模式，SSE 响应逐 chunk 增量产出 `choices[0].delta.content`（拼接即非流式
- * content）。60s 总超时覆盖「TTFB + 全程传输」：内部 AbortController 超时中止、
+ * chat/completions 流式调用（ai-features §4.1）：`stream:true` 增量产出
+ * `choices[0].delta.content`（**markdown 文本流**，拼接即完整响应文本；不携带
+ * `response_format`——纯文本输出无需 JSON 模式）。60s 总超时覆盖「TTFB + 全程传输」：内部 AbortController 超时中止、
  * 外部 signal 透传，错误归一与 `chat` 一致（AbortError/AiHttpError/AiNetworkError）。
  */
 export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
@@ -334,7 +362,6 @@ export async function* chatStream(opts: AiChatOptions): AsyncIterable<string> {
     model: opts.model,
     messages: opts.messages,
     stream: true,
-    response_format: { type: 'json_object' },
   }
   if (opts.temperature !== undefined) {
     body.temperature = opts.temperature
