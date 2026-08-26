@@ -176,32 +176,35 @@ function median(values: number[]): number {
     : sorted[mid]
 }
 
-export function computeProfileStats(
-  input: ProfileStatsInput,
-  opts: ProfileStatsOptions,
-): ProfileStatsResult {
-  const { books, catalogRecords, borrowCycles, sources } = input
-
-  // --- 设备排除（device-borrows 规格 §4）：材料类型为 device 的 Book 与其
-  // 借阅周期不进入任何统计维度（藏书/周期/在借/时长/分类/借阅量/甘特）。 ---
-  const deviceBookIds = new Set(
-    books.filter((b) => b.materialType === 'device').map((b) => b.id),
-  )
-  const isDeviceCycle = (c: BorrowCycle): boolean => deviceBookIds.has(c.bookId)
-
-  // --- 分类法分布 ---
-  const system = resolveSystem(opts.classificationSystem, sources)
-  const classMap = new Map<string, ClassificationBucket>()
-  const bookById = new Map(books.map((b) => [b.id, b]))
-  const recordsByBook = new Map<string, CatalogRecord[]>()
+/** 编目记录按 bookId 建索引（treemap 首选体系解析与甘特卷号共用）。 */
+function indexRecordsByBook(
+  catalogRecords: CatalogRecord[],
+): Map<string, CatalogRecord[]> {
+  const map = new Map<string, CatalogRecord[]>()
   for (const cr of catalogRecords) {
-    const arr = recordsByBook.get(cr.bookId)
+    const arr = map.get(cr.bookId)
     if (arr) arr.push(cr)
-    else recordsByBook.set(cr.bookId, [cr])
+    else map.set(cr.bookId, [cr])
   }
+  return map
+}
 
+/**
+ * 分类法一级归并桶（reading-profile §2.1 treemap 口径）：每 Book 计一次，避免多
+ * CatalogRecord 多副本重复计数；分类号取首选匹配体系条目的首条；无匹配归未分类。
+ * scope 非空时仅统计集合内的 Book（年度切片 §2.7 用）。
+ */
+function buildClassificationBuckets(
+  books: Book[],
+  recordsByBook: Map<string, CatalogRecord[]>,
+  deviceBookIds: Set<string>,
+  system: ClassificationSystem,
+  scope: Set<string> | null = null,
+): ClassificationBucket[] {
+  const classMap = new Map<string, ClassificationBucket>()
   for (const book of books) {
     if (deviceBookIds.has(book.id)) continue
+    if (scope && !scope.has(book.id)) continue
     const records = recordsByBook.get(book.id) ?? []
     let merged: { code: string; category: string | null; name: string } | null = null
     for (const cr of records) {
@@ -234,8 +237,32 @@ export function computeProfileStats(
     bucket.value += 1
     classMap.set(key, bucket)
   }
+  return Array.from(classMap.values())
+}
 
-  const classification = Array.from(classMap.values())
+export function computeProfileStats(
+  input: ProfileStatsInput,
+  opts: ProfileStatsOptions,
+): ProfileStatsResult {
+  const { books, catalogRecords, borrowCycles, sources } = input
+
+  // --- 设备排除（device-borrows 规格 §4）：材料类型为 device 的 Book 与其
+  // 借阅周期不进入任何统计维度（藏书/周期/在借/时长/分类/借阅量/甘特）。 ---
+  const deviceBookIds = new Set(
+    books.filter((b) => b.materialType === 'device').map((b) => b.id),
+  )
+  const isDeviceCycle = (c: BorrowCycle): boolean => deviceBookIds.has(c.bookId)
+
+  // --- 分类法分布（treemap 口径；年度切片 §2.7 共用同一 helper） ---
+  const system = resolveSystem(opts.classificationSystem, sources)
+  const bookById = new Map(books.map((b) => [b.id, b]))
+  const recordsByBook = indexRecordsByBook(catalogRecords)
+  const classification = buildClassificationBuckets(
+    books,
+    recordsByBook,
+    deviceBookIds,
+    system,
+  )
 
   // --- 借阅量柱图（range 裁剪，UTC 桶） ---
   const volumeCycles = borrowCycles.filter(
@@ -487,4 +514,87 @@ export function computeProfileStats(
       multiCurrency: colMap.size > 1,
     },
   }
+}
+
+// --- 年度切片（reading-profile 规格 §2.7；年度目标/回顾/叙事共用） ---
+
+/** 年度视图「最常借 Top N」常量（G-1 裁定 N=5）。 */
+export const YEAR_TOP_BOOKS_N = 5
+
+export interface YearSliceOptions {
+  /** 分类体系，缺省取 sources 多数票（resolveSystem 同款）；仍空取 'clc' */
+  classificationSystem: ClassificationSystem | null
+  /** Top N，缺省 YEAR_TOP_BOOKS_N */
+  topN: number
+}
+
+export interface YearSliceResult {
+  /** 该年借出独立 Book id，升序（年度书单 + AI 叙事书目装配源） */
+  bookIds: string[]
+  /** 独立 Book 数（年度目标进度口径） */
+  bookCount: number
+  /** 按年内借出次数降序 Top topN（复借最多口径；同 count 按 bookId 升序稳定） */
+  topBooks: { bookId: string; count: number }[]
+  /** 该年独立 Book 分类分布，与 treemap 同桶形态（§2.1） */
+  classification: {
+    name: string
+    code: string
+    category: string | null
+    value: number
+  }[]
+}
+
+/**
+ * 年度切片：年内「曾借出」的独立 Book（reading-profile §2.7）。
+ * 口径：borrowedAt ∈ [y-01-01T00:00:00.000Z, (y+1)-01-01T00:00:00.000Z) UTC 左闭右开；
+ * 不依赖 status='returned'（在借周期计入）；同书多次借阅计 1；设备书排除；
+ * 跨年周期只计入 borrowedAt 所在年；空年零值结构不抛错。
+ * 纯函数：不读 Date.now()/DOM/存储，同输入两次调用深等价。
+ */
+export function computeYearSlice(
+  books: Book[],
+  records: {
+    catalogRecords: CatalogRecord[]
+    borrowCycles: BorrowCycle[]
+    sources: Source[]
+  },
+  year: number,
+  options?: Partial<YearSliceOptions>,
+): YearSliceResult {
+  const { catalogRecords, borrowCycles, sources } = records
+  const topN = options?.topN ?? YEAR_TOP_BOOKS_N
+  const system = resolveSystem(options?.classificationSystem ?? null, sources)
+
+  // UTC 年桶（左闭右开）
+  const fromMs = Date.UTC(year, 0, 1)
+  const toMs = Date.UTC(year + 1, 0, 1)
+
+  // 设备排除（§2.0 排除总则）：设备书的周期不进入任何维度
+  const deviceBookIds = new Set(
+    books.filter((b) => b.materialType === 'device').map((b) => b.id),
+  )
+
+  // 年内周期计数（按书）：bookIds 去重与 topBooks 次数同源
+  const countByBook = new Map<string, number>()
+  for (const c of borrowCycles) {
+    if (deviceBookIds.has(c.bookId)) continue
+    const t = c.borrowedAt.getTime()
+    if (t < fromMs || t >= toMs) continue
+    countByBook.set(c.bookId, (countByBook.get(c.bookId) ?? 0) + 1)
+  }
+
+  const bookIds = Array.from(countByBook.keys()).sort()
+  const topBooks = Array.from(countByBook.entries())
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, topN)
+    .map(([bookId, count]) => ({ bookId, count }))
+  const classification = buildClassificationBuckets(
+    books,
+    indexRecordsByBook(catalogRecords),
+    deviceBookIds,
+    system,
+    new Set(bookIds),
+  )
+
+  return { bookIds, bookCount: bookIds.length, topBooks, classification }
 }

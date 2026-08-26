@@ -7,6 +7,7 @@ import {
   makeBook, makeCatalog, makeCycle, makeImportLog, makeRawRecord, makeSource,
 } from '@/db/test-helpers'
 import { uuid } from '@/db/uuid'
+import { readPreferences } from '@/lib/preferences'
 
 let db: ReadGraphDB
 beforeEach(() => { db = createTestDB() })
@@ -98,5 +99,24 @@ describe('resetDatabase', () => {
     await resetDatabase(db, {})
     expect(store.get('readgraph:preferences')).toBe(prefs)
     expect(store.get('readgraph:ai-api-key')).toBe(key)
+  })
+
+  it('clears annualGoals along with preferences when clearPreferences is set', async () => {
+    const store = new Map<string, string>([
+      ['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: { 2025: 10, 2026: 12 } })],
+    ])
+    ;(globalThis as unknown as { localStorage: Storage }).localStorage = makeStorage(store)
+    await resetDatabase(db, { clearPreferences: true })
+    expect(store.get('readgraph:preferences')).toBeUndefined()
+    expect(readPreferences().annualGoals).toEqual({})
+  })
+
+  it('preserves annualGoals when clearPreferences is not set', async () => {
+    const prefs = JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: { 2025: 10, 2026: 12 } })
+    const store = new Map<string, string>([['readgraph:preferences', prefs]])
+    ;(globalThis as unknown as { localStorage: Storage }).localStorage = makeStorage(store)
+    await resetDatabase(db, {})
+    expect(store.get('readgraph:preferences')).toBe(prefs)
+    expect(readPreferences().annualGoals).toEqual({ 2025: 10, 2026: 12 })
   })
 })

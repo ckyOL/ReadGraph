@@ -15,6 +15,12 @@ export const userPreferencesSchema = z.object({
     model: z.string(),
     sendPreview: z.boolean(),
   }),
+  // 年度目标：键 = 4 位整数年 [1000, 9999]（localStorage JSON 键为字符串，经 coerce 转数字），
+  // 值 = 整数 [1, 999]（0 不被接受——清除 = 删除该年条目，不是写 0）。
+  annualGoals: z.record(
+    z.coerce.number().int().min(1000).max(9999),
+    z.number().int().min(1).max(999),
+  ).default({}),
 })
 
 export type UserPreferencesInput = z.input<typeof userPreferencesSchema>
@@ -25,6 +31,7 @@ export const DEFAULT_PREFERENCES = {
   theme: 'auto' as const,
   displayTimezone: 'Asia/Shanghai',
   ai: { enabled: false, baseUrl: '', model: '', sendPreview: true },
+  annualGoals: {},
 }
 
 export type Theme = 'light' | 'dark' | 'auto'
@@ -47,8 +54,8 @@ function readRawObject(): Record<string, unknown> | null {
 
 /**
  * 读取并校验用户偏好。locale 沿用 locale.ts 的 getStoredLocale()
- * （不重写，避免回归既有 i18n 测试）；theme、displayTimezone 与 ai 由本函数从
- * localStorage 原始对象读取并补齐。safeParse 失败降级到默认。
+ * （不重写，避免回归既有 i18n 测试）；theme、displayTimezone、ai 与 annualGoals 由
+ * 本函数从 localStorage 原始对象读取并补齐。safeParse 失败降级到默认。
  */
 export function readPreferences(): UserPreferencesParsed {
   const raw = readRawObject()
@@ -56,6 +63,7 @@ export function readPreferences(): UserPreferencesParsed {
   let theme: UserPreferencesParsed['theme'] = DEFAULT_PREFERENCES.theme
   let displayTimezone = DEFAULT_PREFERENCES.displayTimezone
   let ai: UserPreferencesParsed['ai'] = DEFAULT_PREFERENCES.ai
+  let annualGoals: UserPreferencesParsed['annualGoals'] = DEFAULT_PREFERENCES.annualGoals
 
   if (raw) {
     if (typeof raw.theme === 'string' && THEME_VALUES.includes(raw.theme)) {
@@ -83,9 +91,22 @@ export function readPreferences(): UserPreferencesParsed {
             : DEFAULT_PREFERENCES.ai.sendPreview,
       }
     }
+    // annualGoals 缺失/非对象 → {}；逐条目过滤（对齐 ai 字段级降级模式，不整体打翻）：
+    // 键非 4 位整数年、值非整数或越界（<1 或 >999，含 0/负数）的条目丢弃，合法条目保留。
+    const rawGoals = raw.annualGoals
+    if (rawGoals && typeof rawGoals === 'object' && !Array.isArray(rawGoals)) {
+      const goals: Record<number, number> = {}
+      for (const [key, value] of Object.entries(rawGoals)) {
+        const year = Number(key)
+        if (!Number.isInteger(year) || year < 1000 || year > 9999) continue
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 999) continue
+        goals[year] = value
+      }
+      annualGoals = goals
+    }
   }
 
-  const candidate = { locale, theme, displayTimezone, ai }
+  const candidate = { locale, theme, displayTimezone, ai, annualGoals }
   const result = userPreferencesSchema.safeParse(candidate)
   if (!result.success) {
     return { ...DEFAULT_PREFERENCES, locale }

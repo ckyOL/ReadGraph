@@ -45,12 +45,12 @@
 
 ## 阶段 1：纯函数层（W1 并行，TDD 核心）
 
-- [ ] **Y-1（W1）** `computeYearSlice(books, records, year, options)` 实现（`src/lib/profile-stats.ts`，**独立导出入口，不进 `ProfileStatsResult`**——`/profile/$year` 按需调用，不污染主聚合结构，reading-profile §2.7）：
+- [x] **Y-1（W1）** `computeYearSlice(books, records, year, options)` 实现（`src/lib/profile-stats.ts`，**独立导出入口，不进 `ProfileStatsResult`**——`/profile/$year` 按需调用，不污染主聚合结构，reading-profile §2.7）：
   - 契约：`bookIds`（该年借出独立 Book id 升序）/ `bookCount`（= `bookIds.length`，年度目标进度口径）/ `topBooks`（`{ bookId, count }[]` 按年内借出次数降序 Top N）/ `classification`（该年独立 Book 按首选体系分类分布，无分类号归 `__unclassified__`）。
   - 口径：`borrowedAt ∈ [y-01-01T00:00:00.000Z, (y+1)-01-01T00:00:00.000Z)`（UTC 左闭右开）即计入；**不依赖 `status='returned'`**；同书多次借阅计 1；设备书排除（§2.0 排除总则）；跨年周期只计入 `borrowedAt` 所在年；空年零值结构（`bookIds=[]`/`bookCount=0`/`topBooks=[]`/`classification=[]`），不抛错。
   - 测试（Red 先行，清单已在 reading-profile §7）：口径边界（左闭右开、在借周期计入、同书 2 周期计 1、设备排除、跨年归属、空年）；纯函数性（同输入两次深等价、UTC 桶归属与 displayTimezone 无关、`topBooks` 降序/`bookIds` 升序、无 `Date.now()`）。
-- [ ] **Y-2（W1）** 年度目标偏好扩展（`src/lib/preferences.ts`，按 G-2 裁定形态）：schema 增量 + 读写 + 非法值降级；系统重置清理语义对齐。测试：合法读写回环、非法值降级默认、重置清理。
-- [ ] **P-2（W1）** `src/ai/prompts/year-narrative.ts` 实现（替换 Phase 1 占位 `YEAR_NARRATIVE_TEMPLATE_PHASE2`）：
+- [x] **Y-2（W1）** 年度目标偏好扩展（`src/lib/preferences.ts`，按 G-2 裁定形态）：schema 增量 + 读写 + 非法值降级；系统重置清理语义对齐。测试：合法读写回环、非法值降级默认、重置清理。
+- [x] **P-2（W1）** `src/ai/prompts/year-narrative.ts` 实现（替换 Phase 1 占位 `YEAR_NARRATIVE_TEMPLATE_PHASE2`）：
   - 模板：年度切片指标（yearSlice 聚合输出：`bookCount`/`topBooks`/`classification`）+ 切片内**全量**书目题名/作者（与 §3.2 同一白名单形态，切片规模更小）→ 叙事段落（「今年借阅 23 本、最爱文学类、复借最多的是《X》…」）；数字只转译不生成（对齐 §2.6 统计一致性）；幻觉控制指令（仅可引用发送书单内的书目，不虚构书名/作者）；**年度目标值不得出现于模板变量**（§9.1 白名单边界）。
   - 弱校验 schema：非空 + 长度上限（`YEAR_NARRATIVE_MAX_LENGTH`，对齐 `validateProfileInsightsMarkdown` 形态）。
   - 测试：schema 接受/拒绝路径；prompt 模板只含白名单变量（无黑名单字段名、无目标值字段，代码审计断言）。
@@ -97,7 +97,12 @@
   - **G-1 裁定**（reading-profile §4「年度视图」子节 + §6 故事 18–21 + §7 测试 + §8 性能）：布局 = 年份导航工具条（`‹`/`›` + 标题）→ 概览窄卡行（年度目标进度卡：进度条 + 「N / M」+ 差量文案，Bookology 大网格编号占位不照搬；本年借阅卡）→ 最常借 Top 5 区块（`YEAR_TOP_BOOKS_N=5`）→ 年度书单全幅封面网格（`bookIds` 升序、无封面占位题名首字符、响应式列数、全量不折叠、`bookIndex` 式索引）→ AI 叙事区（U-2 落点，未启用/空年不渲染）；入口双入口 = /profile 概览行第 6 卡「年度目标」（栅格扩 `md:grid-cols-6`）+ 借阅日历年视图工具条「年度回顾」链接；柱图年桶下钻 = 可选增强不承诺；`$year` loader `z.string().regex(/^\d{4}$/)`，非法 `notFound()`；空年 = 书单/Top 5 `Empty` 变体 + 目标卡 0/M + 叙事区不渲染；页面只读（目标编辑在设置页）。
   - **G-2 裁定**（data-layer §8 + §11 测试条目 + reading-profile §2.7 引用）：形态 `annualGoals?: Record<number, number>`（键 4 位整数年 1000–9999、值整数 1–999；0 值不被接受，**清除 = 删除条目**）；降级 = **逐条目过滤**（键/值非法条目丢弃，合法保留，对齐 ai 字段级模式）；设置入口 = **设置页偏好区**（当前年数字步进器 1–999、减至 0 清除、即时写 `writePreferences`）→ **E-4 保留**（不并入 U-1）；重置语义 = `clearPreferences` 走既有 `readgraph:*` 清键（无需改 reset）；目标值不进 AI payload（§9.1 白名单边界重申）。
   - **G-3**：app-spec §6 #11 落地状态补 Phase 1 已 TDD 落地（2026-08-25 收尾含画像流式先行）+ Phase 2 执行清单链接（任务行已由建档登记，未重复）。
-  - 阶段 1（W1：Y-1/Y-2/P-2）待启动；Y-2 按 G-2 裁定实现 `annualGoals`（逐条目过滤 + 0 拒绝 + 清除=删键）；U-1 按 G-1 布局与双入口实现。
+- 2026-08-26 **阶段 1 完成（W1，三任务并行 fan-out）**：Y-1/Y-2/P-2 落地，TDD 全绿——
+  - **Y-1** `src/lib/profile-stats.ts`：`computeYearSlice(books, records, year, options)` 独立导出（不进 `ProfileStatsResult`），`records = { catalogRecords, borrowCycles, sources }`；`YEAR_TOP_BOOKS_N = 5` / `YearSliceOptions` / `YearSliceResult`；复用 `resolveSystem` + 提取共享 `buildClassificationBuckets`（scope 参数）/`indexRecordsByBook`（computeProfileStats 同源重构，零回归）；口径全按 §2.7（UTC 左闭右开、不依赖 returned、同书去重计 1、设备排除、跨年按 borrowedAt、空年零值、无 Date.now()）。测试 12 用例（边界/在借/去重/设备/跨年/空年/序/纯函数性/体系）。
+  - **Y-2** `src/lib/preferences.ts`：`annualGoals: z.record(z.coerce.number().int().min(1000).max(9999), z.number().int().min(1).max(999)).default({})` + `DEFAULT_PREFERENCES.annualGoals = {}` + `readPreferences` 逐条目过滤（键非 4 位整数年/值非整数或越界丢弃，缺失/非对象/数组 → {}，仍走 schema 兜底）；`writePreferences` 既有合并透传（0 值整体拒写，清除 = 删条目）；`reset.ts` 零改动（clearPreferences 既有语义）；测试 17 用例（回环/多历年互不串/逐条目过滤/拒写/重置清理）+ reset.test.ts 既有整对象断言补 `annualGoals: {}`。
+  - **P-2** `src/ai/prompts/year-narrative.ts`：占位替换——`YEAR_NARRATIVE_MAX_LENGTH = 20_000` / `validateYearNarrative`（非空 + 长度上限，抛 ZodError，返回 trim）/ `YEAR_NARRATIVE_TEMPERATURE = 0.2` / `buildYearNarrativePrompt({ year, slice, books, locale })`（unknown 透传、8 字段声明、目标排除指令、语言指令）；源码黑名单审计目标注释惯例 + 测试 12 用例（弱校验/消息结构/JSON 透传/**黑名单逐值穷举含 annualGoals 专项**）；占位 `YEAR_NARRATIVE_TEMPLATE_PHASE2`/`YearNarrativeScene` 删除，grep 确认无引用。
+  - **门禁**：`pnpm test` 74 文件 **952 用例全绿**、`pnpm exec tsc --noEmit` 过、`pnpm build`（tsc -b + vite）过。**修复**：`buildClassificationBuckets` scope 形参 `Set<string>` 误传 `Map`（Y-1 波内纠错，改传 `new Set(bookIds)`）。
+  - 波次 2（W2：S-3 年度场景装配 + U-1 `/profile/$year` 静态骨架，文件不相交）待启；S-3 消费 Y-1，U-1 消费 Y-1 + Y-2。
 
 ## 实现指南（给执行 LLM 的速查）
 

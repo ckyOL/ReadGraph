@@ -55,19 +55,22 @@ describe('DEFAULT_PREFERENCES', () => {
     expect(DEFAULT_PREFERENCES.displayTimezone).toBe('Asia/Shanghai')
     expect(DEFAULT_PREFERENCES.ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
   })
+  it('has an empty annualGoals default', () => {
+    expect(DEFAULT_PREFERENCES.annualGoals).toEqual({})
+  })
 })
 
 describe('readPreferences', () => {
   it('returns defaults when nothing is stored', () => {
     installStorage(new Map())
     const r = readPreferences()
-    expect(r).toEqual({ locale: DEFAULT_LOCALE, theme: 'auto', displayTimezone: 'Asia/Shanghai', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true } })
+    expect(r).toEqual({ locale: DEFAULT_LOCALE, theme: 'auto', displayTimezone: 'Asia/Shanghai', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true }, annualGoals: {} })
   })
 
   it('reads fully valid persisted preferences', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' } })]]))
     setNavLng('en-US')
-    expect(readPreferences()).toEqual({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o', sendPreview: true } })
+    expect(readPreferences()).toEqual({ locale: 'en', theme: 'dark', displayTimezone: 'Europe/London', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o', sendPreview: true }, annualGoals: {} })
   })
 
   it('downgrades an out-of-enum theme to default, keeps valid timezone', () => {
@@ -152,6 +155,55 @@ describe('readPreferences', () => {
     setNavLng('zh-CN')
     expect(readPreferences().ai).toEqual({ enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: false })
   })
+
+  it('returns empty annualGoals when annualGoals is missing from raw', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC' })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().annualGoals).toEqual({})
+  })
+
+  it('returns empty annualGoals when annualGoals is not an object', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: '2026: 12' })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().annualGoals).toEqual({})
+  })
+
+  it('returns empty annualGoals when annualGoals is an array', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: [12] })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().annualGoals).toEqual({})
+  })
+
+  it('round-trips multiple valid years without interference', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: { 2024: 5, 2025: 12, 2026: 30 } })]]))
+    setNavLng('zh-CN')
+    const r = readPreferences()
+    expect(r.annualGoals).toEqual({ 2024: 5, 2025: 12, 2026: 30 })
+    expect(r.annualGoals[2024]).toBe(5)
+    expect(r.annualGoals[2025]).toBe(12)
+    expect(r.annualGoals[2026]).toBe(30)
+  })
+
+  it('accepts 4-digit string year keys via coercion, drops malformed or out-of-range keys', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: { '2026': 12, '026': 1, '12026': 1, '-2026': 1, abc: 1, 999: 1, 1000: 2, 9999: 3, 10000: 1, 2025: 5 } })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().annualGoals).toEqual({ 1000: 2, 2025: 5, 2026: 12, 9999: 3 })
+  })
+
+  it('drops entries with invalid values, keeps valid entries', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'auto', displayTimezone: 'UTC', annualGoals: { 2020: 0, 2021: -3, 2022: 12.5, 2023: 1000, 2024: 999, 2025: 1, 2026: '12' } })]]))
+    setNavLng('zh-CN')
+    expect(readPreferences().annualGoals).toEqual({ 2024: 999, 2025: 1 })
+  })
+
+  it('keeps valid annualGoals alongside valid siblings', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'en', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com/v1', model: 'gpt-4o' }, annualGoals: { 2026: 12 } })]]))
+    setNavLng('en-US')
+    const r = readPreferences()
+    expect(r.annualGoals).toEqual({ 2026: 12 })
+    expect(r.ai.enabled).toBe(true)
+    expect(r.locale).toBe('en')
+  })
 })
 
 describe('writePreferences', () => {
@@ -159,7 +211,7 @@ describe('writePreferences', () => {
     installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'light', displayTimezone: 'UTC' })]]))
     setNavLng('zh-CN')
     const r = writePreferences({ theme: 'dark' as Theme })
-    expect(r).toEqual({ locale: 'zh-CN', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true } })
+    expect(r).toEqual({ locale: 'zh-CN', theme: 'dark', displayTimezone: 'UTC', ai: { enabled: false, baseUrl: '', model: '', sendPreview: true }, annualGoals: {} })
   })
 
   it('rejects an invalid theme patch, keeping the current valid value', () => {
@@ -195,6 +247,50 @@ describe('writePreferences', () => {
     setNavLng('zh-CN')
     const r = writePreferences({ ai: { enabled: 'yes' as unknown as boolean, baseUrl: '', model: '', sendPreview: true } })
     expect(r.ai).toEqual({ enabled: false, baseUrl: '', model: '', sendPreview: true })
+  })
+
+  it('persists an annualGoals patch and reads it back equivalently', () => {
+    installStorage(new Map())
+    setNavLng('zh-CN')
+    const r = writePreferences({ annualGoals: { 2025: 10, 2026: 12 } })
+    expect(r.annualGoals).toEqual({ 2025: 10, 2026: 12 })
+    expect(r.theme).toBe('auto')
+    expect(readPreferences().annualGoals).toEqual({ 2025: 10, 2026: 12 })
+  })
+
+  it('persists an annualGoals patch without clobbering existing prefs', () => {
+    installStorage(new Map([['readgraph:preferences', JSON.stringify({ locale: 'zh-CN', theme: 'light', displayTimezone: 'UTC', ai: { enabled: true, baseUrl: 'https://api.example.com', model: 'gpt-4o', sendPreview: true } })]]))
+    setNavLng('zh-CN')
+    const r = writePreferences({ annualGoals: { 2026: 12 } })
+    expect(r.theme).toBe('light')
+    expect(r.ai.enabled).toBe(true)
+    expect(r.annualGoals).toEqual({ 2026: 12 })
+  })
+
+  it('rejects a zero-value annualGoals patch, keeping current (clearing = deleting the entry)', () => {
+    installStorage(new Map())
+    setNavLng('zh-CN')
+    const r = writePreferences({ annualGoals: { 2026: 0 } })
+    expect(r.annualGoals).toEqual({})
+    expect(readPreferences().annualGoals).toEqual({})
+  })
+
+  it('rejects out-of-range or malformed annualGoals patches wholesale, keeping current', () => {
+    installStorage(new Map())
+    setNavLng('zh-CN')
+    const bad: Array<Record<number, number>> = [
+      { 2026: 1000 },
+      { 2026: -1 },
+      { 2026: 12.5 },
+      { 202: 5 },
+    ]
+    for (const patch of bad) {
+      const r = writePreferences({ annualGoals: patch })
+      expect(r.annualGoals).toEqual({})
+    }
+    const r = writePreferences({ annualGoals: { '2026': '12' } as unknown as Record<number, number> })
+    expect(r.annualGoals).toEqual({})
+    expect(readPreferences().annualGoals).toEqual({})
   })
 })
 

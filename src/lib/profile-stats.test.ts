@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import type { Book, BorrowCycle, CatalogRecord, ClassificationSystem, Source } from '@/types/entities'
 
-import { computeProfileStats } from '@/lib/profile-stats'
+import { computeProfileStats, computeYearSlice, YEAR_TOP_BOOKS_N } from '@/lib/profile-stats'
 
 // ---- 固定 UTC 时刻（用 Date 构造显式 UTC 串，避免本地时区污染桶归属） ----
 const U = (isoUtc: string) => new Date(isoUtc)
@@ -1041,5 +1041,251 @@ describe('computeProfileStats - 借阅日历（reading-profile 规格 §2.6）',
     const rA2 = computeProfileStats(input, optsA)
     expect(rA.calendar).toEqual(rB.calendar)
     expect(rA.calendar).toEqual(rA2.calendar)
+  })
+})
+
+describe('computeYearSlice - 年度切片（reading-profile 规格 §2.7）', () => {
+  it('左闭右开边界：borrowedAt 恰为 y-01-01T00:00:00Z 计入、(y+1)-01-01T00:00:00Z 不计', () => {
+    const books = [makeBook('b1'), makeBook('b2')]
+    const r = computeYearSlice(
+      books,
+      {
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2023-01-10T00:00:00Z'),
+          }),
+          makeCycle('c2', 'b2', U('2024-01-01T00:00:00Z'), {
+            status: 'returned',
+            returnedAt: U('2024-01-10T00:00:00Z'),
+          }),
+        ],
+        sources: [],
+      },
+      2023,
+    )
+    expect(r.bookIds).toEqual(['b1'])
+    expect(r.bookCount).toBe(1)
+    expect(r.topBooks).toEqual([{ bookId: 'b1', count: 1 }])
+  })
+
+  it('在借周期（status=borrowed、returnedAt=null）计入，不依赖归还状态', () => {
+    const r = computeYearSlice(
+      [makeBook('b1')],
+      {
+        catalogRecords: [],
+        borrowCycles: [makeCycle('c1', 'b1', U('2023-06-15T00:00:00Z'))],
+        sources: [],
+      },
+      2023,
+    )
+    expect(r.bookIds).toEqual(['b1'])
+    expect(r.bookCount).toBe(1)
+    expect(r.topBooks).toEqual([{ bookId: 'b1', count: 1 }])
+  })
+
+  it('同书 2 周期计 1（bookIds 去重；topBooks count=2 按周期计数）', () => {
+    const r = computeYearSlice(
+      [makeBook('b1')],
+      {
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-02-01T00:00:00Z')),
+          makeCycle('c2', 'b1', U('2023-05-01T00:00:00Z')),
+        ],
+        sources: [],
+      },
+      2023,
+    )
+    expect(r.bookIds).toEqual(['b1'])
+    expect(r.bookCount).toBe(1)
+    expect(r.topBooks).toEqual([{ bookId: 'b1', count: 2 }])
+  })
+
+  it('设备书及其周期排除（§2.0 排除总则）', () => {
+    const r = computeYearSlice(
+      [makeBook('b1'), makeBook('b-dev', { materialType: 'device' })],
+      {
+        catalogRecords: [],
+        borrowCycles: [
+          makeCycle('c1', 'b1', U('2023-03-01T00:00:00Z')),
+          makeCycle('c2', 'b-dev', U('2023-03-02T00:00:00Z')),
+        ],
+        sources: [],
+      },
+      2023,
+    )
+    expect(r.bookIds).toEqual(['b1'])
+    expect(r.topBooks).toEqual([{ bookId: 'b1', count: 1 }])
+  })
+
+  it('跨年周期只计入 borrowedAt 所在年', () => {
+    const books = [makeBook('b1'), makeBook('b2')]
+    const cycles = [
+      makeCycle('c1', 'b1', U('2023-12-31T23:59:59.999Z'), {
+        status: 'returned',
+        returnedAt: U('2024-01-15T00:00:00Z'),
+      }),
+      makeCycle('c2', 'b2', U('2024-01-01T00:00:00Z'), {
+        status: 'returned',
+        returnedAt: U('2024-02-01T00:00:00Z'),
+      }),
+    ]
+    const r2023 = computeYearSlice(
+      books,
+      { catalogRecords: [], borrowCycles: cycles, sources: [] },
+      2023,
+    )
+    const r2024 = computeYearSlice(
+      books,
+      { catalogRecords: [], borrowCycles: cycles, sources: [] },
+      2024,
+    )
+    expect(r2023.bookIds).toEqual(['b1'])
+    expect(r2024.bookIds).toEqual(['b2'])
+  })
+
+  it('空年零值结构完整（bookIds/bookCount/topBooks/classification 全零），不抛错', () => {
+    const r = computeYearSlice(
+      [makeBook('b1')],
+      {
+        catalogRecords: [],
+        borrowCycles: [makeCycle('c1', 'b1', U('2022-12-31T00:00:00Z'))],
+        sources: [],
+      },
+      2023,
+    )
+    expect(r).toEqual({ bookIds: [], bookCount: 0, topBooks: [], classification: [] })
+  })
+
+  it('bookIds 升序；topBooks 按年内借出次数降序，同 count 稳定序（bookId 升序）', () => {
+    const books = [makeBook('b-a'), makeBook('b-b'), makeBook('b-c'), makeBook('b-d')]
+    const cycles = [
+      makeCycle('c1', 'b-d', U('2023-01-01T00:00:00Z')),
+      makeCycle('c2', 'b-d', U('2023-03-01T00:00:00Z')),
+      makeCycle('c3', 'b-d', U('2023-05-01T00:00:00Z')),
+      makeCycle('c4', 'b-c', U('2023-02-01T00:00:00Z')),
+      makeCycle('c5', 'b-c', U('2023-04-01T00:00:00Z')),
+      makeCycle('c6', 'b-b', U('2023-06-01T00:00:00Z')),
+      makeCycle('c7', 'b-a', U('2023-07-01T00:00:00Z')),
+    ]
+    const r = computeYearSlice(
+      books,
+      { catalogRecords: [], borrowCycles: cycles, sources: [] },
+      2023,
+    )
+    expect(r.bookIds).toEqual(['b-a', 'b-b', 'b-c', 'b-d'])
+    expect(r.topBooks).toEqual([
+      { bookId: 'b-d', count: 3 },
+      { bookId: 'b-c', count: 2 },
+      { bookId: 'b-a', count: 1 },
+      { bookId: 'b-b', count: 1 },
+    ])
+  })
+
+  it('topN 缺省 YEAR_TOP_BOOKS_N=5，可经 options 覆盖', () => {
+    const books = Array.from({ length: 6 }, (_, i) => makeBook(`b${i}`))
+    const cycles = books.map((b, i) => makeCycle(`c${i}`, b.id, U('2023-01-01T00:00:00Z')))
+    const rDefault = computeYearSlice(
+      books,
+      { catalogRecords: [], borrowCycles: cycles, sources: [] },
+      2023,
+    )
+    expect(rDefault.topBooks).toHaveLength(YEAR_TOP_BOOKS_N)
+    expect(rDefault.topBooks).toEqual(
+      ['b0', 'b1', 'b2', 'b3', 'b4'].map((bookId) => ({ bookId, count: 1 })),
+    )
+    const rTop2 = computeYearSlice(
+      books,
+      { catalogRecords: [], borrowCycles: cycles, sources: [] },
+      2023,
+      { topN: 2 },
+    )
+    expect(rTop2.topBooks).toEqual([
+      { bookId: 'b0', count: 1 },
+      { bookId: 'b1', count: 1 },
+    ])
+  })
+
+  it('classification 与 treemap 同口径：首选体系一级归并、无分类号归 __unclassified__、多编目不翻倍', () => {
+    const books = [makeBook('b-clc'), makeBook('b-none')]
+    const r = computeYearSlice(
+      books,
+      {
+        catalogRecords: [
+          makeCatalog('cr-1', 'b-clc', {
+            classifications: [{ system: 'clc', code: 'I247.5' }],
+          }),
+          makeCatalog('cr-2', 'b-clc', {
+            classifications: [{ system: 'ddc', code: '895.1' }],
+          }),
+        ],
+        borrowCycles: [
+          makeCycle('c1', 'b-clc', U('2023-01-01T00:00:00Z')),
+          makeCycle('c2', 'b-none', U('2023-01-02T00:00:00Z')),
+        ],
+        sources: [makeSource('s1', 'clc')],
+      },
+      2023,
+    )
+    expect(r.classification).toEqual([
+      { name: '文学', code: 'I', category: '文学', value: 1 },
+      { name: '__unclassified__', code: '__unclassified__', category: null, value: 1 },
+    ])
+  })
+
+  it('classificationSystem 缺省取 sources 多数票；仍空回退 clc（resolveSystem 同款）', () => {
+    const books = [makeBook('b1')]
+    const records = {
+      catalogRecords: [
+        makeCatalog('cr-1', 'b1', {
+          classifications: [{ system: 'ddc', code: '813.54' }],
+        }),
+      ],
+      borrowCycles: [makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z'))],
+      sources: [makeSource('s1', 'ddc')],
+    }
+    const r = computeYearSlice(books, records, 2023)
+    expect(r.classification).toEqual([
+      { name: 'Literature', code: '8', category: 'Literature', value: 1 },
+    ])
+    const rFallback = computeYearSlice(books, { ...records, sources: [] }, 2023)
+    expect(rFallback.classification).toEqual([
+      { name: '__unclassified__', code: '__unclassified__', category: null, value: 1 },
+    ])
+  })
+
+  it('UTC 年桶：本地时区已跨年的时刻仍按 UTC 归属', () => {
+    // 2023-12-31T16:00:00Z 在 Asia/Shanghai 已是 2024-01-01；UTC 桶归属 2023
+    const records = {
+      catalogRecords: [],
+      borrowCycles: [makeCycle('c1', 'b1', U('2023-12-31T16:00:00Z'))],
+      sources: [],
+    }
+    const r2023 = computeYearSlice([makeBook('b1')], records, 2023)
+    const r2024 = computeYearSlice([makeBook('b1')], records, 2024)
+    expect(r2023.bookIds).toEqual(['b1'])
+    expect(r2024.bookIds).toEqual([])
+  })
+
+  it('纯函数性：同输入两次调用深等价（含 topBooks/classification 全字段）', () => {
+    const books = [makeBook('b1'), makeBook('b2')]
+    const records = {
+      catalogRecords: [
+        makeCatalog('cr-1', 'b1', {
+          classifications: [{ system: 'clc', code: 'I247' }],
+        }),
+      ],
+      borrowCycles: [
+        makeCycle('c1', 'b1', U('2023-01-01T00:00:00Z')),
+        makeCycle('c2', 'b1', U('2023-03-01T00:00:00Z')),
+        makeCycle('c3', 'b2', U('2023-12-31T23:59:59.999Z')),
+      ],
+      sources: [],
+    }
+    const r1 = computeYearSlice(books, records, 2023, { topN: 1 })
+    const r2 = computeYearSlice(books, records, 2023, { topN: 1 })
+    expect(r1).toEqual(r2)
   })
 })
