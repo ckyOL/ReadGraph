@@ -16,6 +16,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as LibraryIndexRouteImport } from './routes/library/index'
 import { Route as LibraryBookIdRouteImport } from './routes/library/$bookId'
+import { Route as ProfileYearRouteImport } from './routes/profile.$year'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,33 +53,41 @@ const LibraryBookIdRoute = LibraryBookIdRouteImport.update({
   path: '/library/$bookId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileYearRoute = ProfileYearRouteImport.update({
+  id: '/$year',
+  path: '/$year',
+  getParentRoute: () => ProfileRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/profile': typeof ProfileRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
   '/library/$bookId': typeof LibraryBookIdRoute
+  '/profile/$year': typeof ProfileYearRoute
   '/library/': typeof LibraryIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/profile': typeof ProfileRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
   '/library/$bookId': typeof LibraryBookIdRoute
+  '/profile/$year': typeof ProfileYearRoute
   '/library': typeof LibraryIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/profile': typeof ProfileRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
   '/library/$bookId': typeof LibraryBookIdRoute
+  '/profile/$year': typeof ProfileYearRoute
   '/library/': typeof LibraryIndexRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/timeline'
     | '/library/$bookId'
+    | '/profile/$year'
     | '/library/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/timeline'
     | '/library/$bookId'
+    | '/profile/$year'
     | '/library'
   id:
     | '__root__'
@@ -108,13 +119,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/timeline'
     | '/library/$bookId'
+    | '/profile/$year'
     | '/library/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ImportRoute: typeof ImportRoute
-  ProfileRoute: typeof ProfileRoute
+  ProfileRoute: typeof ProfileRouteWithChildren
   SettingsRoute: typeof SettingsRoute
   TimelineRoute: typeof TimelineRoute
   LibraryBookIdRoute: typeof LibraryBookIdRoute
@@ -172,13 +184,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryBookIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile/$year': {
+      id: '/profile/$year'
+      path: '/$year'
+      fullPath: '/profile/$year'
+      preLoaderRoute: typeof ProfileYearRouteImport
+      parentRoute: typeof ProfileRoute
+    }
   }
 }
+
+interface ProfileRouteChildren {
+  ProfileYearRoute: typeof ProfileYearRoute
+}
+
+const ProfileRouteChildren: ProfileRouteChildren = {
+  ProfileYearRoute: ProfileYearRoute,
+}
+
+const ProfileRouteWithChildren =
+  ProfileRoute._addFileChildren(ProfileRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ImportRoute: ImportRoute,
-  ProfileRoute: ProfileRoute,
+  ProfileRoute: ProfileRouteWithChildren,
   SettingsRoute: SettingsRoute,
   TimelineRoute: TimelineRoute,
   LibraryBookIdRoute: LibraryBookIdRoute,

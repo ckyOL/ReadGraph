@@ -57,9 +57,9 @@
 
 ## 阶段 2：年度场景装配与静态骨架（W2 并行）
 
-- [ ] **S-3（W2，前置 Y-1）** `src/ai/sanitize.ts` 年度场景：`yearPayloadSchema`（yearSlice 聚合输出 + 切片内全量每书字段——题名/副标题/作者/出版年份/出版社/单书分类/`subjects`/借阅次数，与 §3.2 同一白名单形态，切片替代全量）+ 装配器（与画像场景同函数族；**同一装配函数产物供发送预览与实际发送**，防漂移；采样降级复用——切片规模通常远低于 `BOOKLIST_FULL_LIMIT`，阈值逻辑保留兜底）。
+- [x] **S-3（W2，前置 Y-1）** `src/ai/sanitize.ts` 年度场景：`yearPayloadSchema`（yearSlice 聚合输出 + 切片内全量每书字段——题名/副标题/作者/出版年份/出版社/单书分类/`subjects`/借阅次数，与 §3.2 同一白名单形态，切片替代全量）+ 装配器（与画像场景同函数族；**同一装配函数产物供发送预览与实际发送**，防漂移；采样降级复用——切片规模通常远低于 `BOOKLIST_FULL_LIMIT`，阈值逻辑保留兜底）。
   - **黑名单断言扩展（W2 门禁）**：既有穷举断言复用 + 年度场景专项——`UserPreferences` 年度目标值（G-2 字段名）绝不出现在 payload 序列化文本；cardno/barcode/借还时点/馆名/单条周期/`isbn13`/`tags`/`price` 同 §3.2 逐值穷举；纯函数性（同输入两次深等价）。
-- [ ] **U-1（W2，前置 Y-1 + Y-2）** `/profile/$year` 路由与静态骨架（普通部分）：
+- [x] **U-1（W2，前置 Y-1 + Y-2）** `/profile/$year` 路由与静态骨架（普通部分）：
   - `src/routes/profile.$year.tsx`（TanStack 文件路由，routeTree codegen 自动生成；lazy 动态加载，`bundle-dynamic-imports`）；loader 入参校验（G-1 裁定）。
   - 数据：`useLiveQuery` 实体 → `computeYearSlice`（按需调用，不污染 `ProfileStatsResult`）；年度书单（`bookIds` → Book 题名/作者/封面，`bookIndex` 式索引避免携带整本）；最常借 Top N（`topBooks` → 题名 + 次数）；年度目标进度卡（目标值 Y-2 + `bookCount` 差量）。
   - 入口与年份切换（G-1 裁定）；/profile 侧入口落点（概览行目标卡 / 借阅日历年视图链接）；空年/加载/错误态（G-1 裁定）。
@@ -102,7 +102,11 @@
   - **Y-2** `src/lib/preferences.ts`：`annualGoals: z.record(z.coerce.number().int().min(1000).max(9999), z.number().int().min(1).max(999)).default({})` + `DEFAULT_PREFERENCES.annualGoals = {}` + `readPreferences` 逐条目过滤（键非 4 位整数年/值非整数或越界丢弃，缺失/非对象/数组 → {}，仍走 schema 兜底）；`writePreferences` 既有合并透传（0 值整体拒写，清除 = 删条目）；`reset.ts` 零改动（clearPreferences 既有语义）；测试 17 用例（回环/多历年互不串/逐条目过滤/拒写/重置清理）+ reset.test.ts 既有整对象断言补 `annualGoals: {}`。
   - **P-2** `src/ai/prompts/year-narrative.ts`：占位替换——`YEAR_NARRATIVE_MAX_LENGTH = 20_000` / `validateYearNarrative`（非空 + 长度上限，抛 ZodError，返回 trim）/ `YEAR_NARRATIVE_TEMPERATURE = 0.2` / `buildYearNarrativePrompt({ year, slice, books, locale })`（unknown 透传、8 字段声明、目标排除指令、语言指令）；源码黑名单审计目标注释惯例 + 测试 12 用例（弱校验/消息结构/JSON 透传/**黑名单逐值穷举含 annualGoals 专项**）；占位 `YEAR_NARRATIVE_TEMPLATE_PHASE2`/`YearNarrativeScene` 删除，grep 确认无引用。
   - **门禁**：`pnpm test` 74 文件 **952 用例全绿**、`pnpm exec tsc --noEmit` 过、`pnpm build`（tsc -b + vite）过。**修复**：`buildClassificationBuckets` scope 形参 `Set<string>` 误传 `Map`（Y-1 波内纠错，改传 `new Set(bookIds)`）。
-  - 波次 2（W2：S-3 年度场景装配 + U-1 `/profile/$year` 静态骨架，文件不相交）待启；S-3 消费 Y-1，U-1 消费 Y-1 + Y-2。
+- 2026-08-26 **阶段 2 完成（W2，S-3 与 U-1 文件不相交并行）**：落地，TDD 全绿——
+  - **S-3** `src/ai/sanitize.ts`：`yearPayloadSchema`/`YearPayload`/`serializeYearPayload(input, slice, year, opts)`——yearSlice 聚合白名单子集透传（`bookCount`/`topBooks`/`classification`，bookIds 由 books 数组承载不重复发送）+ 切片内全量每书字段（§3.2 同形态，借阅次数取**年内口径**与 computeYearSlice 同源）；提取共享 `indexRecordsByBook`/`bookRowOf`（画像 serializePayload 同源重构，零回归）；采样兜底复用 `sampleEntries`（`BOOKLIST_FULL_LIMIT` 阈值保留）；源码黑名单审计（`sanitize.ts?raw` 无 preferences 引用）。测试 8 用例（**黑名单逐值穷举含 annualGoals 字段名+目标值专项**、数字同源、空年、采样兜底、schema 严格、纯函数性、源码审计）。
+  - **U-1** `src/routes/profile.$year.tsx` + `src/profile/year/`（year-book-grid / year-top-books / year-goal-card / year-goal-summary-card / year-book-index）：`parseYearParams` 独立导出（`z.string().regex(/^\d{4}$/)`，非法 → 路由不匹配 404 路径）；`ProfileYearPage` 单次 `computeYearSlice` 产物驱动目标卡/本年借阅卡/Top 5/封面网格（数字同源）；年份切换 `useTransition` + `isPending` 遮罩（工具条稳定）；状态全覆盖——useLiveQuery 未就绪 `Skeleton`、空年区块 `Empty` 变体 + 目标卡 0/M、全库空整页 `Empty` + 导入入口、区块级 `ErrorBoundary` 降级；双入口 = /profile 概览行第 6 卡（栅格 `md:grid-cols-6`，当年 N/M）+ 借阅日历年视图工具条「年度回顾」链接；i18n `profile.year.*`/`profile.summary.goal.*`/`profile.calendar.yearReview` 双语 21 键。测试 14 用例（loader 校验/骨架渲染 t() 取值路径断言/空年/全库空/加载态/概览入口卡）。
+  - **门禁**：`pnpm test` 75 文件 **973 用例全绿**、`pnpm exec tsc -b` 过、`pnpm build` 过（routeTree codegen 注册 `profile.$year` 独立 chunk `profile._year-*.js`，lazy 分割生效）、oxlint 无 error。
+  - 波次 3（W3：U-2 年度叙事区 + E-4 设置页年度目标入口，前置 S-3/P-2/U-1/Y-2）待启。
 
 ## 实现指南（给执行 LLM 的速查）
 

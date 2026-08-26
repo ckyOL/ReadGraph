@@ -2,12 +2,19 @@
 // 黑名单值在序列化文本中逐值穷举断言不出现（非抽样）。纯函数性由两次调用深等价 + Date.now stub 强制。
 import { describe, expect, it, vi } from 'vitest'
 
-import { computeProfileStats } from '@/lib/profile-stats'
-import type { ProfileStatsInput, ProfileStatsOptions } from '@/lib/profile-stats'
+import { computeProfileStats, computeYearSlice } from '@/lib/profile-stats'
+import type { ProfileStatsInput, ProfileStatsOptions, YearSliceResult } from '@/lib/profile-stats'
 import { makeBook, makeCatalog, makeCycle, makeRawRecord, makeSource } from '@/db/test-helpers'
-import { BOOKLIST_FULL_LIMIT, SAMPLE_BOOKS_LIMIT, profilePayloadSchema, serializePayload } from './sanitize'
+import {
+  BOOKLIST_FULL_LIMIT,
+  SAMPLE_BOOKS_LIMIT,
+  profilePayloadSchema,
+  serializePayload,
+  yearPayloadSchema,
+  serializeYearPayload,
+} from './sanitize'
 import sanitizeSource from './sanitize.ts?raw'
-import type { ProfilePayload } from './sanitize'
+import type { ProfilePayload, YearPayload } from './sanitize'
 import type { Book, BorrowCycle, CatalogRecord, RawRecord } from '@/types/entities'
 
 const U = (isoUtc: string) => new Date(isoUtc)
@@ -570,4 +577,294 @@ describe('serializePayload 分层采样（S-2，ai-features §3.2 极端档案�
     }
     expectValidPayload(payload)
   })
+})
+// ---- 年度场景（S-3，ai-features §9.1：切片替代全量、同一白名单形态、目标值排除） ----
+// 年度叙事 payload：yearSlice 聚合白名单子集 + 切片内全量每书字段（§3.2 同形态）；
+// 装配器与画像同函数族（分类/采样复用），借阅次数取年内口径（与 computeYearSlice 同源）；
+// 年度目标值（UserPreferences.annualGoals，G-2 字段名）绝不进 payload——逐值穷举断言强制。
+describe('serializeYearPayload（S-3 年度场景，ai-features §9.1/§3.2）', () => {
+  const YEAR = 2026
+
+  /** 年度切片（该年独立 Book + 聚合，分类体系固定 clc）。 */
+  function yearSliceOf(input: ProfileStatsInput, year: number): YearSliceResult {
+    return computeYearSlice(
+      input.books,
+      {
+        catalogRecords: input.catalogRecords,
+        borrowCycles: input.borrowCycles,
+        sources: input.sources,
+      },
+      year,
+      { classificationSystem: 'clc' },
+    )
+  }
+
+  /** 2026 切片夹具：book-a 年内 2 次 / book-c 在借 1 次 / secret 1 次；book-b 跨年只计 2025；
+   *  device 书 2026 周期被设备排除。 */
+  function yearFixtures(): ProfileStatsInput {
+    const bookA: Book = {
+      ...makeBook('book-a', '9780000000001', '三体'),
+      authors: ['刘慈欣'],
+      subtitle: '地球往事',
+      publisher: '重庆出版社',
+      publishDate: '2008-01-15',
+      subjects: ['科幻小说'],
+      tags: ['私密标签'],
+      price: { amount: 12.34, currency: 'CNY' },
+    }
+    const bookB: Book = { ...makeBook('book-b', '9780000000002', '去年之书') }
+    const bookC: Book = { ...makeBook('book-c', null, '在借之书') }
+    const device: Book = { ...makeBook('book-dev', null, '电子阅读器'), materialType: 'device' }
+    return {
+      books: [bookA, bookB, device, bookC, secretBook()],
+      catalogRecords: [
+        makeCatalog('cr-a', 'book-a', 'src-sz', 'BC-A', 'metaId-A', [
+          { system: 'clc', code: 'I247.5' },
+        ]),
+        makeCatalog('cr-b', 'book-b', 'src-sz', 'BC-B', 'metaId-B', [
+          { system: 'clc', code: 'K252.1' },
+        ]),
+        secretCatalog(),
+      ],
+      borrowCycles: [
+        {
+          ...makeCycle('cyc-a1', 'book-a', 'src-sz', U('2026-01-10T00:00:00.000Z'), 'returned', 'BC-A'),
+          returnedAt: U('2026-01-20T00:00:00.000Z'),
+        },
+        {
+          ...makeCycle('cyc-a2', 'book-a', 'src-sz', U('2026-03-05T00:00:00.000Z'), 'returned', 'BC-A'),
+          returnedAt: U('2026-03-11T00:00:00.000Z'),
+        },
+        {
+          ...makeCycle('cyc-b1', 'book-b', 'src-sz', U('2025-12-31T12:00:00.000Z'), 'returned', 'BC-B'),
+          returnedAt: U('2026-01-08T12:00:00.000Z'), // 跨年周期只计入 borrowedAt 所在年（2025）
+        },
+        // 在借周期计入（不依赖 status='returned'）
+        makeCycle('cyc-c1', 'book-c', 'src-sz', U('2026-06-01T00:00:00.000Z'), 'borrowed', 'BC-C'),
+        // 设备书 2026 周期 → 排除
+        makeCycle('cyc-d1', 'book-dev', 'src-sz', U('2026-02-01T00:00:00.000Z'), 'returned', 'BC-D'),
+        secretCycle(), // book-secret，2026-02-14 借出
+      ],
+      sources: [makeSource('src-sz'), makeSource('src-secret')],
+    }
+  }
+
+  it('黑名单逐值穷举（年度专项）：cardno/条码/借还时点/馆名/单条周期/ISBN/标签/价格 + annualGoals 目标值不出现', () => {
+    const input = yearFixtures()
+    const slice = yearSliceOf(input, YEAR)
+    const payload = serializeYearPayload(input, slice, YEAR, {
+      classificationSystem: 'clc',
+    })
+    const serialized = JSON.stringify(payload)
+
+    const blacklistValues = [
+      'cardno-9X8Y7Z', // RawRecord.data.cardno（rawRecords 整体不发送）
+      'RAW-ONLY-SECRET', // RawRecord 独有值
+      'BC-SECRET-77', // CatalogRecord.barcodes + BorrowCycle.barcode
+      '2026-02-14T08:30:00.000Z', // secretCycle.borrowedAt（单条周期/时点）
+      '2026-02-20T08:30:00.000Z', // secretCycle.returnedAt
+      '2026-01-10T00:00:00.000Z', // book-a borrowedAt
+      '2026-03-11T00:00:00.000Z', // book-a returnedAt
+      '深圳图书馆', // Source.name 馆名
+      'metaId-TOP-SECRET', // CatalogRecord.metaId
+      'metaIdKey-TOP-SECRET', // CatalogRecord.metaIdKey
+      '9787123456789', // Book.isbn13
+      '123456789X', // Book.isbn10
+      'TOP-SECRET-tag', // Book.tags
+      '私密标签', // Book.tags（年度夹具）
+      '59.99', // Book.price.amount
+      '12.34', // Book.price.amount（年度夹具）
+      'CNY', // Book.price.currency
+      'cover-TOP-SECRET', // Book.coverUrl
+      'TOP-SECRET-translator', // Book.translators
+      'TOP-SECRET-parallel', // Book.parallelTitles
+      'TOP-SECRET-desc', // Book.description
+      'TOP-SECRET-location', // BorrowCycle.borrowLocation
+      'TOP-SECRET-return-location', // BorrowCycle.returnLocation
+      'src-secret', // Book.sourceIds / Source.id（切片实体外也不得出现）
+      'I247.5', // 原始分类号（只发一级归并 code）
+      '第1版', // Book.edition
+      '999', // Book.pages
+    ]
+    for (const value of blacklistValues) {
+      expect(serialized).not.toContain(value)
+    }
+    // 年度目标值（G-2 字段名 + 值）：UserPreferences.annualGoals 绝不出现在 payload。
+    expect(serialized).not.toContain('annualGoals')
+    expect(serialized).not.toContain('17') // 目标值 17（夹具聚合数字为 1/2/3，不碰撞）
+
+    // 结构白名单：顶层 = [books, slice, year]；slice = [bookCount, classification, topBooks]；
+    // 每书 = §3.2 8 字段；无 gantt/money/rawRecords/bookIds。
+    const parsed = JSON.parse(serialized) as YearPayload
+    expect(Object.keys(parsed).sort()).toEqual(['books', 'slice', 'year'])
+    expect(Object.keys(parsed.slice).sort()).toEqual([
+      'bookCount',
+      'classification',
+      'topBooks',
+    ])
+    expect(Object.keys(parsed.books[0]!).sort()).toEqual([
+      'authors',
+      'borrowCount',
+      'classification',
+      'publishYear',
+      'publisher',
+      'subjects',
+      'subtitle',
+      'title',
+    ])
+    expect(parsed).not.toHaveProperty('gantt')
+    expect(parsed).not.toHaveProperty('money')
+    expect(parsed).not.toHaveProperty('rawRecords')
+    expect(parsed).not.toHaveProperty('sampled')
+    expect(parsed.slice).not.toHaveProperty('bookIds')
+    expectValidYearPayload(payload)
+  })
+
+  it('数字同源：slice 子集 = computeYearSlice 产物；每书 borrowCount = 年内借阅次数（非全量）', () => {
+    const input = yearFixtures()
+    const slice = yearSliceOf(input, YEAR)
+    const payload = serializeYearPayload(input, slice, YEAR, {
+      classificationSystem: 'clc',
+    })
+
+    // 聚合白名单子集与本地聚合深等价（数字同源：叙事/目标卡/回顾同一产物）。
+    expect(payload.slice).toEqual({
+      bookCount: slice.bookCount,
+      topBooks: slice.topBooks,
+      classification: slice.classification,
+    })
+    expect(payload.year).toBe(YEAR)
+    // 2026 年独立 Book = book-a/book-c/book-secret（device、2025 排除）
+    expect(payload.slice.bookCount).toBe(3)
+    expect(payload.books.map((b) => b.title).sort()).toEqual([
+      '三体',
+      '在借之书',
+      '秘密之书',
+    ])
+
+    // 每书 borrowCount = 年内借阅次数（book-a 年内 2 次而非全量 2 次；book-c 在借 1 次）。
+    const byTitle = (title: string) => payload.books.find((b) => b.title === title)!
+    expect(byTitle('三体').borrowCount).toBe(2)
+    expect(byTitle('在借之书').borrowCount).toBe(1)
+    expect(byTitle('秘密之书').borrowCount).toBe(1)
+    expect(byTitle('三体')).toMatchObject({
+      title: '三体',
+      subtitle: '地球往事',
+      authors: ['刘慈欣'],
+      publishYear: '2008',
+      publisher: '重庆出版社',
+      classification: { code: 'I', name: '文学' },
+      subjects: ['科幻小说'],
+    })
+    expectValidYearPayload(payload)
+  })
+
+  it('空年：slice 零值 → books=[]/bookCount=0/topBooks=[]/classification=[]，结构完整不抛错', () => {
+    const input = yearFixtures()
+    const slice = yearSliceOf(input, 2024)
+    const payload = serializeYearPayload(input, slice, 2024, {
+      classificationSystem: 'clc',
+    })
+
+    expect(payload.year).toBe(2024)
+    expect(payload.slice.bookCount).toBe(0)
+    expect(payload.slice.topBooks).toEqual([])
+    expect(payload.slice.classification).toEqual([])
+    expect(payload.books).toEqual([])
+    expect(payload).not.toHaveProperty('sampled')
+    expectValidYearPayload(payload)
+  })
+
+  it('采样兜底：切片书目超 BOOKLIST_FULL_LIMIT → sampled 标记（聚合完整、书籍降级）', () => {
+    const books = Array.from({ length: BOOKLIST_FULL_LIMIT + 1 }, (_, i) => {
+      const n = String(i).padStart(4, '0')
+      return { ...makeBook(`Y-${n}`, null, `Y ${n}`) }
+    })
+    const cycles = books.map((b) =>
+      makeCycle(`cyc-${b.id}`, b.id, 'src-sz', U('2026-01-01T00:00:00.000Z'), 'borrowed'),
+    )
+    const input: ProfileStatsInput = {
+      books,
+      catalogRecords: [],
+      borrowCycles: cycles,
+      sources: [makeSource('src-sz')],
+    }
+    const slice = yearSliceOf(input, YEAR)
+    const payload = serializeYearPayload(input, slice, YEAR, {
+      classificationSystem: 'clc',
+    })
+
+    expect(payload.slice.bookCount).toBe(BOOKLIST_FULL_LIMIT + 1) // 聚合不采样
+    expect(payload.books).toHaveLength(SAMPLE_BOOKS_LIMIT)
+    expect(payload.sampled).toEqual({ total: 3001, sent: 500 })
+    expectValidYearPayload(payload)
+  })
+
+  it('schema 严格白名单：合法 payload 通过；缺字段/错型/未知字段（顶层/slice/topBooks/每书/sampled）拒绝', () => {
+    const input = yearFixtures()
+    const slice = yearSliceOf(input, YEAR)
+    const payload = serializeYearPayload(input as ProfileStatsInput, slice, YEAR, { classificationSystem: 'clc' })
+    expect(yearPayloadSchema.safeParse(payload).success).toBe(true)
+
+    const missingYear = { ...payload } as Record<string, unknown>
+    delete missingYear.year
+    expect(yearPayloadSchema.safeParse(missingYear).success).toBe(false)
+    const stringYear = { ...payload, year: '2026' }
+    expect(yearPayloadSchema.safeParse(stringYear).success).toBe(false)
+
+    const extraTop = { ...payload, bookIds: ['book-a'] }
+    expect(yearPayloadSchema.safeParse(extraTop).success).toBe(false)
+    const extraSlice = {
+      ...payload,
+      slice: { ...payload.slice, yearIds: ['book-a'] },
+    }
+    expect(yearPayloadSchema.safeParse(extraSlice).success).toBe(false)
+    const stringCount = {
+      ...payload,
+      slice: { ...payload.slice, bookCount: '3' },
+    }
+    expect(yearPayloadSchema.safeParse(stringCount).success).toBe(false)
+    const extraTopBook = {
+      ...payload,
+      slice: {
+        ...payload.slice,
+        topBooks: [{ ...payload.slice.topBooks[0]!, title: '三体' }],
+      },
+    }
+    expect(yearPayloadSchema.safeParse(extraTopBook).success).toBe(false)
+    const extraBookField = {
+      ...payload,
+      books: [{ ...payload.books[0]!, isbn13: '9787123456789' }],
+    }
+    expect(yearPayloadSchema.safeParse(extraBookField).success).toBe(false)
+    const extraSampled = {
+      ...payload,
+      sampled: { total: 3001, sent: 500, extra: 1 },
+    }
+    expect(yearPayloadSchema.safeParse(extraSampled).success).toBe(false)
+  })
+
+  it('纯函数性：同输入两次调用深等价；stub Date.now 前后输出不变', () => {
+    const input = yearFixtures()
+    const slice = yearSliceOf(input, YEAR)
+    const first = serializeYearPayload(input as ProfileStatsInput, slice, YEAR, { classificationSystem: 'clc' })
+
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const second = serializeYearPayload(input, slice, YEAR, { classificationSystem: 'clc' })
+    spy.mockRestore()
+
+    expect(second).toEqual(first)
+    expect(serializeYearPayload(input, slice, YEAR, { classificationSystem: 'clc' })).toEqual(
+      first,
+    )
+  })
+
+  it('模块源码不读偏好（无 annualGoals/readPreferences 引用——目标值装配源不存在）', () => {
+    expect(sanitizeSource).not.toMatch(/annualGoals|readPreferences/)
+  })
+
+  function expectValidYearPayload(payload: YearPayload): void {
+    const result = yearPayloadSchema.safeParse(payload)
+    expect(result.success).toBe(true)
+  }
 })

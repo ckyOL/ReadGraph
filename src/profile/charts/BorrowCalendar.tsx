@@ -5,6 +5,7 @@
 // 弱底格；tooltip 列当日书名与封面缩略图（HTML 转义防注入）。
 // 语义为「借阅」口径（手上有书），非阅读行为日历。
 import { memo, useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EChartsOption } from 'echarts'
 
@@ -228,6 +229,14 @@ function BorrowCalendarImpl({ data, bookIndex, emptyTitle, emptyDescription }: P
           aria-label={t('profile.chart.calendar.title')}
         />
         <span className="ml-auto flex items-center gap-1">
+          {view === 'year' && (
+            /* 年视图「年度回顾」链接（reading-profile §4 入口导航）：跳当前可见年。 */
+            <Link to="/profile/$year" params={{ year: String(cursorSafe.year) }}>
+              <Button variant="outline" size="sm">
+                {t('profile.calendar.yearReview')}
+              </Button>
+            </Link>
+          )}
           <Button
             variant="outline"
             size="icon-sm"

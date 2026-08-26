@@ -6,7 +6,7 @@
 import { z } from 'zod'
 import { classificationFirstLevel } from '@/lib/classification'
 import { resolveSystem } from '@/lib/profile-stats'
-import type { ProfileStatsInput, ProfileStatsResult } from '@/lib/profile-stats'
+import type { ProfileStatsInput, ProfileStatsResult, YearSliceResult } from '@/lib/profile-stats'
 import type { Book, CatalogRecord, ClassificationSystem } from '@/types/entities'
 
 /** 全量书目直发阈值（ai-features §3.2 极端档案防护）：≤ 该值直接全发；超出降级分层采样。 */
@@ -129,6 +129,39 @@ function publishYearOf(publishDate: string | null): string | null {
   return match ? match[0] : null
 }
 
+/** 编目记录按 bookId 建索引（单遍 Map；画像与年度场景共用）。 */
+function indexRecordsByBook(
+  catalogRecords: CatalogRecord[],
+): Map<string, CatalogRecord[]> {
+  const recordsByBook = new Map<string, CatalogRecord[]>()
+  for (const record of catalogRecords) {
+    const arr = recordsByBook.get(record.bookId)
+    if (arr) arr.push(record)
+    else recordsByBook.set(record.bookId, [record])
+  }
+  return recordsByBook
+}
+
+/** 单书白名单条目（每书字段集，§3.2）：分类取首选体系一级归并，borrowCount 为调用方给定的
+ *  聚合计数（画像 = 全量周期数；年度 = 年内周期数——数字同源，由调用方保证）。 */
+function bookRowOf(
+  book: Book,
+  recordsByBook: Map<string, CatalogRecord[]>,
+  borrowCount: number,
+  system: ClassificationSystem,
+): PayloadBook {
+  return {
+    title: book.title,
+    subtitle: book.subtitle,
+    authors: book.authors,
+    publishYear: publishYearOf(book.publishDate),
+    publisher: book.publisher,
+    classification: classificationOf(book, system, recordsByBook),
+    subjects: book.subjects,
+    borrowCount,
+  }
+}
+
 /** 单书首选体系一级归并（与 computeProfileStats 分类 treemap 同口径：命中体系条目取首条，
  *  归并失败（未知 code）继续下一编目）；无编目/无匹配条目 → null。 */
 function classificationOf(
@@ -161,13 +194,7 @@ export function serializePayload(
   opts: { classificationSystem: ClassificationSystem | null },
 ): ProfilePayload {
   const system = resolveSystem(opts.classificationSystem, input.sources)
-
-  const recordsByBook = new Map<string, CatalogRecord[]>()
-  for (const record of input.catalogRecords) {
-    const arr = recordsByBook.get(record.bookId)
-    if (arr) arr.push(record)
-    else recordsByBook.set(record.bookId, [record])
-  }
+  const recordsByBook = indexRecordsByBook(input.catalogRecords)
 
   const borrowCountByBook = new Map<string, number>()
   for (const cycle of input.borrowCycles) {
@@ -178,16 +205,7 @@ export function serializePayload(
     .filter((book) => book.materialType !== 'device')
     .map((book) => ({
       book,
-      row: {
-        title: book.title,
-        subtitle: book.subtitle,
-        authors: book.authors,
-        publishYear: publishYearOf(book.publishDate),
-        publisher: book.publisher,
-        classification: classificationOf(book, system, recordsByBook),
-        subjects: book.subjects,
-        borrowCount: borrowCountByBook.get(book.id) ?? 0,
-      },
+      row: bookRowOf(book, recordsByBook, borrowCountByBook.get(book.id) ?? 0, system),
     }))
 
   const sampled = entries.length > BOOKLIST_FULL_LIMIT ? sampleEntries(entries) : null
@@ -198,6 +216,118 @@ export function serializePayload(
     borrowVolume: stats.borrowVolume,
     durationDistribution: stats.durationDistribution,
     calendar: { borrowDays: stats.calendar.borrowDays },
+    books: sampled ? sampled.rows : entries.map((entry) => entry.row),
+    ...(sampled ? { sampled: { total: sampled.total, sent: sampled.rows.length } } : {}),
+  }
+}
+
+// --- 年度场景（S-3，ai-features §9.1：切片替代全量，同一白名单形态） ---
+
+/** 年度场景白名单 payload 形状（ai-features §9.1/§3.2）：year + yearSlice 聚合白名单子集
+ *  （bookCount/topBooks/classification——bookIds 由 books 数组承载，不与书目重复发送）
+ *  + 切片内全量每书字段（§3.2 同形态）。严格字段集（.strict() 拒未知字段）。
+ *  年度目标值（用户偏好，非聚合统计）绝不出现在本结构——装配器不消费偏好，
+ *  由 sanitize.test.ts 逐值穷举断言强制（§3.3 年度专项）。 */
+export const yearPayloadSchema = z
+  .object({
+    year: z.number().int().min(1000).max(9999),
+    slice: z
+      .object({
+        bookCount: z.number().int().min(0),
+        topBooks: z.array(
+          z
+            .object({
+              bookId: z.string(),
+              count: z.number().int().min(0),
+            })
+            .strict(),
+        ),
+        classification: z.array(
+          z
+            .object({
+              name: z.string(),
+              code: z.string(),
+              category: z.string().nullable(),
+              value: z.number(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    books: z.array(
+      z
+        .object({
+          title: z.string(),
+          subtitle: z.string().nullable(),
+          authors: z.array(z.string()),
+          publishYear: z.string().nullable(),
+          publisher: z.string().nullable(),
+          classification: z.object({ code: z.string(), name: z.string() }).strict().nullable(),
+          subjects: z.array(z.string()),
+          borrowCount: z.number(),
+        })
+        .strict(),
+    ),
+    sampled: z
+      .object({
+        total: z.number(),
+        sent: z.number(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+
+export type YearPayload = z.infer<typeof yearPayloadSchema>
+
+/**
+ * 年度场景白名单装配器（ai-features §9.1，S-3）：yearSlice 聚合白名单子集透传（数字同源——
+ * 与目标卡/回顾共用同一 computeYearSlice 产物，LLM 只转译不生成）+ 切片内全量每书字段。
+ * 借阅次数取年内口径（与 computeYearSlice 同口径：borrowedAt ∈ [y-01-01, (y+1)-01-01) UTC
+ * 左闭右开、设备排除——叙事「复借最多」与 topBooks 数字同源）。
+ * 采样降级复用画像同族逻辑（切片规模通常远低于 BOOKLIST_FULL_LIMIT，阈值保留兜底）；
+ * 同一装配函数产物供发送预览与实际发送（§3.3 防漂移）。纯函数：不读偏好/存储/时钟。
+ */
+export function serializeYearPayload(
+  input: ProfileStatsInput,
+  slice: YearSliceResult,
+  year: number,
+  opts: { classificationSystem: ClassificationSystem | null },
+): YearPayload {
+  const system = resolveSystem(opts.classificationSystem, input.sources)
+  const recordsByBook = indexRecordsByBook(input.catalogRecords)
+
+  // 年内借阅计数（与 computeYearSlice 同口径 + 设备排除）。
+  const fromMs = Date.UTC(year, 0, 1)
+  const toMs = Date.UTC(year + 1, 0, 1)
+  const deviceBookIds = new Set(
+    input.books.filter((b) => b.materialType === 'device').map((b) => b.id),
+  )
+  const countByBook = new Map<string, number>()
+  for (const cycle of input.borrowCycles) {
+    if (deviceBookIds.has(cycle.bookId)) continue
+    const t = cycle.borrowedAt.getTime()
+    if (t < fromMs || t >= toMs) continue
+    countByBook.set(cycle.bookId, (countByBook.get(cycle.bookId) ?? 0) + 1)
+  }
+
+  const scope = new Set(slice.bookIds)
+  const entries = input.books
+    .filter((book) => !deviceBookIds.has(book.id) && scope.has(book.id))
+    .map((book) => ({
+      book,
+      row: bookRowOf(book, recordsByBook, countByBook.get(book.id) ?? 0, system),
+    }))
+
+  const sampled = entries.length > BOOKLIST_FULL_LIMIT ? sampleEntries(entries) : null
+
+  return {
+    year,
+    slice: {
+      bookCount: slice.bookCount,
+      topBooks: slice.topBooks,
+      classification: slice.classification,
+    },
     books: sampled ? sampled.rows : entries.map((entry) => entry.row),
     ...(sampled ? { sampled: { total: sampled.total, sent: sampled.rows.length } } : {}),
   }

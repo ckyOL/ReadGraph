@@ -16,11 +16,13 @@ import { readPreferences } from '@/lib/preferences'
 import { formatTimeZoneDisplay } from '@/lib/timezones'
 import { useProfileStats } from '@/profile/use-profile-stats'
 import { isDateRangeInverted } from '@/profile/date-range'
-import { resolveSystem } from '@/lib/profile-stats'
+import { computeYearSlice, resolveSystem } from '@/lib/profile-stats'
 import type { ProfileStatsResult } from '@/lib/profile-stats'
+import { YEAR_TOP_BOOKS_N } from '@/lib/profile-stats'
 import type { ClassificationSystem } from '@/types/entities'
 import { CLASSIFICATION_SYSTEMS } from '@/lib/classification'
 import { formatCurrency } from '@/profile/money-format'
+import { YearGoalSummaryCard } from '@/profile/year/year-goal-summary-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Tabs,
@@ -130,6 +132,33 @@ function ProfilePage() {
   const aiEnabled = readPreferences().ai.enabled
 
   const sessionNow = useState(() => Date.now())[0]
+
+  // 概览行「年度目标」入口卡（reading-profile §4 入口导航）：当年 computeYearSlice 切片 +
+  // annualGoals 目标值（与 /profile/$year 同一产物，数字同源）。独立查询（不进主聚合结构，
+  // §2.7），当年 = sessionNow 的 UTC 年。
+  const yearData = useLiveQuery(
+    () =>
+      Promise.all([
+        db.books.toArray(),
+        db.catalogRecords.toArray(),
+        db.borrowCycles.toArray(),
+      ]),
+    [],
+  )
+  const currentYear = new Date(sessionNow).getUTCFullYear()
+  const yearSliceForSummary = useMemo(() => {
+    if (!yearData) return null
+    const [books, catalogRecords, borrowCycles] = yearData
+    // 分类体系 inline（classificationSystem 声明在其后，避免前置引用）。
+    const system: ClassificationSystem | null = systemKey === 'auto' ? null : systemKey
+    return computeYearSlice(
+      books,
+      { catalogRecords, borrowCycles, sources: sources ?? [] },
+      currentYear,
+      { classificationSystem: system, topN: YEAR_TOP_BOOKS_N },
+    )
+  }, [yearData, sources, systemKey, currentYear])
+  const currentGoal = readPreferences().annualGoals[currentYear] ?? null
 
   const range = useMemo(
     () => {
@@ -300,7 +329,13 @@ function ProfilePage() {
         </Empty>
       ) : (
         <>
-          <SummaryCards result={result} pending={isPending || computing} />
+          <SummaryCards
+            result={result}
+            pending={isPending || computing}
+            goalYear={currentYear}
+            goalBookCount={yearSliceForSummary?.bookCount ?? null}
+            goal={currentGoal}
+          />
           {/* M7 回归：MoneyCards 渲染 formatCurrency，非法币种等数据异常不得
               拖垮整页（图表区已有 ErrorBoundary，卡片区补齐）。 */}
           <ErrorBoundary title={errorTitle} description={errorDesc}>
@@ -462,9 +497,18 @@ const EMPTY_SUMMARY = {
 const SummaryCards = memo(function SummaryCards({
   result,
   pending,
+  goalYear,
+  goalBookCount,
+  goal,
 }: {
   result: ProfileStatsResult | null
   pending: boolean
+  /** 概览行第 6 卡「年度目标」入口（reading-profile §4）：当年年号 */
+  goalYear: number
+  /** 当年 computeYearSlice.bookCount；未就绪 = null 显示 — */
+  goalBookCount: number | null
+  /** 当年目标值；未设置 = null（显示未设置文案） */
+  goal: number | null
 }) {
   const { t } = useTranslation('pages')
   const s = result?.summary ?? EMPTY_SUMMARY
@@ -480,8 +524,9 @@ const SummaryCards = memo(function SummaryCards({
     { label: t('profile.summary.borrowDays'), value: String(borrowDays) },
   ]
   return (
+
     <div
-      className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-5"
+      className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-6"
       data-slot="profile-summary"
       aria-busy={pending}
       aria-live="polite"
@@ -497,6 +542,7 @@ const SummaryCards = memo(function SummaryCards({
           <div className="mt-1 font-heading text-xl tabular-nums">{c.value}</div>
         </div>
       ))}
+      <YearGoalSummaryCard bookCount={goalBookCount} goal={goal} year={goalYear} />
     </div>
   )
 })
