@@ -165,7 +165,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
    - **呈现**：ECharts `heatmap` series（已选型，[design-decisions 图表选型](../design-decisions.md)），GitHub 贡献图式网格；年视图（x=周列，y=7 行星期）+ 月视图（x=7 列星期，y=月内周行）由 `src/profile/charts/calendar-grid.ts` 纯函数产格；格子以计数强度着色（`--chart-2` 松叶色 + alpha 阶），无数据日弱底格；tooltip 列当日题名（含 `Book.coverUrl` 封面缩略图，≤8 本 + 「另有 N 本」折叠）。封面无数据也成立（计数格恒有）。**无需新依赖**（heatmap 为 ECharts 内置图种）。
    - **UTC 桶归属**：日键取 UTC getter，`displayTimezone` 不影响桶归属；周起始日随 locale（zh 周一 / en 周日），仅影响行列排布，不影响日→桶映射。
 7. **年度切片（yearSlice，年度目标/回顾/叙事共用）**
-   - **目的与消费方**：年度目标进度（bookology-benchmark §5.2）、年度回顾（年度书单/最常借 Top N，bookology-benchmark §5.3）、年度叙事（AI，ai-features §9.1）三个消费方**共用同一切片——口径一次定死、数字同源**；AI 叙事只转译不生成（对齐 ai-features §2.6 统计一致性）。
+   - **目的与消费方**：年度目标进度（bookology-benchmark §5.2）、年度回顾（年度书单/最常借 Top N，bookology-benchmark §5.3）、年度叙事（AI，ai-features §9.1）三个消费方**共用同一切片——口径一次定死、数字同源**；AI 叙事只转译不生成（对齐 ai-features §2.6 统计一致性）。目标值存 `UserPreferences.annualGoals`（按年记录，schema/降级/设置入口见 [data-layer §8](./data-layer.md#8-用户偏好)；目标值不进 AI payload，ai-features §9.1 白名单边界）。
    - **口径**：年内「曾借出」的**独立 Book 数**——存在周期 `borrowedAt ∈ [y-01-01T00:00:00.000Z, (y+1)-01-01T00:00:00.000Z)`（UTC 左闭右开）即计入，**不依赖 `status='returned'`**（与 `borrowedValue` 同口径 §2.5，避免归还状态引入语义抖动）；同书多次借阅只计一次；设备书排除（§2.0 排除总则）。
    - **输出契约**（独立纯函数入口 `computeYearSlice(books, records, year, options)`，**不进 `ProfileStatsResult`**——`/profile/$year` 按需调用，不污染主聚合结构）：
      - `bookIds`：该年借出独立 Book id，升序（年度书单呈现 + AI 叙事书目装配源）；
@@ -207,6 +207,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 图表区 Tabs：切换 tab 时非激活图谱块卸载（echarts 实例随卸载 `dispose`，仅激活块占用 DOM/定时器；甘特 `nowTick` 定时器仅在激活时运行）；切回时按当前 option 重新 init，容器尺寸变化由 `useECharts` 的 ResizeObserver 自适应 `resize`。
 - treemap 块下钻（点一级类目展开子类）为可选增强；本里程碑要求一级呈现可交互高亮与 tooltip，子类下钻标 TODO。
 - 无破坏性操作：本页只读，不做任何写库或重置入口。
+**响应式**：移动端 TabsList 允许横向滚动（`overflow-x-auto`）而非换行挤压标签；图表最小高度不塌缩；甘特带在窄屏启用横向滚动（`overflow-x-auto`）而非压缩 lane。所有可见文本经 `react-i18next` `t()`，namespace `pages`（`profile.*`），禁止硬编码中英文字面量（[i18n-conventions](../i18n-conventions.md)）。
 
 **状态**：
 - 空态：无任何 Book/BorrowCycle 时，整页用 shadcn `Empty` + 导入入口（按钮跳 `/import`），图表区隐去占位（`rendering-conditional-render` 用三元，非 `&&`）。
@@ -216,7 +217,21 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 加载态：`useLiveQuery` 未就绪时 `Skeleton`；大数据 Worker 计算时 `Progress`。
 - 错误态：聚合抛错（数据异常的周期）被边界捕获，对应图谱块降级为 `Empty` + 错误文案（不崩溃整页）。
 
-**响应式**：移动端 TabsList 允许横向滚动（`overflow-x-auto`）而非换行挤压标签；图表最小高度不塌缩；甘特带在窄屏启用横向滚动（`overflow-x-auto`）而非压缩 lane。所有可见文本经 `react-i18next` `t()`，namespace `pages`（`profile.*`），禁止硬编码中英文字面量（[i18n-conventions](../i18n-conventions.md)）。
+**年度视图（`/profile/$year`，Phase 2）**：
+- **定位**：年度回顾/目标/叙事的落地页（bookology-benchmark §5.2/§5.3、ai-features §9.1）。数字全部来自**单次** `computeYearSlice` 调用产物（§2.7）——目标卡、Top N、书单、叙事共用同一产物，数字同源；页面只读（不写库、无编辑入口，目标编辑在设置页，见 [data-layer §8](./data-layer.md#8-用户偏好)）。
+- **布局**（方向 B 图谱语言：无外层卡片套卡片、直角、克制，对齐本页基调）：
+  - 顶部工具条行：年份导航（`‹`/`›` 上一/下一按钮，aria-label `profile.year.nav.prev`/`profile.year.nav.next`）+ 标题「{year} 年度回顾」（`profile.year.title`，年号随 locale 数字格式）。
+  - 概览窄卡行（与 /profile 概览行同款窄卡）：**年度目标进度卡**（目标值 M vs `bookCount` N：进度条 + 「N / M」等宽数字 + 差量文案——未达标「还差 K 本」、已达标「已达标」、未设置目标「未设置目标」+ 跳 /settings 设置链接；Bookology 大网格编号占位不照搬，卡片微缩形态）+ **本年借阅卡**（`bookCount` N 本）。
+  - **最常借 Top 5 区块**（`topBooks` 降序，N=5 常量 `YEAR_TOP_BOOKS_N`）：行列表 = 序号 + 题名 + 次数（等宽 `tabular-nums`），区块标题 `profile.year.topBooks.title`。
+  - **年度书单区块**（`bookIds` 升序，全幅封面网格，画报语义）：每格 = 封面缩略图（aspect 比例；无封面 → 占位块显题名首字符）+ 题名（1–2 行 clamp）+ 作者（1 行弱化）；网格列数响应式（`grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6`）；全量呈现不折叠；封面经 `bookIndex` 式索引（题名/作者/封面，不携带整本 Book）。
+  - **AI 叙事区**（U-2 落点）：形态与 /profile「AI 解读区」同构（§4.1、ai-features §4.1），契约见 [ai-features §9.1](./ai-features.md#91-phase-2年度总结叙事--流式)；未启用或空年不渲染。
+- **入口导航**（双入口）：
+  - /profile 概览行新增第 6 卡「年度目标」（当年 N/M 进度，点击 → `/profile/$year`；概览行栅格扩 `md:grid-cols-6`）。
+  - 借阅日历 tab 年视图工具条右侧「年度回顾」链接（跳当前可见年 `/profile/$year`）。
+  - 可选增强（不承诺）：借阅量柱图年粒度桶点击下钻对应年。
+- **年份切换**：`‹`/`›` 跨年浏览（任意年可看，空年零值呈现）；切换走 `useTransition` + 内容区 `Skeleton`（`rerender-transitions`），工具条保持稳定。
+- **状态**：空年（无周期落入）→ 书单区块与 Top 5 区块 `Empty` 变体、目标卡「0 / M」差量（未设置 → 未设置文案）、叙事区不渲染；加载态 `useLiveQuery` 未就绪 → `Skeleton`；错误态：区块边界捕获聚合异常降级 `Empty` + 错误文案，不崩整页；全库无数据 → 整页 `Empty` + 导入入口（跳 /import）。
+- **路由参数**：`$year` loader 入参 `z.string().regex(/^\d{4}$/)`（对齐 [ui-navigation §2](./ui-navigation.md#2-路由树) 路由参数静态类型化）；非法/非 4 位数字 → `notFound()`。
 
 ## 5. 数据契约与边界
 
@@ -249,7 +264,10 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 14. 作为用户，导入数据后进入 `/profile` → 概览行第 5 卡「借阅天数」= 全量有在借周期的去重 UTC 天数（设备书不计）；切「近 1 年」后该卡不变（全量口径），借阅日历 tab 图内天格随 range 裁剪。
 15. 作为用户，打开借阅日历 tab → 默认月视图锚定最新有数据月份；当天格按在借 Book 数着色，无数据日弱底格；切「年视图」显示全年网格与月初月名标签；切中英 → 星期名、月名、tooltip 随 locale，周起始日切换（zh 周一 / en 周日）；上一/下一导航切换月/年，空期间全弱底网格不报错。
 16. 作为用户，同日借多本书（含同书重复借阅周期叠加）→ 该日格计数 = 独立 Book 数（不按周期数）；hover 该格 tooltip 列当日书名与封面缩略图（>8 本折叠「另有 N 本」），书名含 `<`/`&` 等字符正常显示不注入。
-17. 作为用户，存在 `status='borrowed'` 在借周期 → 其天格延续至今天（会话内锚点）；`returnedAt` 恰为某日 00:00（UTC）的周期不计归还当日；异常（锚早于借出日）周期不产生天格、页面不崩。
+18. 作为用户，在 /profile 概览行点「年度目标」卡 → 跳转当年 `/profile/$year`；在借阅日历 tab 年视图点「年度回顾」→ 跳对应年；手输非法 `$year`（非 4 位数字）→ 404 页，不崩。
+19. 作为用户，打开 `/profile/$year` → 年度书单（`bookIds` 升序）、最常借 Top 5（次数降序）、目标卡进度 = `bookCount`，三处数字与 `computeYearSlice` 产物一致（数字同源）；`‹`/`›` 切换年份后各区块随年重算。
+20. 作为用户，在 /settings 偏好区设年度目标（数字步进器）→ 年度视图目标卡进度/差量即时更新；存非法值（非整数/负数/越界）→ 逐条目降级不崩。
+21. 作为用户，浏览到无借阅的年份 → 书单与 Top 5 `Empty` 变体、目标卡「0 / M」、叙事区不渲染，页面不崩；全库空时整页 `Empty` + 导入入口。
 
 ## 7. 测试清单
 
@@ -275,7 +293,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - calendar 排除：设备书周期不产生天格、不入 `borrowDays`；UTC 桶归属与 displayTimezone 无关；纯函数性（同输入含锚两次调用深等价、不读 `Date.now()`）。
 - calendar-grid 纯函数：年/月视图产格行列正确（周起始随 locale、月初列标签、月内周行）；格色 alpha 阶（0/1/2/3/4+）；`bookIndex` 缺失 bookId 不抛错；tooltip HTML 转义书名与 URL。
 - yearSlice 口径：`borrowedAt` 恰为 `[y-01-01, (y+1)-01-01)` 边界计入/不计（左闭右开）；同书 2 周期计 1；`status='borrowed'` 在借周期计入（不依赖 returned）；设备书排除；跨年周期只计入 `borrowedAt` 所在年；空年零值结构完整、不抛错。
-- yearSlice 纯函数性：同输入两次调用深等价；UTC 桶归属与 displayTimezone 无关；`topBooks` 按次数降序、`bookIds` 升序。
+- 年度视图（`src/routes/profile.$year.test.tsx` 等，U-1 起）：`$year` loader 参数校验（4 位数字年通过；非数字/3 位/5 位/空 → `notFound()` 路径）；骨架渲染（年份导航/目标卡/Top 5 列表/书单网格按 `computeYearSlice` 产物渲染，断言 `t()` 取值路径不断言字面量）；空年各区块 `Empty` 变体、目标卡「0 / M」、叙事区不渲染；错误态区块降级不崩整页；年份切换更新 `$year` 参数并重算（`useTransition` 加载态）。
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
@@ -283,7 +301,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - 脱敏数据（含定价字段）下价值卡行：馆藏总价值/借阅图书价值/平均书价按 `Intl` 货币格式呈现；切 locale 后货币符号与标签切换；切「近 1 年」后借阅图书价值变化而馆藏总价值不变。
 - 分类体系 `SegmentedControl` 切换后 canvas 重绘、类目 tooltip 文本随 locale 切换。
 - 暗色切换 → 图表配色变化（canvas 像素采样差异），reload 仍为暗色。
-- 大库夹具下甘特 tab：高度自适应封顶（`[280, 624]px`）并启用 y 轴缩放，滚动流畅，不一次性渲染超量矩形（性能基线，可选）。
+- 年度视图（`e2e/profile-annual.spec.ts`，T-2 阶段）：/profile → `/profile/$year` 入口跳转；书单/Top N/目标卡数字与 `computeYearSlice` 一致；空年不崩（`Empty` 变体）；`‹`/`›` 年份切换；非法 `$year` → 404。
 
 ## 8. React 性能规则引用
 
@@ -298,4 +316,4 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - `js-min-max-loop`：duration 分桶用一遍扫描，`avg`/`median` 用单遍求和与选择，不 `sort`。
 - Intl 实例复用：`Intl.NumberFormat` 按 `locale + currency` 缓存复用（模块级 `Map` 或 `useMemo`），避免每次渲染新建格式化器（构建成本高）；聚合层不触 Intl。
 - `client-localstorage-schema`：本页只读 `readgraph:preferences`（displayTimezone），不写入；读侧仍受 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架) 的 Zod 校验保护。
-- `rendering-conditional-render`：空态/部分空态图表块用三元表达式，不用 `&&` 渲染；无定价时价值卡金额用 `—` 占位、价格分布 tab 空态走条件渲染。
+- 年度视图（`/profile/$year`）追加：`bundle-dynamic-imports`——年度视图路由与叙事区 lazy，AI 未启用不拉 `src/ai/`（`bundle-conditional` 按 `ai.enabled` 三元）；`bundle-barrel-imports`——`src/profile/year/` 组件按需 import，避免 barrel；`rerender-transitions`——年份切换走 `useTransition` + `Skeleton`；`client-localstorage-schema`——`annualGoals` 读写过 `userPreferencesSchema` 校验（[data-layer §8](./data-layer.md#8-用户偏好)）。

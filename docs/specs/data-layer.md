@@ -112,10 +112,17 @@ interface Repository<T extends { id: string }> {
 
 ## 8. 用户偏好
 
-- `src/lib/preferences.ts` 导出 `userPreferencesSchema`（Zod）：`{ locale: 'zh-CN'|'en', theme: 'light'|'dark'|'auto', displayTimezone: string }`。
-- 读写仍走 `localStorage` key `readgraph:preferences`；theme/timezone 由本里程碑补齐，locale 沿用既有 `locale.ts` 不重写（避免回归既有 i18n 测试）。
-- `readPreferences()`：`safeParse` 失败降级到默认 `{ locale: 'zh-CN', theme: 'auto', displayTimezone: 'Asia/Shanghai' }`（与 [ui-navigation §8](ui-navigation.md#8-测试清单)「非法值降级」一致）。
+- `src/lib/preferences.ts` 导出 `userPreferencesSchema`（Zod）：`{ locale: 'zh-CN'|'en', theme: 'light'|'dark'|'auto', displayTimezone: string, ai: { enabled, baseUrl, model, sendPreview }, annualGoals: Record<number, number> }`。
+- 读写仍走 `localStorage` key `readgraph:preferences`；theme/timezone 由本里程碑补齐，locale 沿用既有 `locale.ts` 不重写（避免回归既有 i18n 测试）；`ai` 扩展契约见 [ai-features §5.1](./ai-features.md#51-偏好持久化扩展-data-layer-§8)。
+- `readPreferences()`：`safeParse` 失败降级到默认 `{ locale: 'zh-CN', theme: 'auto', displayTimezone: 'Asia/Shanghai', ai: DEFAULT, annualGoals: {} }`（与 [ui-navigation §8](ui-navigation.md#8-测试清单)「非法值降级」一致）。
 - `writePreferences(patch)`：合并写入，整体过 schema 校验。**本里程碑只交付 schema + 读写函数与测试**，不改 `__root.tsx`（主题 Provider 在 UI 里程碑装配）。
+- **年度目标（`annualGoals`，Phase 2 年度视图，2026-08-26 定稿）**：
+  - 形态：`Record<number, number>` **按年记录**（键 = 4 位整数年 `[1000, 9999]`，值 = 目标本数整数 `[1, 999]`）——年度视图按年组织，历年目标各自可读；缺失/非对象 → `{}`（无目标）。
+  - 降级：**逐条目过滤**（对齐 `ai` 字段级降级模式，不整体打翻）——键非 4 位整数年、值非整数或越界（<1 或 >999，含 0/负数）的条目丢弃，合法条目保留；整条偏好 safeParse 失败仍整体降级默认。
+  - 语义：目标进度 = `computeYearSlice(..., year).bookCount` vs `annualGoals[year]`（[reading-profile §2.7](./reading-profile.md#2-统计维度与聚合契约)）；**目标值不进 AI payload**（[ai-features §9.1](./ai-features.md#91-phase-2年度总结叙事--流式) 白名单边界——非聚合统计、非书目字段）。
+  - 清除：0 值不被 schema 接受（`min(1)`），**清除 = 删除该年条目**（键不存在即无目标）。
+  - 设置入口：设置页偏好区「年度目标」控件——当前年数字步进器（`−`/`+`，1–999；未设置显示占位；减至 0 删除该年条目即清除），变更即时写 `writePreferences({ annualGoals })`（对齐主题/locale 即时生效模式）；年度视图目标卡只读展示、无编辑入口。
+  - 系统重置：`clearPreferences=true` 清 `readgraph:*`（`annualGoals` 随偏好一并清除）；`false` 保留（对齐既有语义，`reset.ts` 无需改动）。
 
 ## 9. 用户故事与验收用例
 
@@ -142,7 +149,7 @@ interface Repository<T extends { id: string }> {
 - **Repository 索引查询**：`findByIsbn13`、`findByBarcode`（multiEntry）、`findBySourceMetaIdKey`（compound）、`timelineByBook`（compound 范围）、`findBorrowed` 命中正确；多 source 同 metaIdKey 不串。
 - **系统重置**：六张表单事务清空；制造 `bulkPut` 中途抛错验证回滚，所有表保持一致（无半清空）。
 - **导出/导入**：`exportDatabase` 含全部表；`importDatabase(snapshot)` 还原后全库等价；`version` 不匹配抛错；rawRecords 缺失拒绝。
-- **偏好**：`readPreferences` 缺省/非法降级默认；写非法 theme/timezone 降级；合并写入保留兄弟字段。
+- **年度目标（§8 增量，Y-2 阶段）**：`annualGoals` 合法读写回环（多历年互不串、按年各自可读）；缺失/非对象 → `{}`；逐条目过滤——键非 4 位整数年（含字符串键 "2026" 经 coerce 通过、3 位/5 位/负数键丢弃）、值非整数/0/负数/越界（>999）条目丢弃、合法条目保留；`writePreferences` 写 `annualGoals` 后 `readPreferences` 回环等价；系统重置 `clearPreferences=true` 清除（含偏好整体），`false` 保留。
 
 ## 12. React 性能规则引用
 

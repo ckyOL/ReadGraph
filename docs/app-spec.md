@@ -238,10 +238,11 @@ pnpm install --ignore-scripts
 | 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
-| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（`insight[]` fact 事实洞察 + taste 审美点评，同次生成同一 Zod schema 强校验）、发送预览、结果缓存、设置页 AI 区 — 规格已补，待 TDD 落地（Phase 1）；Phase 2 年度叙事（§9.1）输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约 |
+| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（Markdown 文本流 + 流式逐字渲染：`chatStream`/`createSseParser`/`stream-json`/`onPartial` 链路）、发送预览、结果缓存、设置页 AI 区 — Phase 1 已 TDD 落地（2026-08-25 收尾，含画像流式先行）；Phase 2 年度叙事（§9.1）输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约，执行清单见 [tasks/profile-annual-view-batch.md](./tasks/profile-annual-view-batch.md)（普通静态骨架 + AI 年度叙事区，2026-08-26 规格补齐完成：reading-profile §4 年度视图 UI 章节、data-layer §8 annualGoals 增量） |
 
 > UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
 > AI 功能里程碑任务见 [tasks/ai-features-batch.md](./tasks/ai-features-batch.md)（Phase 1 落地清单：脱敏管道 → 端点客户端 → prompt → 设置页 AI 区 → /profile AI 解读区）。
+> Profile 年度视图（Phase 2）任务见 [tasks/profile-annual-view-batch.md](./tasks/profile-annual-view-batch.md)（普通静态骨架：年度书单/最常借 Top N/年度目标进度卡 + AI 年度叙事区；输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约）。
 
 每个功能阶段开始前，对应规格文件需包含：
 
