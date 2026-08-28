@@ -166,7 +166,7 @@ describe('ProfileYearPage — 数据年骨架渲染', () => {
     expect(html).toContain(i18n.t('pages:profile.year.nav.next'))
   })
 
-  it('目标卡进度 = computeYearSlice.bookCount 同源（3 / 12 + 差量 9）', () => {
+  it('目标卡进度 = computeYearSlice.bookCount 同源（3 / 12 + 差量 9）+ 编辑按钮', () => {
     const f = fixtures()
     useLiveQueryMock.mockReturnValue(entitiesOf(f))
     const html = renderYearPage(2026)
@@ -174,16 +174,18 @@ describe('ProfileYearPage — 数据年骨架渲染', () => {
     expect(html).toContain(i18n.t('pages:profile.year.goal.title'))
     expect(html).toContain(i18n.t('pages:profile.year.goal.progress', { current: 3, goal: 12 }))
     expect(html).toContain(i18n.t('pages:profile.year.goal.remaining', { count: 9 }))
+    expect(html).toContain(i18n.t('pages:profile.year.goal.edit'))
   })
 
-  it('目标未设置年（无 annualGoals 条目）→ 未设置文案 + 设置链接', () => {
+  it('目标未设置年（无 annualGoals 条目）→ 未设置文案 + 编辑按钮（内联编辑，无设置页链接）', () => {
     const f = fixtures()
     useLiveQueryMock.mockReturnValue(entitiesOf(f))
     const html = renderYearPage(2027)
 
     expect(html).toContain(i18n.t('pages:profile.year.goal.unset'))
-    expect(html).toContain(i18n.t('pages:profile.year.goal.set'))
-    expect(html).toContain('#/settings')
+    expect(html).toContain(i18n.t('pages:profile.year.goal.edit'))
+    expect(html).not.toContain(i18n.t('pages:profile.year.goal.set'))
+    expect(html).not.toContain('#/settings')
   })
 
   it('Top 5 区块标题与行数据（topBooks 降序渲染）', () => {

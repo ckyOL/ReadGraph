@@ -193,7 +193,7 @@ export function ProfileYearPage({
           </div>
         )}
         <ErrorBoundary title={errorTitle} description={errorDesc}>
-          <YearGoalCard bookCount={slice?.bookCount ?? 0} goal={goal} />
+          <YearGoalCard bookCount={slice?.bookCount ?? 0} goal={goal} year={year} />
         </ErrorBoundary>
         <div className="rounded-lg border border-border p-3" data-slot="year-summary-card">
           <div className="text-xs text-muted-foreground">{t('profile.year.summary.title')}</div>

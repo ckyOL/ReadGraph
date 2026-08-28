@@ -221,7 +221,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - **定位**：年度回顾/目标/叙事的落地页（bookology-benchmark §5.2/§5.3、ai-features §9.1）。数字全部来自**单次** `computeYearSlice` 调用产物（§2.7）——目标卡、Top N、书单、叙事共用同一产物，数字同源；页面只读（不写库、无编辑入口，目标编辑在设置页，见 [data-layer §8](./data-layer.md#8-用户偏好)）。
 - **布局**（方向 B 图谱语言：无外层卡片套卡片、直角、克制，对齐本页基调）：
   - 顶部工具条行：年份导航（`‹`/`›` 上一/下一按钮，aria-label `profile.year.nav.prev`/`profile.year.nav.next`）+ 标题「{year} 年度回顾」（`profile.year.title`，年号随 locale 数字格式）。
-  - 概览窄卡行（与 /profile 概览行同款窄卡）：**年度目标进度卡**（目标值 M vs `bookCount` N：进度条 + 「N / M」等宽数字 + 差量文案——未达标「还差 K 本」、已达标「已达标」、未设置目标「未设置目标」+ 跳 /settings 设置链接；Bookology 大网格编号占位不照搬，卡片微缩形态）+ **本年借阅卡**（`bookCount` N 本）。
+  - 概览窄卡行（与 /profile 概览行同款窄卡）：**年度目标进度卡**（目标值 M vs `bookCount` N：进度条 + 「N / M」等宽数字 + 差量文案——未达标「还差 K 本」、已达标「已达标」、未设置目标「未设置目标」；**目标卡内联编辑**：点目标数字/未设置文案 → 编辑态（数字输入框 + −/`+` 步进），1–999、清空提交 = 清除目标，即时写 `annualGoals` 偏好（[data-layer §8](./data-layer.md#8-用户偏好)）；Bookology 大网格编号占位不照搬，卡片微缩形态）+ **本年借阅卡**（`bookCount` N 本）。
   - **最常借 Top 5 区块**（`topBooks` 降序，N=5 常量 `YEAR_TOP_BOOKS_N`）：行列表 = 序号 + 题名 + 次数（等宽 `tabular-nums`），区块标题 `profile.year.topBooks.title`。
   - **年度书单区块**（`bookIds` 升序，全幅封面网格，画报语义）：每格 = 封面缩略图（aspect 比例；无封面 → 占位块显题名首字符）+ 题名（1–2 行 clamp）+ 作者（1 行弱化）；网格列数响应式（`grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6`）；全量呈现不折叠；封面经 `bookIndex` 式索引（题名/作者/封面，不携带整本 Book）。
   - **AI 叙事区**（U-2 落点）：形态与 /profile「AI 解读区」同构（§4.1、ai-features §4.1），契约见 [ai-features §9.1](./ai-features.md#91-phase-2年度总结叙事--流式)；未启用或空年不渲染。
@@ -266,7 +266,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 16. 作为用户，同日借多本书（含同书重复借阅周期叠加）→ 该日格计数 = 独立 Book 数（不按周期数）；hover 该格 tooltip 列当日书名与封面缩略图（>8 本折叠「另有 N 本」），书名含 `<`/`&` 等字符正常显示不注入。
 18. 作为用户，在 /profile 概览行点「年度目标」卡 → 跳转当年 `/profile/$year`；在借阅日历 tab 年视图点「年度回顾」→ 跳对应年；手输非法 `$year`（非 4 位数字）→ 404 页，不崩。
 19. 作为用户，打开 `/profile/$year` → 年度书单（`bookIds` 升序）、最常借 Top 5（次数降序）、目标卡进度 = `bookCount`，三处数字与 `computeYearSlice` 产物一致（数字同源）；`‹`/`›` 切换年份后各区块随年重算。
-20. 作为用户，在 /settings 偏好区设年度目标（数字步进器）→ 年度视图目标卡进度/差量即时更新；存非法值（非整数/负数/越界）→ 逐条目降级不崩。
+20. 作为用户，在 `/profile/$year` 目标卡点目标数字进入编辑态（数字输入 + −/`+`），直接键入目标值提交 → 目标卡进度/差量即时更新并持久化；输入非法值（非整数/负数/越界 >999）不落偏好（schema 降级）；清空提交 → 清除该年目标；切换 `‹`/`›` 年份后在另一年编辑不影响其他年条目（按年独立）。
 21. 作为用户，浏览到无借阅的年份 → 书单与 Top 5 `Empty` 变体、目标卡「0 / M」、叙事区不渲染，页面不崩；全库空时整页 `Empty` + 导入入口。
 
 ## 7. 测试清单
@@ -293,7 +293,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - calendar 排除：设备书周期不产生天格、不入 `borrowDays`；UTC 桶归属与 displayTimezone 无关；纯函数性（同输入含锚两次调用深等价、不读 `Date.now()`）。
 - calendar-grid 纯函数：年/月视图产格行列正确（周起始随 locale、月初列标签、月内周行）；格色 alpha 阶（0/1/2/3/4+）；`bookIndex` 缺失 bookId 不抛错；tooltip HTML 转义书名与 URL。
 - yearSlice 口径：`borrowedAt` 恰为 `[y-01-01, (y+1)-01-01)` 边界计入/不计（左闭右开）；同书 2 周期计 1；`status='borrowed'` 在借周期计入（不依赖 returned）；设备书排除；跨年周期只计入 `borrowedAt` 所在年；空年零值结构完整、不抛错。
-- 年度视图（`src/routes/profile.$year.test.tsx` 等，U-1 起）：`$year` loader 参数校验（4 位数字年通过；非数字/3 位/5 位/空 → `notFound()` 路径）；骨架渲染（年份导航/目标卡/Top 5 列表/书单网格按 `computeYearSlice` 产物渲染，断言 `t()` 取值路径不断言字面量）；空年各区块 `Empty` 变体、目标卡「0 / M」、叙事区不渲染；错误态区块降级不崩整页；年份切换更新 `$year` 参数并重算（`useTransition` 加载态）。
+- 年度视图（`src/routes/profile.$year.test.tsx` 等，U-1 起）：`$year` loader 参数校验（4 位数字年通过；非数字/3 位/5 位/空 → `notFound()` 路径）；骨架渲染（年份导航/目标卡/Top 5 列表/书单网格按 `computeYearSlice` 产物渲染，断言 `t()` 取值路径不断言字面量）；**目标卡内联编辑**（编辑态渲染数字输入框与 −/`+` 步进；提交合法值 → `writePreferences({ annualGoals })` 被调且该年条目正确；清空提交 → 该年条目删除；非法值（非整数/0/负数/>999）不写偏好；编辑态 aria 走 t() 取值路径）；空年各区块 `Empty` 变体、目标卡「0 / M」、叙事区不渲染；错误态区块降级不崩整页；年份切换更新 `$year` 参数并重算（`useTransition` 加载态）。
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
@@ -316,4 +316,4 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 - `js-min-max-loop`：duration 分桶用一遍扫描，`avg`/`median` 用单遍求和与选择，不 `sort`。
 - Intl 实例复用：`Intl.NumberFormat` 按 `locale + currency` 缓存复用（模块级 `Map` 或 `useMemo`），避免每次渲染新建格式化器（构建成本高）；聚合层不触 Intl。
 - `client-localstorage-schema`：本页只读 `readgraph:preferences`（displayTimezone），不写入；读侧仍受 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架) 的 Zod 校验保护。
-- 年度视图（`/profile/$year`）追加：`bundle-dynamic-imports`——年度视图路由与叙事区 lazy，AI 未启用不拉 `src/ai/`（`bundle-conditional` 按 `ai.enabled` 三元）；`bundle-barrel-imports`——`src/profile/year/` 组件按需 import，避免 barrel；`rerender-transitions`——年份切换走 `useTransition` + `Skeleton`；`client-localstorage-schema`——`annualGoals` 读写过 `userPreferencesSchema` 校验（[data-layer §8](./data-layer.md#8-用户偏好)）。
+- 年度视图（`/profile/$year`）追加：`bundle-dynamic-imports`——年度视图路由与叙事区 lazy，AI 未启用不拉 `src/ai/`（`bundle-conditional` 按 `ai.enabled` 三元）；`bundle-barrel-imports`——`src/profile/year/` 组件按需 import，避免 barrel；`rerender-transitions`——年份切换走 `useTransition` + `Skeleton`；`client-localstorage-schema`——`annualGoals` 读写过 `userPreferencesSchema` 校验（[data-layer §8](./data-layer.md#8-用户偏好)），**写入侧 = 目标卡内联编辑**（设置页无年度目标控件，不写本偏好）。

@@ -73,7 +73,7 @@
   - 输入：`computeYearSlice` 切片 + 切片内全量书目（S-3 装配产物）；AI 未启用/未配置 → 本区零渲染（无 AI 痕迹）。
   - 缓存：`ai-cache.ts` 键 `ai:year-narrative:{locale}:{year}`（scene=year-narrative、key=year，§5.3 键形不变）；清除仍仅 `ai:` 前缀；失败不写缓存；断网缓存可读。
   - 测试：编排（缓存命中/损坏/bypass/失败不写缓存/locale+year 隔离）；E2E 见 T-2。
-- [x] **E-4（W3，前置 Y-2；若 G-2 裁定设置页编辑）** 设置页年度目标入口：偏好区新增年度目标控件（当前年数字步进器 + 保存，Bookology Goals 微缩形态）；`settings.goal.*` 双语；非法值降级 toast/提示。若 G-2 裁定年度视图内联编辑，本任务并入 U-1 并在规格中声明。
+- [x] **E-4（W3，前置 Y-2；2026-08-28 裁定：G-2 备选「年度视图内联编辑」落地，本任务并入年度目标卡实现）** 年度目标编辑入口 = `/profile/$year` 目标卡内联编辑（点目标数字/未设置文案 → 数字输入框 + −/`+` 步进；1–999、清空提交 = 删除该年条目，即时写 `writePreferences({ annualGoals })`）；**设置页年度目标控件已移除**（单年绑定挂载时刻，跨年后无法补设历年/预设来年；避免双入口漂移）；`profile.year.goal.*` 编辑态 key 双语；非法值不写偏好（schema 兜底）。原设置页 `settings.goal.*` key 随控件删除。
 
 ## 阶段 4：验证（W4）
 

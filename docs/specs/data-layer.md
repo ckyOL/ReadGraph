@@ -121,7 +121,7 @@ interface Repository<T extends { id: string }> {
   - 降级：**逐条目过滤**（对齐 `ai` 字段级降级模式，不整体打翻）——键非 4 位整数年、值非整数或越界（<1 或 >999，含 0/负数）的条目丢弃，合法条目保留；整条偏好 safeParse 失败仍整体降级默认。
   - 语义：目标进度 = `computeYearSlice(..., year).bookCount` vs `annualGoals[year]`（[reading-profile §2.7](./reading-profile.md#2-统计维度与聚合契约)）；**目标值不进 AI payload**（[ai-features §9.1](./ai-features.md#91-phase-2年度总结叙事--流式) 白名单边界——非聚合统计、非书目字段）。
   - 清除：0 值不被 schema 接受（`min(1)`），**清除 = 删除该年条目**（键不存在即无目标）。
-  - 设置入口：设置页偏好区「年度目标」控件——当前年数字步进器（`−`/`+`，1–999；未设置显示占位；减至 0 删除该年条目即清除），变更即时写 `writePreferences({ annualGoals })`（对齐主题/locale 即时生效模式）；年度视图目标卡只读展示、无编辑入口。
+  - 设置入口：**年度视图目标卡内联编辑**（2026-08-28 变更，E-4 按 G-2 备选裁定并入 U-1）——`/profile/$year` 年度目标进度卡提供编辑态：点目标数字（或未设置文案）进入编辑，输入框直接键入（带 −/`+` 步进辅助），值域 1–999、清除 = 删除该年条目（0/空值不落 schema），变更即时写 `writePreferences({ annualGoals })`（对齐主题/locale 即时生效模式）；**设置页不再提供年度目标控件**（原设置页「当前年步进器」已移除——单年绑定挂载时刻，跨年后无法补设历年/预设来年，且与年度视图编辑双入口重复）。年度视图天然按 `$year` 组织，在哪年编辑哪年，历年/来年均可设置，无跨年边界问题。
   - 系统重置：`clearPreferences=true` 清 `readgraph:*`（`annualGoals` 随偏好一并清除）；`false` 保留（对齐既有语义，`reset.ts` 无需改动）。
 
 ## 9. 用户故事与验收用例
