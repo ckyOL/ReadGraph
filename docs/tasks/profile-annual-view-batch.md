@@ -68,12 +68,12 @@
 
 ## 阶段 3：年度叙事区与目标编辑（W3）
 
-- [ ] **U-2（W3，前置 S-3 + P-2 + U-1）** 「年度叙事」AI 区（`src/profile/year/`，与 `ai-insights.tsx` 同构——**是年度视图内的区块而非独立孤岛**）：
+- [x] **U-2（W3，前置 S-3 + P-2 + U-1）** 「年度叙事」AI 区（`src/profile/year/`，与 `ai-insights.tsx` 同构——**是年度视图内的区块而非独立孤岛**）：
   - 形态复用：Markdown 文本流（ReactMarkdown + `.ai-markdown`，ai-features §4.1）+ 流式逐字渲染（`chatStream`/`onPartial` 链路已就绪）+ 停止生成/打字光标/复制 + 重新生成（`bypassCache`）+ 发送预览（`ai-send-preview.tsx` 复用，sampled 标注）+ 「AI 生成，基于本地数据」标注。
   - 输入：`computeYearSlice` 切片 + 切片内全量书目（S-3 装配产物）；AI 未启用/未配置 → 本区零渲染（无 AI 痕迹）。
   - 缓存：`ai-cache.ts` 键 `ai:year-narrative:{locale}:{year}`（scene=year-narrative、key=year，§5.3 键形不变）；清除仍仅 `ai:` 前缀；失败不写缓存；断网缓存可读。
   - 测试：编排（缓存命中/损坏/bypass/失败不写缓存/locale+year 隔离）；E2E 见 T-2。
-- [ ] **E-4（W3，前置 Y-2；若 G-2 裁定设置页编辑）** 设置页年度目标入口：偏好区新增年度目标控件（当前年数字步进器 + 保存，Bookology Goals 微缩形态）；`settings.goal.*` 双语；非法值降级 toast/提示。若 G-2 裁定年度视图内联编辑，本任务并入 U-1 并在规格中声明。
+- [x] **E-4（W3，前置 Y-2；若 G-2 裁定设置页编辑）** 设置页年度目标入口：偏好区新增年度目标控件（当前年数字步进器 + 保存，Bookology Goals 微缩形态）；`settings.goal.*` 双语；非法值降级 toast/提示。若 G-2 裁定年度视图内联编辑，本任务并入 U-1 并在规格中声明。
 
 ## 阶段 4：验证（W4）
 
@@ -107,6 +107,20 @@
   - **U-1** `src/routes/profile.$year.tsx` + `src/profile/year/`（year-book-grid / year-top-books / year-goal-card / year-goal-summary-card / year-book-index）：`parseYearParams` 独立导出（`z.string().regex(/^\d{4}$/)`，非法 → 路由不匹配 404 路径）；`ProfileYearPage` 单次 `computeYearSlice` 产物驱动目标卡/本年借阅卡/Top 5/封面网格（数字同源）；年份切换 `useTransition` + `isPending` 遮罩（工具条稳定）；状态全覆盖——useLiveQuery 未就绪 `Skeleton`、空年区块 `Empty` 变体 + 目标卡 0/M、全库空整页 `Empty` + 导入入口、区块级 `ErrorBoundary` 降级；双入口 = /profile 概览行第 6 卡（栅格 `md:grid-cols-6`，当年 N/M）+ 借阅日历年视图工具条「年度回顾」链接；i18n `profile.year.*`/`profile.summary.goal.*`/`profile.calendar.yearReview` 双语 21 键。测试 14 用例（loader 校验/骨架渲染 t() 取值路径断言/空年/全库空/加载态/概览入口卡）。
   - **门禁**：`pnpm test` 75 文件 **973 用例全绿**、`pnpm exec tsc -b` 过、`pnpm build` 过（routeTree codegen 注册 `profile.$year` 独立 chunk `profile._year-*.js`，lazy 分割生效）、oxlint 无 error。
   - 波次 3（W3：U-2 年度叙事区 + E-4 设置页年度目标入口，前置 S-3/P-2/U-1/Y-2）待启。
+
+- 2026-08-28 **阶段 3 完成（W3，E-4 子代理 + U-2 主线接管）**：落地，TDD 全绿——
+  - **E-4** `src/settings/goal-setting.tsx`：`stepAnnualGoals(goals, year, delta)` 纯函数（+1 未设置→1、封顶 999 不变；−1 未设置或 ≤1 → 删除该年条目即清除；其余年条目新对象保留不 mutate）+ `GoalSetting` 组件（当前年挂载态 `getUTCFullYear`；−/数值/＋ 步进器，`tabular-nums`，aria-label `settings.goal.decrease/increase`；变更即时 `writePreferences({ annualGoals })` + toast saved/cleared；未设置显示 `settings.goal.placeholder`）；挂载于设置页偏好区 timezone 行后；i18n `settings.goal.*` 双语 8 键。测试 8 用例（纯函数 6 + 组件渲染 2，t() 取值路径断言）。
+  - **U-2** 编排三层重构 + 年度叙事区：
+    - `src/ai/insight-pipeline.ts` **场景无关泛化**：`InsightPipelineInput<P>`（`entities/stats/classificationSystem` → `ready: boolean` + `assemble: () => P` 装配闭包）、`InsightPipelineDeps<P>`（新增 `validate` 缓存弱校验注入点；`submit` payload 泛型化）、`InsightPipelineResult<P>`；流程语义逐行保持（skipped/unconfigured/cache-hit 损坏未命中/pending-preview 同引用/success 写缓存/error 分级不写缓存）。既有 20 用例适配 + 新增 2（弱校验注入生效、ready=false skipped）。
+    - `src/ai/use-ai-engine.ts` **共享引擎 hook**（use-ai.ts 90–341 行逻辑原样抽取）：状态机（markdown/streamingMarkdown/streamingReasoning/loading/error/pendingPreview）、并发闸/停止保留部分内容/流式增量落位、场景差异（scene/key/locale/temperature/assemble/buildPrompt/validate）全注入。
+    - `src/ai/use-ai.ts` 变薄为画像适配层（公开 API 不变：useAiInsights/UseAiInsightsOptions/UseAiInsightsState/AiInsightError 再导出；scene 'profile' / key 'all-v2' / PROFILE_TEMPERATURE / serializePayload / buildProfileInsightsPrompt / validateProfileInsightsMarkdown）。
+    - `src/ai/use-year-narrative.ts` 年度适配层：scene `year-narrative` / key `String(year)`（缓存键 `ai:year-narrative:{locale}:{year}`）/ `YEAR_NARRATIVE_TEMPERATURE` / `serializeYearPayload`（与页面 computeYearSlice 同参——数字同源）/ `buildYearNarrativePrompt` / `validateYearNarrative`；ready 门 = slice/entities 就绪且 `bookCount > 0`（空年静默）。
+    - `src/profile/year/ai-section-view.tsx` 共享展示层（自 ai-insights 抽取，渲染标记逐字节一致）：标题行按钮组、loading 三态（thinking 折叠块/流式 markdown+光标/停止条）、定稿态、错误分级 toast（`useAiSectionErrorToast`）；`ai-insights.tsx` 改为消费同一展示层（行为/标记不变）。
+    - `src/profile/year/year-narrative.tsx` 年度叙事区：aiEnabled 门控 → null（无痕迹）；i18n `profile.year.ai.*` 双语 14 键；AiSendPreviewDialog 复用（`AiPreviewPayload` 宽类型兼容 Profile/Year 两场景）。
+    - `src/routes/profile.$year.tsx` 挂载：`aiEnabled === true && slice.bookCount > 0` 才渲染 lazy 组件（`bundle-dynamic-imports`——build 产物确认 `year-narrative-*.js` 独立 chunk 经 `__vite__mapDeps` 动态引用，主包不静态引用，AI 默认关闭不拉 `src/ai/`）；ErrorBoundary + Suspense 包裹；书单区块之后（G-1 布局序）。
+    - 测试 `src/profile/year/year-narrative.test.tsx` 14 用例：管线编排（预览过 yearPayloadSchema/同一引用/写缓存 scene+locale+key/空年 skipped/失败不写缓存/bypass/缓存 year+locale 隔离/损坏未命中）+ 组件渲染（未启用 null/取值路径/AI 标注/流式光标）+ 源码审计（`?raw` 无 annualGoals、温度 0.2）；路由测试补 AI 未启用无叙事痕迹断言。
+  - **门禁**：`pnpm test` 77 文件 **997 用例全绿**、`pnpm exec tsc -b` 过、`pnpm build` 过、oxlint 44 warning 与基线持平（无新增 error）。**执行记录**：E-4 子代理一次通过（9m37s）；U-2 子代理 30 分钟零产出判卡死取消，由主线按同规格接管实现。
+  - 波次 4（W4：T-1 全量回归复跑 + T-2 Playwright E2E）待启。
 
 ## 实现指南（给执行 LLM 的速查）
 
