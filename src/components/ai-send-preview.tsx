@@ -15,12 +15,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import type { ProfilePayload } from '@/ai/sanitize'
+/** 预览 payload 兼容形态（§3.2/§9.1 白名单场景共用）：仅约束 JSON 展示所需的
+ *  sampled 标记；ProfilePayload / YearPayload 均可赋值（宽结构类型，展示层只序列化）。 */
+export type AiPreviewPayload = {
+  sampled?: { total: number; sent: number }
+}
 
 export interface AiSendPreviewDialogProps {
   open: boolean
   /** 待审阅 payload；null 时仅空对话框（配合 open=false 使用，不渲染内容）。 */
-  payload: ProfilePayload | null
+  payload: AiPreviewPayload | null
   onConfirm: () => void
   onCancel: () => void
 }

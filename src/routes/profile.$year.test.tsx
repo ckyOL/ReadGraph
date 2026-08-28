@@ -235,6 +235,15 @@ describe('ProfileYearPage — 空年/全库空/加载态', () => {
     expect(html).toContain(i18n.t('pages:profile.year.goal.remaining', { count: 12 }))
   })
 
+  it('AI 未启用（U-2）：数据年渲染无叙事痕迹（无 year-narrative/AI 挂载点）', () => {
+    // 偏好 mock ai.enabled=false（本文件 43-51 行）：叙事区 lazy 组件不渲染。
+    const f = fixtures()
+    useLiveQueryMock.mockReturnValue(entitiesOf(f))
+    const html = renderYearPage(2026)
+    expect(html).not.toContain('year-narrative')
+    expect(html).not.toContain(i18n.t('pages:profile.year.ai.title'))
+  })
+
   it('全库空 → 整页 Empty + 导入入口（跳 /import），不崩', () => {
     useLiveQueryMock.mockReturnValue(entitiesOf({ books: [], catalogRecords: [], borrowCycles: [], sources: [] }))
     const html = renderYearPage(2026)

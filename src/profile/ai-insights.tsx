@@ -4,20 +4,17 @@
 // 尾部「生成中」占位；定稿后块尾标注「AI 生成，基于本地数据」；整体可重新生成。
 // 条件渲染（§2.1/§8）：ai.enabled !== true 时返回 null——未启用时全站无 AI 痕迹
 // （含 loading 态也不渲染）；配合路由侧 lazy + 开关门控，AI 默认关闭不拉主包。
-import { useEffect, useState } from 'react'
+// Phase 2 U-2：渲染形态抽取为 ai-section-view.tsx 共享展示层（年度叙事区同构复用），
+// 本组件只保留画像场景数据接线（useAiInsights）与 labels/回调注入。
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { ChevronDown } from 'lucide-react'
 
 import { useAiInsights } from '@/ai/use-ai'
 import { AiSendPreviewDialog } from '@/components/ai-send-preview'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { toast } from '@/components/ui/use-toast'
 import { clearAiCache } from '@/lib/ai-cache'
 import { readPreferences } from '@/lib/preferences'
+import { toast } from '@/components/ui/use-toast'
+import { AiSectionView, useAiSectionErrorToast } from '@/profile/year/ai-section-view'
 import type { ClassificationSystem } from '@/types/entities'
 
 export interface AiInsightsSectionProps {
@@ -48,27 +45,13 @@ export function AiInsightsSection({
     stop,
   } = useAiInsights({ classificationSystem, displayTimezone, calendarAnchor })
 
-  // 错误分级 toast（§5.4）：网络失败/超时、响应校验失败、未配置端点/模型；
-  // 错误态不渲染结果（hook 保证 markdown 与 error 互斥）。
-  // description 展示模块内构造的诊断 message（401/429/HTTP 状态/CORS/超时区分），
-  // 避免固定 network 文案把鉴权失败误报成「跨域」；AbortError 的 'Aborted' 无信息量则省略。
-  useEffect(() => {
-    if (error === null) return
-    const key =
-      error.kind === 'network'
-        ? 'profile.ai.error.network'
-        : error.kind === 'validation'
-          ? 'profile.ai.error.validation'
-          : 'profile.ai.error.unconfigured'
-    // AbortError（超时/中止）的 message 为 'Aborted' 无信息量：给明确超时文案，避免误读为 CORS。
-    const description =
-      error.kind === 'network' && error.message === 'Aborted'
-        ? t('profile.ai.error.timeout')
-        : error.kind !== 'unconfigured' && error.message
-          ? error.message
-          : undefined
-    toast({ variant: 'destructive', title: t(key), description })
-  }, [error, t])
+  // 错误分级 toast（§5.4）：共享实现，labels 以画像 namespace 解析。
+  useAiSectionErrorToast(error, {
+    network: t('profile.ai.error.network'),
+    timeout: t('profile.ai.error.timeout'),
+    validation: t('profile.ai.error.validation'),
+    unconfigured: t('profile.ai.error.unconfigured'),
+  })
 
   // 未启用（§2.1）：全站无 AI 痕迹——含 loading 态也不渲染。
   if (aiEnabled !== true) return null
@@ -88,112 +71,35 @@ export function AiInsightsSection({
   }
 
   return (
-    <>
-      <section
-        className="mt-4"
-        data-slot="profile-ai"
-        aria-busy={loading}
-        aria-live="polite"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">{t('profile.ai.title')}</h2>
-          {markdown === null ? (
-            <Button size="sm" onClick={() => generate()} disabled={loading}>
-              {t('profile.ai.generate')}
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleCopy}>
-                {t('profile.ai.copy')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => generate(true)} disabled={loading}>
-                {t('profile.ai.regenerate')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleClearCache}>
-                {t('profile.ai.clearCache')}
-              </Button>
-            </div>
-          )}
-        </div>
-        {loading ? (
-          // 生成/重新生成 loading 态（§8 rerender-transitions）：thinking 思考过程
-          // 以灰色思考块渐进显示；流式已出文本时渲染累积 markdown + 尾部「生成中」
-          // 占位，否则 Skeleton 占位 + 按钮禁用，不阻塞页面其余渲染。
-          <>
-            {streamingReasoning !== null && streamingReasoning.length > 0 && (
-              <Collapsible
-                defaultOpen={false}
-                className="mt-3 rounded-lg border border-border bg-muted/50"
-                data-slot="profile-ai-reasoning"
-              >
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-1.5 p-3 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <ChevronDown className="size-3.5 shrink-0 transition-transform data-open:rotate-180" />
-                    {t('profile.ai.reasoning')}
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="px-3 pb-3">
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                    {streamingReasoning}
-                  </p>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-            {streamingMarkdown !== null && streamingMarkdown.length > 0 ? (
-              <MarkdownBody text={streamingMarkdown} streaming />
-            ) : (
-              <div className="mt-3">
-                <Skeleton className="h-24 w-full" />
-              </div>
-            )}
-            <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-              <span>{t('profile.ai.generating')}</span>
-              <Button variant="outline" size="sm" onClick={stop} data-slot="profile-ai-stop">
-                {t('profile.ai.stop')}
-              </Button>
-            </div>
-          </>
-        ) : (
-          markdown !== null && (
-            <>
-              <MarkdownBody text={markdown} />
-              <p className="mt-2 text-xs text-muted-foreground/70">
-                {t('profile.ai.generated')}
-              </p>
-            </>
-          )
-        )}
-      </section>
+    <AiSectionView
+      ariaBusy={loading}
+      labels={{
+        title: t('profile.ai.title'),
+        generate: t('profile.ai.generate'),
+        regenerate: t('profile.ai.regenerate'),
+        reasoning: t('profile.ai.reasoning'),
+        stop: t('profile.ai.stop'),
+        copy: t('profile.ai.copy'),
+        generating: t('profile.ai.generating'),
+        generated: t('profile.ai.generated'),
+        clearCache: t('profile.ai.clearCache'),
+      }}
+      markdown={markdown}
+      streamingMarkdown={streamingMarkdown}
+      streamingReasoning={streamingReasoning}
+      loading={loading}
+      onGenerate={() => void generate()}
+      onRegenerate={() => void generate(true)}
+      onCopy={handleCopy}
+      onClearCache={handleClearCache}
+      onStop={stop}
+    >
       <AiSendPreviewDialog
         open={pendingPreview !== null}
         payload={pendingPreview}
-        onConfirm={confirmGenerate}
+        onConfirm={() => void confirmGenerate()}
         onCancel={cancelGenerate}
       />
-    </>
-  )
-}
-
-/** Markdown 渲染体（ReactMarkdown + remark-gfm）：流式增量与定稿共用；样式见 index.css .ai-markdown。 */
-function MarkdownBody({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  return (
-    <div
-      className="ai-markdown mt-3 rounded-lg border border-border p-3"
-      data-slot="profile-ai-markdown"
-    >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-      {streaming && (
-        <span
-          className="ai-markdown-caret"
-          data-slot="profile-ai-caret"
-          aria-hidden="true"
-        >
-          ▍
-        </span>
-      )}
-    </div>
+    </AiSectionView>
   )
 }

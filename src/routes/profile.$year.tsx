@@ -1,9 +1,9 @@
-// 年度视图路由（/profile/$year，Phase 2 静态骨架：reading-profile §4/§2.7）。
-// 静态骨架（非 AI，本地直出）：年份导航 → 概览窄卡行（年度目标进度卡 + 本年借阅卡）
-// → 最常借 Top 5 → 年度书单封面网格；数字全部来自单次 computeYearSlice 产物（数字同源）。
-// AI 叙事区为 U-2 落点（本波未实现：无叙事痕迹）。页面只读（目标编辑在设置页）。
-// 性能（§8）：组件按需 import（src/profile/year/ 无 barrel）；年份切换走 useTransition。
-import { memo, useMemo, useTransition } from 'react'
+// 年度视图路由（/profile/$year，Phase 2 静态骨架 + AI 叙事区：reading-profile §4/§2.7、
+// ai-features §9.1）。静态骨架（非 AI，本地直出）：年份导航 → 概览窄卡行（年度目标进度卡
+// + 本年借阅卡）→ 最常借 Top 5 → 年度书单封面网格 → AI 年度叙事区（U-2）；数字全部来自
+// 单次 computeYearSlice 产物（数字同源）。AI 叙事区按 aiEnabled 门控 + lazy 动态加载
+// （§8 bundle-dynamic-imports：AI 未启用不拉 src/ai/ chunk）。页面只读（目标编辑在设置页）。
+import { lazy, memo, Suspense, useMemo, useState, useTransition } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -28,6 +28,13 @@ import { YearGoalCard } from '@/profile/year/year-goal-card'
 import { YearTopBooks } from '@/profile/year/year-top-books'
 import { YearBookGrid } from '@/profile/year/year-book-grid'
 import type { YearBookIndexEntry } from '@/profile/year/year-book-index'
+// 年度叙事区按需动态加载（bundle-dynamic-imports / bundle-conditional）：
+// aiEnabled=false 时不渲染 lazy 组件 → chunk 不加载，AI 默认关闭不拉主包。
+const YearNarrativeSection = lazy(() =>
+  import('@/profile/year/year-narrative').then((m) => ({
+    default: m.YearNarrativeSection,
+  })),
+)
 
 const yearParamSchema = z.string().regex(/^\d{4}$/)
 
@@ -80,6 +87,9 @@ export function ProfileYearPage({
 }) {
   const { t, i18n } = useTranslation('pages')
   const [isPending, startTransition] = useTransition()
+  // AI 门控（§2.1 默认关闭）：挂载态偏好，false 时不渲染叙事区 lazy 组件
+  // （chunk 不加载，§8 bundle-conditional；与 /profile 路由同模式）。
+  const [aiEnabled] = useState(() => readPreferences().ai.enabled)
 
   const entities = useLiveQuery<YearEntities | undefined>(
     () =>
@@ -212,6 +222,26 @@ export function ProfileYearPage({
           emptyDescription={yearEmptyDesc}
         />
       </ErrorBoundary>
+
+      {/* AI 年度叙事区（ai-features §9.1，U-2）：书单区块之后；AI 默认关闭/空年不渲染
+          ——aiEnabled=false 不挂 lazy 组件（chunk 不加载），bookCount=0 空年无叙事痕迹；
+          输入与静态骨架同一 slice/entities 产物（数字同源）。 */}
+      {aiEnabled === true && slice !== null && slice.bookCount > 0 && entities !== undefined && (
+        <Suspense fallback={null}>
+          <ErrorBoundary title={errorTitle} description={errorDesc}>
+            <YearNarrativeSection
+              year={year}
+              slice={slice}
+              entities={{
+                books: entities.books,
+                catalogRecords: entities.catalogRecords,
+                borrowCycles: entities.borrowCycles,
+                sources: entities.sources,
+              }}
+            />
+          </ErrorBoundary>
+        </Suspense>
+      )}
     </div>
   )
 }

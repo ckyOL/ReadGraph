@@ -1,5 +1,5 @@
-// AI 阅读画像编排核心（src/ai/insight-pipeline.ts）单测（ai-features §7 / §3.3 / §4.1 / §5.3 / §5.4）。
-// 纯函数模块：实体/聚合/偏好/缓存/上送全部依赖注入（mock），不依赖网络/时钟/IndexedDB/DOM。
+// AI 场景编排核心（src/ai/insight-pipeline.ts）单测（ai-features §7 / §3.3 / §4.1 / §5.3 / §5.4）。
+// 纯函数模块：装配/偏好/缓存/校验/上送全部依赖注入（mock），不依赖网络/时钟/IndexedDB/DOM。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ZodError } from 'zod'
 
@@ -15,6 +15,7 @@ import { readAiCache, writeAiCache } from '@/lib/ai-cache'
 import { makeBook, makeCatalog, makeCycle, makeSource } from '@/db/test-helpers'
 import { computeProfileStats } from '@/lib/profile-stats'
 import type { ProfileStatsInput, ProfileStatsOptions } from '@/lib/profile-stats'
+import type { ProfilePayload } from '@/ai/sanitize'
 
 const U = (isoUtc: string) => new Date(isoUtc)
 
@@ -64,13 +65,14 @@ const STATS_OPTS: ProfileStatsOptions = {
 const entities = buildEntities()
 const stats = computeProfileStats(entities, STATS_OPTS)
 
-function baseInput(overrides: Partial<InsightPipelineInput> = {}): InsightPipelineInput {
+function baseInput(overrides: Partial<InsightPipelineInput<ProfilePayload>> = {}): InsightPipelineInput<ProfilePayload> {
   return {
     prefs: BASE_PREFS,
     locale: 'zh-CN',
-    entities,
-    stats,
-    classificationSystem: 'clc',
+    // 数据就绪门：画像场景 = 聚合结果非 null（Hook 侧保证）。
+    ready: true,
+    // 装配闭包（§3.3）：与 Hook 同一 serializePayload 产物（防漂移断言用直接调用深等价）。
+    assemble: () => serializePayload(entities, stats, { classificationSystem: 'clc' }),
     bypassCache: false,
     scene: SCENE,
     key: KEY,
@@ -78,14 +80,17 @@ function baseInput(overrides: Partial<InsightPipelineInput> = {}): InsightPipeli
   }
 }
 
-function baseDeps(overrides: Partial<InsightPipelineDeps> = {}): InsightPipelineDeps {
+function baseDeps(overrides: Partial<InsightPipelineDeps<ProfilePayload>> = {}): InsightPipelineDeps<ProfilePayload> {
   return {
     readCache: vi.fn(() => null),
     writeCache: vi.fn(),
+    // 弱校验（场景注入）：画像场景 = validateProfileInsightsMarkdown。
+    validate: validateProfileInsightsMarkdown,
     submit: vi.fn(async () => RESULT),
     ...overrides,
   }
 }
+
 
 /** 构造真实 ZodError：对非法文本调用弱校验取 error（与 Hook 上送抛错同型）。 */
 function zodError(): ZodError {
@@ -221,12 +226,27 @@ describe('runInsightPipeline — 前置门（§2.1 / §5.4）', () => {
     expect(deps.writeCache).not.toHaveBeenCalled()
   })
 
-  it('聚合未就绪（stats=null）→ 静默 skipped', async () => {
+  it('数据未就绪（ready=false）→ 静默 skipped，不读缓存不上送', async () => {
     const deps = baseDeps()
-    const result = await runInsightPipeline(baseInput({ stats: null }), deps)
+    const result = await runInsightPipeline(baseInput({ ready: false }), deps)
     expect(result).toEqual({ status: 'skipped' })
     expect(deps.readCache).not.toHaveBeenCalled()
     expect(deps.submit).not.toHaveBeenCalled()
+  })
+
+  it('弱校验注入生效：缓存命中走 deps.validate，抛错视为未命中继续生成', async () => {
+    // 注入恒抛错校验：任何缓存都视为损坏 → 未命中走上送。
+    const deps = baseDeps({
+      readCache: vi.fn(() => ({ result: MARKDOWN, generatedAt: 1 })),
+      validate: vi.fn(() => {
+        throw zodError()
+      }),
+    })
+    const result = await runInsightPipeline(baseInput(), deps)
+    expect(result).toEqual({ status: 'success', markdown: MARKDOWN })
+    expect(vi.mocked(deps.submit)).toHaveBeenCalledOnce()
+    // 注入的校验确实被调用（缓存命中路径先过校验）。
+    expect(vi.mocked(deps.validate)).toHaveBeenCalledWith(MARKDOWN)
   })
 
   it.each([
