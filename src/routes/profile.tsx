@@ -7,7 +7,7 @@ import {
   useState,
   useTransition,
 } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -87,8 +87,20 @@ const AiInsightsSection = lazy(() =>
 )
 
 export const Route = createFileRoute('/profile')({
-  component: ProfilePage,
+  component: ProfileLayout,
 })
+
+/**
+ * 父路由布局（TanStack 嵌套路由）：/profile/$year 是 /profile 的子路由
+ * （routeTree codegen parentRoute: ProfileRoute），父 component 必须渲染 <Outlet/>
+ * 子路由才会挂载——否则 /profile/$year 只显示概览页、入口点击 URL 变了内容不变。
+ * 无 index 子路由：精确匹配 /profile 时渲染概览页本体，其余（/$year）交给子路由。
+ */
+function ProfileLayout() {
+  const matchRoute = useMatchRoute()
+  const isIndex = !!matchRoute({ to: '/profile', fuzzy: false })
+  return isIndex ? <ProfilePage /> : <Outlet />
+}
 
 const MS_PER_DAY = 86_400_000
 

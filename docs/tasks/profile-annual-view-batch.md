@@ -77,8 +77,8 @@
 
 ## 阶段 4：验证（W4）
 
-- [ ] **T-1（W4）** Vitest 全量回归：Y-1/Y-2/P-2/S-3/U-1 各阶段用例 + 既有 885+ 用例全绿；`pnpm exec tsc --noEmit` + `pnpm build` 通过。
-- [ ] **T-2（W4）** Playwright E2E（`e2e/profile-annual.spec.ts`）：
+- [x] **T-1（W4）** Vitest 全量回归：Y-1/Y-2/P-2/S-3/U-1 各阶段用例 + 既有 885+ 用例全绿；`pnpm exec tsc --noEmit` + `pnpm build` 通过。
+- [x] **T-2（W4）** Playwright E2E（`e2e/profile-annual.spec.ts`）：
   - 静态骨架：入口跳转 `/profile → /profile/$year`；年度书单/Top N/目标卡数字与 `computeYearSlice` 一致；空年不崩（Empty 变体）；年份切换；非法 `$year` 参数 → 404/重定向。
   - AI 叙事：启用 + 触发 → 发送预览与实际请求 body 深等价（§3.3 同一装配产物）；**请求 body 不含年度目标值**（拦截断言）；流式渲染后标注 AI 生成；重新生成覆盖；断网 mock 失败 → 错误 toast 不渲染；缓存按 year+locale 隔离；AI 未启用 → 年度视图无叙事痕迹。
 
@@ -119,8 +119,13 @@
     - `src/profile/year/year-narrative.tsx` 年度叙事区：aiEnabled 门控 → null（无痕迹）；i18n `profile.year.ai.*` 双语 14 键；AiSendPreviewDialog 复用（`AiPreviewPayload` 宽类型兼容 Profile/Year 两场景）。
     - `src/routes/profile.$year.tsx` 挂载：`aiEnabled === true && slice.bookCount > 0` 才渲染 lazy 组件（`bundle-dynamic-imports`——build 产物确认 `year-narrative-*.js` 独立 chunk 经 `__vite__mapDeps` 动态引用，主包不静态引用，AI 默认关闭不拉 `src/ai/`）；ErrorBoundary + Suspense 包裹；书单区块之后（G-1 布局序）。
     - 测试 `src/profile/year/year-narrative.test.tsx` 14 用例：管线编排（预览过 yearPayloadSchema/同一引用/写缓存 scene+locale+key/空年 skipped/失败不写缓存/bypass/缓存 year+locale 隔离/损坏未命中）+ 组件渲染（未启用 null/取值路径/AI 标注/流式光标）+ 源码审计（`?raw` 无 annualGoals、温度 0.2）；路由测试补 AI 未启用无叙事痕迹断言。
-  - **门禁**：`pnpm test` 77 文件 **997 用例全绿**、`pnpm exec tsc -b` 过、`pnpm build` 过、oxlint 44 warning 与基线持平（无新增 error）。**执行记录**：E-4 子代理一次通过（9m37s）；U-2 子代理 30 分钟零产出判卡死取消，由主线按同规格接管实现。
-  - 波次 4（W4：T-1 全量回归复跑 + T-2 Playwright E2E）待启。
+  - 波次 4（W4：T-1 全量回归复跑 + T-2 Playwright E2E）已启并完成，见下条。
+
+- 2026-08-28 **阶段 4 完成（W4，T-1 + T-2）**：落地，全绿——
+  - **入口阻断缺陷修复（W4 首查发现）**：routeTree codegen 将 `/profile/$year` 挂为 `/profile` 的**子路由**（`parentRoute: ProfileRoute`），但 `src/routes/profile.tsx` 父 component 未渲染 `<Outlet/>` → 子路由永不挂载，`/profile/$year` 实际渲染完整概览页——两个入口（概览第 6 卡、日历「年度回顾」）点击后 URL 变化而内容不变，年度视图不可达（用户反馈「看不出怎么用」的直接根因；非法参数 404 亦被父页吞掉）。**修复**：父路由 component 改为 `ProfileLayout`（`useMatchRoute({ to: '/profile', fuzzy: false })` 精确匹配 → 渲染 `ProfilePage` 本体；其余 → `<Outlet/>` 交给子路由）；无 index 子路由，概览页语义不变。规格依据 reading-profile §4 入口导航 + ui-navigation §2 路由树——后续嵌套路由（`layout.tsx` 惯例）建议在 specs 中注明「父 component 须渲染 Outlet」。
+  - **T-1**：`pnpm test` 77 文件 997 用例全绿、`pnpm exec tsc -b` 过、`pnpm build` 过（`profile._year-*.js` 独立 chunk 保持 lazy）。
+  - **T-2**：`e2e/profile-annual.spec.ts` 13 用例——静态骨架 7（双入口跳转、/profile/2024 数字同源「本年借阅 3 本/Top 5 三本各 2 次/书单 3 本」、目标卡 3/5 + 差量、空年 Empty×2 + 0/12、年份切换 ‹/›、非法 `$year` → Not Found）+ AI 叙事 6（未启用无痕迹、预览/请求同源且 body 无 annualGoals、sendPreview=false 生成→重新生成覆盖、断网 → network 分级 toast 且不写缓存、缓存 year 隔离、缓存 locale 隔离）。全量 Playwright **85/85 通过**（72 既有 + 13 新增）。
+  - 执行备忘：年份标题经 `Intl.NumberFormat` 呈现「2,024」（千分位），断言须 locale 无关正则；AI 缓存仅在点「生成」时读取（引擎不自动直出），E2E 缓存命中路径 = 重进页面后再点生成。
 
 ## 实现指南（给执行 LLM 的速查）
 
