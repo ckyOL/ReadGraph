@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { TimezoneSelect } from '@/settings/timezone-select'
 import { exportBackupAndDownload } from '@/settings/backup-actions'
+import { GoalSetting } from '@/settings/goal-setting'
 import { AiSection } from '@/settings/ai-section'
 
 export const Route = createFileRoute('/settings')({
@@ -100,6 +101,7 @@ function SettingsPage() {
           </span>
           <TimezoneSelect value={timezone} onValueChange={setTimezone} className="w-72" />
         </div>
+        <GoalSetting />
       </section>
 
       <AiSection />
