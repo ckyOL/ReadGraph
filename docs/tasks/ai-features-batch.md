@@ -105,6 +105,12 @@
 
 - 2026-08-24 **修复**：端点 URL 双 `/v1` 拼接——`ai-client.ts` 增 `endpointUrl()`（`baseUrl` 已含 `/v1` 后缀不重复拼接、网关前缀路径保留，placeholder `https://api.example.com/v1` 直填即用）；fetch `TypeError`（端点不可达 / 跨域 CORS 拦截）归一 `AiNetworkError`（与超时 `AbortError` 区分），连接测试 toast 按 CORS 分级给可操作指引（`settings.ai.test.error.cors` 双语，`profile.ai.error.network` 文案补 CORS）。测试：ai-client 25 用例（新增 `/v1` 结尾 x2、网关前缀、TypeError x2）。门禁：`pnpm test` 72 文件 883 用例全绿、`pnpm build` 通过。
 - 2026-08-25 **画像流式先行**（ai-features §4.1 从 Phase 2 提前）：`stream:true` + SSE 增量输出 + **条目级渐进渲染**——已闭合 insight 卡逐步渲染、尾部「生成中」占位，最终完整 JSON 过 `profileInsightsSchema` 校验成功才定稿写缓存，失败清空增量走错误分级。落点：`ai-client.chatStream`（SSE 增量解析器 `createSseParser`，`parseSseEvents` 迁移为聚合形态并 re-export；60s 总超时覆盖 TTFB+传输；`throwFetchError` 公共归一）；`ai-provider.chatStream`（`stream:true` 由「抛 Phase 2 错误」改为真实流式，`chat` 的 stream:true 也走拼接校验）；`stream-json.ts` 增量 JSON 解析纯函数（字符串感知扫描，`}`/`[` 在 body 内不误判、围栏前缀容忍）；`insight-pipeline.ts` `submit`/`submitInsightPayload`/`runInsightPipeline` 增 `onPartial` 透传；`use-ai.ts` submit 改 chatStream + `extractCompletedInsights` 渐进解析 + `streamingInsights` 状态（定稿/失败清空）；`ai-insights.tsx` 增量渲染（复用 `renderInsightGrid`，`profile.ai.generating` 双语）；**`vite.config.ts` 代理改流式转发**（`await up.arrayBuffer()` 整体缓冲 → `for await` 逐 chunk `res.write`——dev 下 SSE 不被憋到完整）。测试：stream-json 12、ai-client chatStream 9（分片断行/事件粒度/role 跳过/[DONE]/超时/Abort）、provider chatStream 2 + stream:true 拼接校验、pipeline onPartial 4、E2E 流式用例（SSE 分片 mock + `stream:true` 断言）。门禁：`pnpm test` 73 文件 921 用例全绿、`pnpm build`（tsc -b）通过、Playwright 68 用例全绿；冒烟（dev 代理 + 本地 SSE mock）：首字节 0.43s、分波到达（代理流式生效），浏览器端到端 0.6s 出首卡、定稿渲染正常。规格同步：ai-features §3.1⑤/§4.1/§7/§9.1（画像流式契约、taste 与 fact 同为条目粒度）。
+- 2026-08-30 **Phase 3 完成（本地服务后端）**（[ai-features §9.2](../specs/ai-features.md#92-phase-3本地服务后端可选) 落地细化同步进规格）：零新 UI、零新依赖——同契约复用 `chat`/`chatStream`/`testConnection`。落点：
+  - **回环判定**：`ai-client.ts` 增导出 `isLoopbackEndpoint(baseUrl)`（`http:` + hostname ∈ `{127.0.0.1, localhost, ::1, [::1]}`；URL 解析比对，端口/路径无关）+ `AiNetworkMessage` 常量（`local`/`cloud` 双文案）；
+  - **未启动错误分级**（§9.2「未启动时明确错误提示」）：`throwFetchError` 增 `targetUrl` 形参，`AiNetworkError` 按端点形态分流文案——回环 http → 本地服务指引（`ollama serve`/端口/`OLLAMA_ORIGINS`），否则云端 CORS/反代指引；`request`/`chat`/`chatStream`/`testConnection` 全链路传**原始端点 URL**（冒烟抓到并修复 dev 回归：`/__ai-proxy/<encoded>` 前缀传入曾使回环判定失效、本地未启动误报云端 CORS——回归用例 stub `__AI_DEV_PROXY__=true` 锁定）；
+  - **CSP 回环面**：`connect-src` 增 `http://localhost:*`（`127.0.0.1` 已有）。**`http://[::1]:*` 不写入**：CSP3 host-part 产生式不支持 IP 字面量（spec 备注 future version may allow literal IPv6/IPv4），Chromium 对该源报 invalid source 并污染主流程 CSP violation 断言（e2e 实测）；IPv6 回环由 `localhost` 覆盖；dev 代理（Node 侧无 CSP 约束）仍放行 `[::1]`；
+  - **设置页**：`testErrorKey` 消费 `AiNetworkMessage.local` 增 `settings.ai.test.error.local` 分级（双语）；`profile.ai.error.network` 文案补本地服务提示（双语）；dev 代理 `isLoopback` 判定补 `[::1]` 括号形式（hostname 返回带方括号）；
+  - **测试**：ai-client 49 用例（`isLoopbackEndpoint` 正反例 x2、本地/云端文案分流 x2、dev 代理回归 x1）；门禁：`pnpm test` 77 文件 **1009 用例全绿**、`pnpm exec tsc --noEmit` 过、`pnpm build` 过（产物 CSP meta 复核：三源中 `[::1]` 已去）、`pnpm exec playwright test e2e/ai-profile.spec.ts e2e/csp.spec.ts` 12/12 绿；UI 冒烟（dev + Ollama 形态 mock：在线测试连接 → 模型列表抓取 + 自动选中；离线 → 本地服务专属 toast；`localhost`/`[::1]` 分流同验；/profile 预览 → 确认 → 本地 SSE 流式渲染全链路通）。
 
 
 ### A. 已就位代码快照（勿重复建）
@@ -146,7 +152,7 @@ pnpm exec playwright test  # E2E（F-4 阶段）
 ### E. 后置阶段（不在本批次）
 
 - **Phase 2**：年度视图（`/profile/$year`，新路由）静态骨架（年度书单/最常借 Top N + 年度目标进度卡，bookology-benchmark §5.2/§5.3）+ 「年度叙事」AI 区；输入 = `computeYearSlice`（[reading-profile §2.7](../specs/reading-profile.md#2-统计维度与聚合契约)）+ 年度全量书目（§3.2 白名单形态）；**目标值不进 payload**；流式（SSE 拼接、Abort、按 year/range/locale 缓存）；`year-narrative.ts` 就位（P-2）。
-- **Phase 3**：本地服务后端（Ollama/LM Studio 同契约，`baseUrl` 配 `http://127.0.0.1:*`）；未启动明确错误；CORS 前提见 [research 参考来源](../research/ai-integration-research.md#参考来源)。
+- **Phase 3**（✅ 2026-08-30 完成，见状态行）：本地服务后端（Ollama/LM Studio 同契约，`baseUrl` 配 `http://127.0.0.1:*`）；未启动明确错误；CORS 前提见 [research 参考来源](../research/ai-integration-research.md#参考来源)。
 
 ### F. 依赖（Phase 1）
 

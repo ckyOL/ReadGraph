@@ -1,7 +1,16 @@
 // AI 客户端（src/ai/ai-client.ts）单测：OpenAI 兼容端点 fetch 薄封装（ai-features §5.4 / §7）。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AiHttpError, AiNetworkError, buildRequestUrl, chat, chatStream, testConnection } from '@/ai/ai-client'
+import {
+  AiHttpError,
+  AiNetworkError,
+  AiNetworkMessage,
+  buildRequestUrl,
+  chat,
+  chatStream,
+  isLoopbackEndpoint,
+  testConnection,
+} from '@/ai/ai-client'
 import type { ChatStreamDelta } from '@/ai/ai-client'
 
 /** mock fetch：挂起直到 signal abort（与真实 fetch 行为一致）。 */
@@ -300,6 +309,88 @@ describe('testConnection', () => {
     ])
   })
 
+})
+
+describe('isLoopbackEndpoint（Phase 3：ai-features §9.2）', () => {
+  it('http + 127.0.0.1 / localhost / [::1]（含端口、尾斜杠）→ true', () => {
+    for (const url of [
+      'http://127.0.0.1:11434',
+      'http://127.0.0.1:11434/',
+      'http://localhost:1234/v1',
+      'http://[::1]:11434',
+      'http://127.0.0.1',
+    ]) {
+      expect(isLoopbackEndpoint(url)).toBe(true)
+    }
+  })
+
+  it('https 云端 / 非 http 协议 / 非回环主机 / 非法串 → false', () => {
+    for (const url of [
+      'https://api.example.com',
+      'http://192.168.1.10:11434',
+      'ftp://127.0.0.1',
+      'not a url',
+      '',
+    ]) {
+      expect(isLoopbackEndpoint(url)).toBe(false)
+    }
+  })
+})
+
+describe('本地服务未启动错误分级（Phase 3：ai-features §9.2）', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('回环 http 端点 fetch TypeError → AiNetworkError 携带本地服务指引（区别于云端 CORS 文案）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const err = (await testConnection({ baseUrl: 'http://127.0.0.1:11434' }).catch(
+      (e: unknown) => e,
+    )) as AiNetworkError
+    expect(err).toBeInstanceOf(AiNetworkError)
+    expect(err.message).toContain('本地服务')
+    expect(err.message).not.toBe(AiNetworkMessage.cloud)
+  })
+
+  it('dev 代理路径（useProxy）：错误分级仍按原始端点判定（回归：/__ai-proxy/ 前缀不破坏回环文案）', async () => {
+    // vitest define 固定 __AI_DEV_PROXY__=false（直连语义）；用 stubGlobal 临时置 true
+    // 模拟 dev 代理路径（buildRequestUrl 读该常量），验证 targetUrl 传原始端点。
+    vi.stubGlobal('__AI_DEV_PROXY__', true)
+    const urls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        urls.push(url)
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const err = (await testConnection({ baseUrl: 'http://127.0.0.1:41740' }).catch(
+      (e: unknown) => e,
+    )) as AiNetworkError
+    vi.stubGlobal('__AI_DEV_PROXY__', false)
+    expect(urls[0]).toMatch(/^\/__ai-proxy\//)
+    expect(err).toBeInstanceOf(AiNetworkError)
+    expect(err.message).toContain('本地服务')
+  })
+
+  it('云端端点 fetch TypeError → 维持云端 CORS 文案', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const err = (await chat({ ...BASE_OPTS, baseUrl: 'https://api.example.com' }).catch(
+      (e: unknown) => e,
+    )) as AiNetworkError
+    expect(err).toBeInstanceOf(AiNetworkError)
+    expect(err.message).toBe(AiNetworkMessage.cloud)
+  })
 })
 /** SSE 事件分片 body 工厂：text/event-stream 语义，按给定片段逐次 enqueue。 */
 function sseBody(parts: string[]): ReadableStream<Uint8Array> {

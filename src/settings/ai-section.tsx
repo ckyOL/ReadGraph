@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { testConnection, AiHttpError, AiNetworkError } from '@/ai/ai-client'
+import { testConnection, AiHttpError, AiNetworkError, AiNetworkMessage } from '@/ai/ai-client'
 import { readPreferences, writePreferences, type UserPreferencesInput } from '@/lib/preferences'
 import { readAiApiKey, writeAiApiKey } from '@/lib/ai-api-key'
 import { clearAiModelList, readAiModelList, writeAiModelList } from '@/lib/ai-model-list'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-/** 连接测试失败分级（ai-features §5.4）：网络/超时 → network；401 → auth；429 → rateLimited；其余 HTTP → http（带 status）。 */
+/** 连接测试失败分级（ai-features §5.4/§9.2）：AiNetworkError 按端点形态再分——本地服务（回环 http）给本地指引，云端给 CORS/代理指引；401 → auth；429 → rateLimited；其余 HTTP → http（带 status）。 */
 function testErrorKey(e: unknown): { key: string; options?: Record<string, unknown> } {
   if (e instanceof AiHttpError) {
     if (e.status === 401) return { key: 'settings.ai.test.error.auth' }
@@ -19,8 +19,10 @@ function testErrorKey(e: unknown): { key: string; options?: Record<string, unkno
     return { key: 'settings.ai.test.error.http', options: { status: e.status } }
   }
   if (e instanceof AiNetworkError) {
-    // 跨域（CORS）拦截 / 端点不可达：与超时（AbortError）区分，给可操作指引。
-    return { key: 'settings.ai.test.error.cors' }
+    // 跨域（CORS）拦截 / 端点不可达：与超时（AbortError）区分；本地/云端再分级。
+    return { key: e.message === AiNetworkMessage.local
+      ? 'settings.ai.test.error.local'
+      : 'settings.ai.test.error.cors' }
   }
   return { key: 'settings.ai.test.error.network' }
 }

@@ -198,6 +198,11 @@ src/
 
 - Ollama / LM Studio 等 OpenAI 兼容本地端点，同一契约零成本共存（`baseUrl` 配 `http://127.0.0.1:*` 即切换）。
 - 未启动时连接测试 + 明确错误提示；功能级降级（§5.4）。
+（Phase 3 落地细化，2026-08-30）
+- **回环端点判定**：`isLoopbackEndpoint(baseUrl)` 导出纯函数——`http:` 协议 + hostname ∈ `{127.0.0.1, localhost, ::1, [::1]}`（URL 解析后比对；带端口/路径不影响判定）。云端 https 恒为 false。
+- **未启动错误分级**（§5.4 增量）：本地服务未启动时 fetch `TypeError` 与 CORS 同形，无法按错误本体区分——以端点形态分级：请求目标为回环 http 端点时，`AiNetworkError` 携带本地服务指引（「本地服务未启动或未放行来源：请确认服务已启动（如 Ollama `ollama serve`），检查端口，必要时设 `OLLAMA_ORIGINS` 放行本应用来源」）；否则沿用云端 CORS/代理文案。
+- **CSP 回环集合**：`connect-src` 回环面 = `http://127.0.0.1:*` + `http://localhost:*`（dev 同源代理放行集合对齐）。**不含 `http://[::1]:*`**：CSP3 host-part 产生式不支持 IP 字面量（spec 备注 future version may allow literal IPv6/IPv4），Chromium 对该源报 invalid source；IPv6 回环由 `localhost` 覆盖。dev 代理（Node 侧无 CSP 约束）仍放行 `[::1]`。
+- **连接测试即验证**：本地路径无新增 UI——设置页既有「测试并获取模型」即 Phase 3 验证入口；连接失败 toast 按上述分级给文案。
 - CORS 前提：Ollama 默认回环放行（`OLLAMA_ORIGINS` 可扩展，[调研参考](../research/ai-integration-research.md#参考来源)）；LM Studio 同契约。
 
 ## 10. 待办关联

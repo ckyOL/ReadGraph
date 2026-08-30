@@ -42,6 +42,34 @@ export class AiNetworkError extends Error {
   }
 }
 
+/** fetch TypeError 归一文案（ai-features §9.2 Phase 3）：按端点形态分级——本地回环给本地服务指引，云端给 CORS/代理指引。 */
+export const AiNetworkMessage = {
+  /** 云端端点：CORS 拦截或不可达，指引自托管反代。 */
+  cloud:
+    'AI 端点网络请求失败：端点不可达，或跨域（CORS）被浏览器拦截。' +
+    '云端端点需支持 CORS；或改用自托管反向代理。',
+  /** 本地服务（Ollama/LM Studio 等）：未启动或未放行来源。 */
+  local:
+    '本地服务连接失败：服务未启动，或未放行本应用来源（CORS）。' +
+    '请确认本地服务已运行（如 Ollama `ollama serve`）且端口正确；' +
+    'Ollama 必要时设 `OLLAMA_ORIGINS` 放行来源（默认已放行回环）。',
+} as const
+
+/**
+ * 回环端点判定（ai-features §9.2 Phase 3）：http 协议 + 主机 ∈ {127.0.0.1, localhost, ::1}
+ * （URL 解析后比对；`[::1]` 括号形式 URL.hostname 保留方括号，一并接受）；带端口/路径不影响。
+ * 云端 https 恒为 false；非法串返回 false（调用方先经 normalizeBaseUrl 校验）。
+ */
+export function isLoopbackEndpoint(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl.trim())
+    const host = url.hostname.toLowerCase()
+    return url.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)
+  } catch {
+    return false
+  }
+}
+
 /**
  * SSE 增量解析器（ai-features §4.1 流式）：逐 chunk 喂入，返回本 chunk 内完成的
  * 事件 data 值数组。`data:` 行可跨 chunk 断行——内部缓冲重组；**每行独立成事件**：
@@ -187,36 +215,33 @@ function buildHeaders(apiKey?: string): Record<string, string> {
   return headers
 }
 
-/**
- * fetch + 超时/中止封装：内部 AbortController 兜底 15s 超时，外部 signal 透传；
- * 超时或外部中止统一归一为 DOMException AbortError；fetch TypeError（端点不可达 /
- * CORS 拦截）归一为 AiNetworkError；其余网络错误透传原错误。
- */
-/** fetch 异常归一：内部超时/外部 signal 中止 → AbortError；TypeError（端点不可达/CORS 拦截）→ AiNetworkError；其余透传。 */
-function throwFetchError(e: unknown, signal: AbortSignal): never {
+/** fetch 异常归一：超时/外部中止 → AbortError；TypeError（网络失败/CORS 拦截）→ AiNetworkError，
+ *  文案按目标端点分级（§9.2）：回环 http → 本地服务指引，否则云端 CORS/代理指引。 */
+function throwFetchError(e: unknown, signal: AbortSignal, targetUrl: string): never {
   if (signal.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
   if (e instanceof TypeError) {
-    // fetch 网络失败/跨域拦截统一抛 TypeError：给用户可操作诊断文案。
+    // fetch 网络失败/跨域拦截统一抛 TypeError：按端点形态给可操作诊断文案。
     throw new AiNetworkError(
-      'AI 端点网络请求失败：端点不可达，或跨域（CORS）被浏览器拦截。' +
-        '云端端点需支持 CORS；本地服务（如 Ollama）需放行来源；或改用自托管反向代理。',
+      isLoopbackEndpoint(targetUrl) ? AiNetworkMessage.local : AiNetworkMessage.cloud,
     )
   }
   throw e
 }
 
 /**
- * fetch + 超时/中止封装：内部 AbortController 兜底 15s 超时，外部 signal 透传；
+ * fetch + 超时/中止封装：内部 AbortController 兜底超时，外部 signal 透传；
  * 超时或外部中止统一归一为 DOMException AbortError；fetch TypeError（端点不可达 /
- * CORS 拦截）归一为 AiNetworkError；其余网络错误透传原错误。
+ * CORS 拦截）归一为 AiNetworkError（文案按 targetUrl 端点形态分级）；其余网络错误透传。
  */
 async function request(
   url: string,
   init: RequestInit,
   timeoutMs: number,
   externalSignal?: AbortSignal,
+  /** 错误分级用的原始目标 URL（dev 代理下 ≠ fetch 的 url）：回环判定按真实端点。 */
+  targetUrl: string = url,
 ): Promise<Response> {
   const controller = new AbortController()
   if (externalSignal?.aborted) {
@@ -231,7 +256,7 @@ async function request(
   try {
     return await fetch(url, { ...init, signal: controller.signal })
   } catch (e) {
-    return throwFetchError(e, controller.signal)
+    return throwFetchError(e, controller.signal, targetUrl)
   } finally {
     clearTimeout(timer)
     externalSignal?.removeEventListener('abort', onOuterAbort)
@@ -301,8 +326,9 @@ export async function chat(opts: AiChatOptions): Promise<string> {
   if (opts.temperature !== undefined) {
     body.temperature = opts.temperature
   }
+  const targetUrl = endpointUrl(base, 'chat/completions')
   const res = await request(
-    buildRequestUrl(endpointUrl(base, 'chat/completions')),
+    buildRequestUrl(targetUrl),
     {
       method: 'POST',
       headers: buildHeaders(opts.apiKey),
@@ -310,6 +336,7 @@ export async function chat(opts: AiChatOptions): Promise<string> {
     },
     CHAT_TIMEOUT_MS,
     opts.signal,
+    targetUrl,
   )
   if (!res.ok) {
     throw new AiHttpError(
@@ -407,15 +434,17 @@ export async function* chatStream(opts: AiChatOptions): AsyncIterable<ChatStream
     timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
   }
   let res: Response
+  const endpoint = endpointUrl(base, 'chat/completions')
+  const fetchUrl = buildRequestUrl(endpoint)
   try {
-    res = await fetch(buildRequestUrl(endpointUrl(base, 'chat/completions')), {
+    res = await fetch(fetchUrl, {
       method: 'POST',
       headers: buildHeaders(opts.apiKey),
       body: JSON.stringify(body),
       signal: controller.signal,
     })
   } catch (e) {
-    throwFetchError(e, controller.signal)
+    throwFetchError(e, controller.signal, endpoint)
   }
   try {
     if (!res.ok) {
@@ -455,14 +484,16 @@ export async function* chatStream(opts: AiChatOptions): AsyncIterable<ChatStream
 /** 连接测试（ai-features §4.2）：GET {base}/v1/models；2xx → 返回模型 ID 列表（端点未提供时为空数组），否则抛带状态错误。 */
 export async function testConnection(opts: AiTestConnectionOptions): Promise<string[]> {
   const base = normalizeBaseUrl(opts.baseUrl)
+  const targetUrl = endpointUrl(base, 'models')
   const res = await request(
-    buildRequestUrl(endpointUrl(base, 'models')),
+    buildRequestUrl(targetUrl),
     {
       method: 'GET',
       headers: buildHeaders(opts.apiKey),
     },
     DEFAULT_TIMEOUT_MS,
     opts.signal,
+    targetUrl,
   )
   if (!res.ok) {
     throw new AiHttpError(

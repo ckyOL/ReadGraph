@@ -12,13 +12,16 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * - 仅 build 注入（apply: 'build'）：dev 不注入——Vite/plugin-react 有内联脚本，注入即坏。
  * - style-src 'unsafe-inline' 为 ECharts/Radix 内联样式保留。
  * - frame-ancestors 经 meta 无效——自有托管须加 `X-Frame-Options: DENY` header（部署清单记录）。
- * - connect-src 放宽面（AI 功能规格 docs/specs/ai-features.md §5.2）：BYOK 任意云端端点构建期
- *   静态化无法按用户配置动态放行，故放行 `https:`（任意 https 端点）+ `http://127.0.0.1:*`
- *   （Phase 3 本地服务回环路径）。数据只在用户显式启用 AI 并触发功能时发送；保守用户可
- *   自托管 header 收紧（CSP meta 可被响应头策略覆盖收紧）。
+ * - connect-src 放宽面（AI 功能规格 docs/specs/ai-features.md §5.2/§9.2）：BYOK 任意云端端点构建期
+ *   静态化无法按用户配置动态放行，故放行 `https:`；回环 `http://127.0.0.1:*` + `http://localhost:*`
+ *   （Phase 3 本地服务路径，与 dev 同源代理放行集合对齐）。**不含 `http://[::1]:*`**——CSP3
+ *   host-part 产生式不支持 IP 字面量（spec 备注「future version may allow literal IPv6/IPv4」），
+ *   Chromium 实测对 `http://[::1]:*` 报 invalid source；IPv6 回环以 `localhost` 覆盖。
+ *   数据只在用户显式启用 AI 并触发功能时发送；保守用户可自托管 header 收紧
+ *   （CSP meta 可被响应头策略覆盖收紧）。
  */
 const CSP_META_CONTENT =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.szlib.org.cn https: http://127.0.0.1:*; font-src 'self'; object-src 'none'; base-uri 'self'"
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.szlib.org.cn https: http://127.0.0.1:* http://localhost:*; font-src 'self'; object-src 'none'; base-uri 'self'"
 
 function cspMetaPlugin(): Plugin {
   return {
@@ -118,7 +121,7 @@ function aiDevProxyPlugin(): Plugin {
         const isHttps = target.protocol === 'https:'
         const isLoopback =
           target.protocol === 'http:' &&
-          ['127.0.0.1', 'localhost', '::1'].includes(target.hostname)
+          ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(target.hostname.toLowerCase())
         if (!isHttps && !isLoopback) {
           res.statusCode = 400
           res.end('unsupported AI proxy target')
