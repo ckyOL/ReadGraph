@@ -91,7 +91,9 @@ export function ShareDialog({ open, onOpenChange, year, slice, bookIndex, prevYe
     const language = i18n.language || i18n.resolvedLanguage || 'zh-CN'
     const fonts = fontStacksFor(language)
     const content = buildShareContent(input)
-    const yearLabel = new Intl.NumberFormat(language).format(content.year)
+    // ① 标识段标题（§4.1「{year} 年度借阅」）：t() 插值纯数字年份——
+    // Intl.NumberFormat 千分位分组会把 2026 渲染成「2,026」，年份不得分组。
+    const yearLabel = t('profile.year.share.title', { year: content.year })
     const layout = computeShareLayout(content, {
       yearLabel,
       // R3 总结句 / R4 对照行：t() 渲染后传入布局（布局只消费字符串，C5）

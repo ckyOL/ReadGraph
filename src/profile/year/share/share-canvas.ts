@@ -21,7 +21,7 @@ export interface ShareRenderFonts {
 export const SHARE_MUTED_COLOR = '#666F68'
 
 /** 逻辑 → 物理颜色 token 解析（布局只携带 token，渲染器映射到恒亮色板） */
-function resolveColor(token: ShareTextInstruction['color']): string {
+function resolveColor(token: ShareTextInstruction['color'] | 'emblem'): string {
   switch (token) {
     case 'ink':
       return SHARE_COLORS.ink
@@ -29,6 +29,8 @@ function resolveColor(token: ShareTextInstruction['color']): string {
       return SHARE_MUTED_COLOR
     case 'accent':
       return SHARE_COLORS.accent
+    case 'emblem':
+      return SHARE_COLORS.emblem
   }
 }
 
@@ -64,7 +66,6 @@ function clampText(
   }
   return acc
 }
-
 /**
  * 封面槽绘制：covers[slotIndex] 存在 → drawImage（封面 3:4 由图源保证，
  * 拉伸语义可接受）；缺失 → 占位块 #EAE0D5 + 题名首字（与页内 year-book-grid 同语义）。
@@ -80,6 +81,35 @@ function drawCoverSlot(
   }
   ctx.fillStyle = SHARE_COLORS.placeholder
   ctx.fillRect(slot.x, slot.y, slot.width, slot.height)
+}
+
+/** 徽标 viewBox 语义常量（favicon.svg 48 盒同构：弧 + 三书脊） */
+const EMBLEM_BOX = 48
+
+/**
+ * 品牌徽标矢量绘制（public/favicon.svg 同构）：半圆弧 + 三条书脊，stroke = emblem 色，
+ * lineWidth/坐标按 size/48 比例缩放；lineCap round 与 SVG 默认 butt 的差异可忽略
+ * （端点均在盒缘内）。缩放绘制后还原 ctx 状态。
+ */
+function drawEmblem(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  const k = size / EMBLEM_BOX
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.scale(k, k)
+  ctx.strokeStyle = SHARE_COLORS.emblem
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(12, 20)
+  ctx.arc(24, 20, 12, Math.PI, 0)
+  ctx.moveTo(12, 20)
+  ctx.lineTo(12, 38)
+  ctx.moveTo(24, 20)
+  ctx.lineTo(24, 38)
+  ctx.moveTo(36, 20)
+  ctx.lineTo(36, 38)
+  ctx.stroke()
+  ctx.restore()
 }
 
 /**
@@ -131,6 +161,10 @@ export function renderShareCard(
       ctx.fillText(slot.placeholderChar, slot.x + slot.width / 2, slot.y + slot.height / 2)
       ctx.textBaseline = 'alphabetic'
     }
+  }
+
+  for (const emblem of layout.emblems) {
+    drawEmblem(ctx, emblem.x, emblem.y, emblem.size)
   }
 
   for (const block of layout.textBlocks) {

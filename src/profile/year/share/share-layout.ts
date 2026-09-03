@@ -11,13 +11,14 @@ export const SHARE_CANVAS = { width: 1080, height: 1440, dpr: 2, margin: 64 } as
 /** 四段高度（§4.1 结构；段界 = 自顶累加，合计 = 画布高） */
 export const SHARE_SEGMENTS = { header: 120, hero: 560, facts: 520, footer: 240 } as const
 
-/** 恒亮色板（R6）：纸白底 + 铁黑字 + 数据强调瑠璃紺；罫线/占位块弱色 */
+/** 恒亮色板（R6）：纸白底 + 铁黑字 + 数据强调瑠璃紺；罫线/占位块弱色；emblem = 品牌徽标描边色 */
 export const SHARE_COLORS = {
   paper: '#F9F7F2',
   ink: '#2A2A2A',
   rule: '#E8E4DC',
   placeholder: '#EAE0D5',
   accent: '#27477A',
+  emblem: '#27477A',
 } as const
 
 /** 色块条亮色 chart-1..5（与 DESIGN.md §8 语义同源；[0] = 主数字强调色） */
@@ -51,6 +52,14 @@ export interface ShareTextInstruction {
   lineHeight?: number
 }
 
+/** 品牌徽标指令：favicon 同构矢量（圆弧 + 三书脊），stroke = emblem 色 */
+export interface ShareEmblemInstruction {
+  kind: 'emblem'
+  x: number
+  y: number
+  size: number
+}
+
 /** 封面槽指令：占位字符 = 题名首字（无封面降级时由渲染器绘制占位块 + 首字） */
 export interface ShareCoverSlotInstruction {
   x: number
@@ -61,13 +70,13 @@ export interface ShareCoverSlotInstruction {
   placeholderChar: string
 }
 
-/** 色块条指令：segments 按 topCategories ratio 分段，colorIndex = SHARE_BAR_COLORS 下标 */
+/** 色块条指令：segments 按 topCategories ratio 分段，colorIndex = SHARE_BAR_COLORS 下标；label 行随条产出（类目名 + 占比，§4.1「色块条 + 类目名」） */
 export interface ShareBarInstruction {
   x: number
   y: number
   width: number
   height: number
-  segments: { ratio: number; colorIndex: number }[]
+  segments: { ratio: number; colorIndex: number; label: string }[]
 }
 
 /** 1px 罫线指令 */
@@ -85,6 +94,7 @@ export interface ShareLayout {
   coverSlots: ShareCoverSlotInstruction[]
   bars: ShareBarInstruction[]
   rules: ShareRuleInstruction[]
+  emblems: ShareEmblemInstruction[]
 }
 
 // ---- 版式内部常量（单位：逻辑 px；段内锚点推导自 §4.1 结构与四段界） ----
@@ -94,9 +104,16 @@ const COVER_SLOTS_MAX = 3 // 槽数上限（slotIndex 0|1|2 枚举宽度）
 const LIST_ROW_H = 56 // ③ 榜单行高
 const LIST_FIRST_Y = 740 // ③ 榜单首行基线（段顶 680 + 两行版间距）
 const BAR_Y = 940 // ③ 分类色块条顶 y
-const DELTA_Y = 1008 // ③ Δ 对照行基线
+const BAR_LABEL_Y = 996 // ③ 色块条类目名行基线（条底 + 40 版间距）
+const DELTA_Y = 1048 // ③ Δ 对照行基线
 const SUM_MAX_LINES = 2 // ④ 总结句两行 clamp（§4.1 canvas 内文本截断）
 const SUM_LINE_H = 40 // ④ 总结句行高（28px body 宽松行距）
+const EMBLEM_SIZE = 44 // ① 品牌徽标边长（favicon 同构圆弧 + 三书脊）
+const EMBLEM_TITLE_GAP = 20 // ① 徽标右缘与标题左缘间隙
+const TITLE_OPTICAL_HALF = 20 // 56px 明朝 cap 高 ≈ 0.72em → 视觉半高（基线上方）
+const BAR_LABEL_GAP = 16 // ③ 类目名行段间避让间隙（maxWidth 预留）
+const BAR_LABEL_MIN_W = 24 // ③ 类目名最小可读宽（低于此跳过标注，防挤压重叠）
+const PERCENT_UNIT = ' %' // 类目名行百分号空隙（EN 数字窄空隙语义）
 
 /**
  * computeShareLayout：ShareContent + 版式选项 → 位置化绘制指令。
@@ -117,13 +134,19 @@ export function computeShareLayout(
   const coverSlots: ShareCoverSlotInstruction[] = []
   const bars: ShareBarInstruction[] = []
   const rules: ShareRuleInstruction[] = []
-
-  // ---- ① 标识段（y[0,120)）：年份大字（title/ink）左 + 字标（mono）右 + 段底罫线 ----
+  const emblems: ShareEmblemInstruction[] = []
+  // ---- ① 标识段（y[0,120)）：徽标 + 年份大字（title/ink）左 + 字标（mono）右 + 段底罫线 ----
   // 年份大字与字标共基线：段内偏高（约 0.72 段高，容 56px 字形下行）
   const headerBaselineY = Math.round(SHARE_SEGMENTS.header * 0.72)
+  // 徽标与标题**视觉对齐**：56px 明朝 cap 高 ≈ 0.72em，字形视觉中心在基线上方约 20px
+  // （cap/2），徽标盒中心对到该视觉中心（而非段盒居中——那是与基线 86 的文字盒错位的根源）。
+  const titleOpticalCenterY = headerBaselineY - TITLE_OPTICAL_HALF
+  const emblemY = Math.round(titleOpticalCenterY - EMBLEM_SIZE / 2)
+  emblems.push({ kind: 'emblem', x: left, y: emblemY, size: EMBLEM_SIZE })
+  const titleX = left + EMBLEM_SIZE + EMBLEM_TITLE_GAP // 徽标右缘 + 间隙
   textBlocks.push({
     kind: 'text',
-    x: left,
+    x: titleX,
     y: headerBaselineY,
     text: opts.yearLabel,
     font: { size: 56, weight: 600, family: 'title' },
@@ -211,7 +234,9 @@ export function computeShareLayout(
   })
 
   // 分类色块条：x=64 通栏横向条，segments 按 topCategories ratio 分段、colorIndex = 产出序
-  // （ratio=0 的段不产出，colorIndex 连续）
+  // （ratio=0 的段不产出，colorIndex 连续）；类目名行随条产出——「name N%」左起对位各段，
+  // maxWidth = 段宽 - GAP（长类目名段内截断加省略号，绝不挤进下一段），段可用宽低于
+  // MIN_W 时跳过标注（占位比截断残字可读）。§4.1「分类色块条 + 类目名」。
   const cats = content.topCategories.filter((c) => c.ratio > 0)
   if (cats.length > 0) {
     bars.push({
@@ -219,7 +244,26 @@ export function computeShareLayout(
       y: BAR_Y,
       width: contentW,
       height: 16,
-      segments: cats.map((c, i) => ({ ratio: c.ratio, colorIndex: i })),
+      segments: cats.map((c, i) => ({ ratio: c.ratio, colorIndex: i, label: c.name })),
+    })
+    let lx = left
+    cats.forEach((c, i) => {
+      const segW = c.ratio * contentW
+      const labelW = segW - BAR_LABEL_GAP
+      if (labelW >= BAR_LABEL_MIN_W) {
+        textBlocks.push({
+          kind: 'text',
+          x: lx,
+          y: BAR_LABEL_Y,
+          text: `${c.name} ${Math.round(c.ratio * 100)}${PERCENT_UNIT}`,
+          font: { size: 18, weight: 400, family: 'body' },
+          align: 'left',
+          color: i === 0 ? 'ink' : 'muted',
+          maxWidth: labelW,
+          maxLines: 1,
+        })
+      }
+      lx += segW
     })
   }
 
@@ -267,5 +311,6 @@ export function computeShareLayout(
     coverSlots,
     bars,
     rules,
+    emblems,
   }
 }

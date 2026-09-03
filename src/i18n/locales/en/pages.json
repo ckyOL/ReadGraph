@@ -332,6 +332,7 @@
   "settings.reset.failed": "Reset failed. The database is unchanged.",
   "settings.reset.cancel": "Cancel",
   "profile.year.share.button": "Share image",
+  "profile.year.share.title": "{{year}} Year in Books",
   "profile.year.share.dialogTitle": "Annual share card",
   "profile.year.share.download": "Download PNG",
   "profile.year.share.systemShare": "Share…",

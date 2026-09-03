@@ -43,6 +43,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Radix-powered styled tooltip (paper-ink: square corners, theme popover colors,
   per-line breadcrumb with mono codes; partial-tree hint and auxiliary segment
   kept, now visually distinct).
+- **Annual share card fixes** — the header title is now a proper localized annual
+  title ("2026 年度借阅" / "2026 Year in Books") rendered from a plain year
+  interpolation instead of `Intl.NumberFormat` (which grouped 2026 into
+  "2,026"); the category bar now carries per-segment "name N%" labels so the
+  colored strip is self-explanatory — each label is clamped to its own segment
+  width (truncated with an ellipsis instead of colliding with the next label,
+  labels skipped on segments too narrow to be readable); classification Top 3 is
+  taken by descending value (the year slice emitted buckets in insertion order,
+  so the "mostly …" summary could name a non-top category) with `__unclassified__`
+  and zero-value buckets excluded, and the summary's category count is the real
+  number of categories rather than the Top-3 cut size; the ReadGraph emblem
+  (same vector as the favicon) is drawn in the header, optically aligned to the
+  title's cap height. See `docs/specs/reading-profile.md` §4.1.
 
 ### Planned
 

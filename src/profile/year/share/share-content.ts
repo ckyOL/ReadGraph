@@ -17,7 +17,7 @@ export interface ShareContentInput {
   bookCount: number
   /** 年内复借 Top（调用方传 slice.topBooks，函数内截取 Top 3） */
   topBooks: { bookId: string; count: number }[]
-  /** 分类分布（调用方传 slice.classification，函数内截取 Top 3；占比 = value/bookCount） */
+  /** 分类分布（调用方传 slice.classification，函数内按 value 降序截取 Top 3；占比 = value/bookCount） */
   classification: { name: string; value: number }[]
   /** bookId → 书目索引（year-book-index 同构；无对应书 → 跳过该 Top 项） */
   covers: Record<string, YearBookIndexEntry | undefined>
@@ -31,7 +31,7 @@ export interface ShareContent {
   bookCount: number
   /** Top 3 封面/书脊行（≤3；covers 无对应书则跳过） */
   topItems: { title: string; authors: string[]; coverUrl: string | null; count: number }[]
-  /** Top 3 分类（≤3；ratio = value/bookCount） */
+  /** Top 3 分类（≤3；value 降序截取，`__unclassified__` 不上分享图；ratio = value/bookCount） */
   topCategories: { name: string; ratio: number }[]
   /** R3 平实总结句 i18n 描述符（t() 渲染由 UI 层完成，布局只消费字符串） */
   summary: {
@@ -67,19 +67,29 @@ export function buildShareContent(input: ShareContentInput): ShareContent {
     })
   }
 
-  // Top 3 分类：占比 = value / bookCount；bookCount=0 时除法无意义 → 直接空数组
-  //（避免 NaN 落图，空年降级）。
+  // Top 3 分类：value 降序（与 treemap 口径一致——slice.classification 为桶插入序，
+  // 直接 slice(0,3) 会截到非 Top 桶）→ 占比 = value / bookCount；
+  // `__unclassified__`（分类号缺失聚合桶）不上分享图——对外图片无类目语义；
+  // bookCount=0 时除法无意义 → 直接空数组（避免 NaN 落图，空年降级）。
+  const rankedCategories = classification
+    .filter((c) => c.name !== '__unclassified__' && c.value > 0)
+    .sort((a, b) => b.value - a.value)
   const topCategories: ShareContent['topCategories'] =
     bookCount <= 0
       ? []
-      : classification.slice(0, 3).map((c) => ({ name: c.name, ratio: c.value / bookCount }))
+      : rankedCategories.slice(0, 3).map((c) => ({ name: c.name, ratio: c.value / bookCount }))
 
-  // R3 平实总结句描述符：无分类时省略 topCategory 段（summaryNoTop 键，同型 params）。
+  // R3 平实总结句描述符：categories = 真实类目数（非 Top 3 截取数——「3 类」是截取
+  // 伪事实）；无分类时省略 topCategory 段（summaryNoTop 键，同型 params）。
   const summary: ShareContent['summary'] =
     topCategories.length > 0
       ? {
           key: 'profile.year.share.summary',
-          params: { count: bookCount, categories: topCategories.length, topCategory: topCategories[0]!.name },
+          params: {
+            count: bookCount,
+            categories: rankedCategories.length,
+            topCategory: topCategories[0]!.name,
+          },
         }
       : { key: 'profile.year.share.summaryNoTop', params: { count: bookCount, categories: 0 } }
 

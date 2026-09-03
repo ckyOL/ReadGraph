@@ -94,13 +94,14 @@ describe('SC-2 版式常量（§4.1 逻辑坐标 / R6 恒亮色）', () => {
     expect(header + hero + facts + footer).toBe(1440)
   })
 
-  it('R6 恒亮色纸面 + 亮色 chart-1..5', () => {
+  it('R6 恒亮色纸面 + 亮色 chart-1..5 + 徽标描边色', () => {
     expect(SHARE_COLORS).toEqual({
       paper: '#F9F7F2',
       ink: '#2A2A2A',
       rule: '#E8E4DC',
       placeholder: '#EAE0D5',
       accent: '#27477A',
+      emblem: '#27477A',
     })
     expect(SHARE_BAR_COLORS).toEqual(['#27477A', '#61764B', '#576D79', '#AD3140', '#998D86'])
     expect(SHARE_BAR_COLORS[0]).toBe(SHARE_COLORS.accent)
@@ -127,17 +128,26 @@ describe('四段 y 区间划分与 64 边距', () => {
     }
   })
 
-  it('① 标识段（y[0,120)）：年份大字与字标基线落在段内，段底罫线 y=119', () => {
+  it('① 标识段（y[0,120)）：徽标与标题视觉对齐（盒中心 = 基线 - cap 半高 20），年份大字让位徽标右（x=128）与字标共基线，段底罫线 y=119', () => {
     const year = byText(layout, OPTS.yearLabel)
     const brand = byText(layout, OPTS.brandText)
+    expect(year.x).toBe(M + 64) // 徽标 44 + 20 间隙
     expect(year.y).toBeLessThan(SHARE_SEGMENTS.header)
     expect(brand.y).toBeLessThan(SHARE_SEGMENTS.header)
+    const baseline = Math.round(SHARE_SEGMENTS.header * 0.72)
+    const emblem = layout.emblems[0]
+    expect(emblem.size).toBe(44)
+    // 视觉对齐：徽标盒中心 y = 标题基线 - 20（cap 半高），上下各 22
+    expect(emblem.y).toBe(baseline - 20 - 22)
+    expect(emblem.y + emblem.size).toBe(baseline - 20 + 22)
+    expect(layout.emblems).toEqual([
+      { kind: 'emblem', x: M, y: baseline - 42, size: 44 },
+    ])
     expect(layout.rules).toEqual([
       { x: M, y: SHARE_SEGMENTS.header - 1, width: CW },
       { x: M, y: 1200, width: CW },
     ])
   })
-
   it('② 主视觉段（y[120,680)）：封面槽整槽与主数字基线均落段内', () => {
     for (const s of layout.coverSlots) {
       expect(s.y).toBeGreaterThanOrEqual(120)
@@ -148,7 +158,7 @@ describe('四段 y 区间划分与 64 边距', () => {
     expect(number.y).toBeLessThanOrEqual(680)
   })
 
-  it('③ 事实段（y[680,1200)）：榜单行/Δ 行基线落段内，色块条整条不出段', () => {
+  it('③ 事实段（y[680,1200)）：榜单行/类目名/Δ 行基线落段内，色块条整条不出段', () => {
     for (let i = 0; i < 3; i++) {
       const rankY = byText(layout, String(i + 1)).y
       expect(rankY).toBeGreaterThanOrEqual(680)
@@ -280,16 +290,38 @@ describe('分类色块条（segments = topCategories ratio）', () => {
     expect(bar.height).toBe(16)
   })
 
-  it('segments 比例与 topCategories 逐项一致（不透传外处理），colorIndex = 数组下标', () => {
-    const bar = layout.bars[0]
-    expect(bar.segments).toHaveLength(3)
-    for (const [i, cat] of makeContent().topCategories.entries()) {
-      expect(bar.segments[i].ratio).toBe(cat.ratio)
-      expect(bar.segments[i].colorIndex).toBe(i)
-    }
+  it('类目名行随条产出：「name N%」左起对位各段，y=996；maxWidth = 段宽 - 16（长名段内截断不挤下一段）；首段 ink 余段 muted', () => {
+    const cats = makeContent().topCategories
+    let lx = M
+    cats.forEach((cat, i) => {
+      const label = byText(layout, `${cat.name} ${Math.round(cat.ratio * 100)} %`)
+      expect(label.x).toBe(lx)
+      expect(label.y).toBe(996)
+      expect(label.font).toEqual({ size: 18, weight: 400, family: 'body' })
+      expect(label.color).toBe(i === 0 ? 'ink' : 'muted')
+      expect(label.maxWidth).toBe(cat.ratio * CW - 16)
+      expect(label.maxLines).toBe(1)
+      lx += cat.ratio * CW
+    })
   })
 
-  it('ratio=0 的段不产出，colorIndex 按产出序连续', () => {
+  it('窄段避让：段可用宽 < 24 时跳过该段标注（不产出文本指令），色块仍在', () => {
+    const layout = layoutOf(
+      makeContent({
+        topCategories: [
+          { name: '文学', ratio: 0.7 },
+          { name: '历史', ratio: 0.02 },
+          { name: '科学', ratio: 0.28 },
+        ],
+      }),
+    )
+    expect(layout.bars[0].segments).toHaveLength(3)
+    expect(layout.textBlocks.some((b) => b.text.startsWith('历史'))).toBe(false)
+    expect(byText(layout, '文学 70 %').maxWidth).toBe(0.7 * CW - 16)
+    expect(byText(layout, '科学 28 %').x).toBe(M + 0.72 * CW)
+  })
+
+  it('ratio=0 的段不产出（条与类目名行一致），colorIndex 按产出序连续', () => {
     const layout = layoutOf(
       makeContent({
         topCategories: [
@@ -302,13 +334,15 @@ describe('分类色块条（segments = topCategories ratio）', () => {
     expect(layout.bars).toHaveLength(1)
     const bar = layout.bars[0]
     expect(bar.segments).toEqual([
-      { ratio: 0.5, colorIndex: 0 },
-      { ratio: 0.25, colorIndex: 1 },
+      { ratio: 0.5, colorIndex: 0, label: '文学' },
+      { ratio: 0.25, colorIndex: 1, label: '科学' },
     ])
+    expect(layout.textBlocks.some((b) => b.text === '历史 0 %')).toBe(false)
   })
 
-  it('无分类 → 不产出色块条', () => {
+  it('无分类 → 不产出色块条与类目名行', () => {
     expect(layoutOf(makeContent({ topCategories: [] })).bars).toEqual([])
+    expect(layoutOf(makeContent({ topCategories: [] })).textBlocks.some((b) => b.text.includes('%'))).toBe(false)
     expect(layoutOf(makeContent({ topCategories: [{ name: '空', ratio: 0 }] })).bars).toEqual([])
   })
 })
@@ -321,7 +355,7 @@ describe('历年对照行（R4：delta=null → 不产出对照行指令）', ()
     expect(delta.font.size).toBe(20)
     expect(delta.color).toBe('muted')
     expect(delta.x).toBe(M)
-    expect(delta.y).toBe(1008)
+    expect(delta.y).toBe(1048)
     expect(delta.align).toBe('left')
   })
 
@@ -401,7 +435,7 @@ describe('纯函数性与降级结构', () => {
     expect(content).toEqual(makeContent())
   })
 
-  it('空榜单 + 空分类 + 无上年 → 仅头/主数字/总结/双字标指令与两条罫线，不崩', () => {
+  it('空榜单 + 空分类 + 无上年 → 仅头/主数字/总结/双字标指令与两条罫线，徽标仍产出，不崩', () => {
     const layout = layoutOf(makeContent({ topItems: [], topCategories: [], delta: null }), {
       ...OPTS,
       deltaText: undefined,
@@ -410,6 +444,7 @@ describe('纯函数性与降级结构', () => {
     expect(layout.coverSlots).toEqual([])
     expect(layout.bars).toEqual([])
     expect(layout.rules).toHaveLength(2)
+    expect(layout.emblems).toHaveLength(1)
     expect(layout.width).toBe(1080)
     expect(layout.height).toBe(1440)
   })

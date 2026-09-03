@@ -328,6 +328,7 @@
   "settings.reset.failed": "重置失败，库保持完整未变更。",
   "settings.reset.cancel": "取消",
   "profile.year.share.button": "分享图",
+  "profile.year.share.title": "{{year}} 年度借阅",
   "profile.year.share.dialogTitle": "年度分享图",
   "profile.year.share.download": "下载 PNG",
   "profile.year.share.systemShare": "系统分享",

@@ -151,13 +151,13 @@ describe('buildShareContent', () => {
     ])
   })
 
-  it('Top 分类截取：占比 = value/bookCount，和 ≤ 1', () => {
+  it('Top 分类截取：value 降序（slice.classification 为插入序，不排序会截错桶）→ 占比 = value/bookCount，和 ≤ 1', () => {
     const input = cleanInput()
     input.classification = [
-      { name: '文学', value: 4 },
-      { name: '历史', value: 2 },
       { name: '哲学', value: 1 },
+      { name: '文学', value: 4 },
       { name: '艺术', value: 1 },
+      { name: '历史', value: 2 },
     ]
     input.bookCount = 8
     const content = buildShareContent(input)
@@ -170,12 +170,35 @@ describe('buildShareContent', () => {
     expect(sum).toBeLessThanOrEqual(1)
   })
 
-  it('summary：bookCount>0 有分类 → 主键 + count/categories/topCategory', () => {
+  it('__unclassified__ 桶与零值桶不进 topCategories/不占 topCategory 位', () => {
+    const input = cleanInput()
+    input.classification = [
+      { name: '__unclassified__', value: 2 },
+      { name: '文学', value: 1 },
+    ]
+    const content = buildShareContent(input)
+    expect(content.topCategories).toEqual([{ name: '文学', ratio: 1 / 3 }])
+  })
+
+  it('summary：bookCount>0 有分类 → 主键 + count/categories（真实类目数，非 Top 3 截取数）/topCategory（降序后首桶）', () => {
     const content = buildShareContent(cleanInput())
     expect(content.summary).toEqual({
       key: 'profile.year.share.summary',
       params: { count: 3, categories: 2, topCategory: '文学' },
     })
+  })
+
+  it('summary：categories 计全部正值类目（>3 类时不再伪装「3 类」）', () => {
+    const input = cleanInput()
+    input.classification = [
+      { name: '文学', value: 4 },
+      { name: '历史', value: 2 },
+      { name: '哲学', value: 1 },
+      { name: '艺术', value: 1 },
+    ]
+    input.bookCount = 8
+    const content = buildShareContent(input)
+    expect(content.summary.params).toEqual({ count: 8, categories: 4, topCategory: '文学' })
   })
 
   it('summary：无分类 → summaryNoTop 键（params 含 count/categories，无 topCategory）', () => {

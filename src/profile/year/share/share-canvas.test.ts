@@ -32,11 +32,20 @@ function makeRecordingCtx() {
     log,
     props,
     fillStyle: '',
+    strokeStyle: '',
     measureText: (text: string) => ({ width: text.length * 10 }),
     fillText: (...args: unknown[]) => log.push({ op: 'fillText', args, style: stub.fillStyle }),
     fillRect: (...args: unknown[]) => log.push({ op: 'fillRect', args, style: stub.fillStyle }),
     drawImage: (...args: unknown[]) => log.push({ op: 'drawImage', args, style: stub.fillStyle }),
     scale: (...args: unknown[]) => log.push({ op: 'scale', args, style: stub.fillStyle }),
+    save: () => log.push({ op: 'save', args: [], style: stub.fillStyle }),
+    restore: () => log.push({ op: 'restore', args: [], style: stub.fillStyle }),
+    translate: (...args: unknown[]) => log.push({ op: 'translate', args, style: stub.fillStyle }),
+    beginPath: () => log.push({ op: 'beginPath', args: [], style: stub.fillStyle }),
+    moveTo: (...args: unknown[]) => log.push({ op: 'moveTo', args, style: stub.fillStyle }),
+    lineTo: (...args: unknown[]) => log.push({ op: 'lineTo', args, style: stub.fillStyle }),
+    arc: (...args: unknown[]) => log.push({ op: 'arc', args, style: stub.fillStyle }),
+    stroke: () => log.push({ op: 'stroke', args: [], style: stub.strokeStyle }),
   }
   const handler: ProxyHandler<typeof stub> = {
     set(target, prop, value) {
@@ -224,6 +233,29 @@ describe('renderShareCard（SC-3 渲染器指令序列）', () => {
     expect(placeholderTexts.length).toBeGreaterThanOrEqual(2)
     expect(SHARE_MUTED_COLOR).toBe('#666F68')
   })
+  it('品牌徽标：emblem 指令 → save/translate/scale 路径下弧 + 三书脊 stroke（emblem 色），restore 收尾', () => {
+    const ctx = makeRecordingCtx()
+    const canvas = makeRecordingCanvas(ctx)
+    const layout = computeShareLayout(content(), opts())
+    renderShareCard(canvas, layout, FONTS)
+    expect(layout.emblems).toHaveLength(1)
+    const emblem = layout.emblems[0]
+    const saveIdx = ctx.log.findIndex((c) => c.op === 'save')
+    expect(saveIdx).toBeGreaterThan(0)
+    expect(ctx.log[saveIdx! + 1]).toMatchObject({ op: 'translate', args: [emblem.x, emblem.y] })
+    expect(ctx.log[saveIdx! + 2]).toMatchObject({ op: 'scale', args: [emblem.size / 48, emblem.size / 48] })
+    const arc = ctx.log.find((c) => c.op === 'arc')
+    expect(arc).toMatchObject({ op: 'arc', args: [24, 20, 12, Math.PI, 0] })
+    const lineTos = ctx.log.filter((c) => c.op === 'lineTo')
+    expect(lineTos.map((c) => c.args)).toEqual([
+      [12, 38],
+      [24, 38],
+      [36, 38],
+    ])
+    const stroke = ctx.log.find((c) => c.op === 'stroke')
+    expect(stroke!.style).toBe(SHARE_COLORS.emblem)
+    expect(ctx.log[saveIdx! + 13]).toMatchObject({ op: 'restore' })
+  })
   it('罫线：fillRect 高度恒 1、色值 rule；数量 = layout.rules 数', () => {
     const ctx = makeRecordingCtx()
     const canvas = makeRecordingCanvas(ctx)
@@ -234,7 +266,6 @@ describe('renderShareCard（SC-3 渲染器指令序列）', () => {
     )
     expect(rules).toHaveLength(layout.rules.length)
   })
-
 })
 
 describe('exportSharePng（SC-3 导出）', () => {
