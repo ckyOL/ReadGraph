@@ -175,7 +175,7 @@ pnpm exec playwright test  # E2E（T-2 阶段）
 
 ### E. 后置阶段（不在本批次）
 
-- **阅读报告分享图**（bookology §5.3「衔接未来阅读报告分享」）：纯前端 Canvas 生成年度回顾分享图，页内呈现先行（本批次），分享图留扩展。
+- **阅读报告分享图**（bookology §5.3「衔接未来阅读报告分享」）：纯前端 Canvas 生成年度回顾分享图。→ **已立项**（2026-09-03）：规格定稿于 [reading-profile §4.1](../specs/reading-profile.md#41-年度分享图profileyear-新增)（R1–R6 裁定记录）、调研记录 [research/annual-share-card.md](../research/annual-share-card.md)、实现任务清单 [annual-share-card-batch.md](./annual-share-card-batch.md)（SC-1–SC-8，W1–W4 波次）。
 - **Phase 3 本地服务后端**（Ollama/LM Studio 同契约）：已记 [ai-features-batch.md E 节](./ai-features-batch.md)。
 
 ### F. 依赖
