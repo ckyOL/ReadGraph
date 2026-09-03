@@ -330,5 +330,18 @@
   "settings.reset.running": "Resetting…",
   "settings.reset.done": "Reset complete. All pages are back to the empty state.",
   "settings.reset.failed": "Reset failed. The database is unchanged.",
-  "settings.reset.cancel": "Cancel"
+  "settings.reset.cancel": "Cancel",
+  "profile.year.share.button": "Share image",
+  "profile.year.share.dialogTitle": "Annual share card",
+  "profile.year.share.download": "Download PNG",
+  "profile.year.share.systemShare": "Share…",
+  "profile.year.share.privacyNote": "Generated on this device. Contains only titles, authors, and category stats.",
+  "profile.year.share.error": "Failed to generate the share image. Please try again.",
+  "profile.year.share.previewAria": "Preview of the {{year}} annual share card",
+  "profile.year.share.summary": "{{count}} books · {{categories}} categories · mostly {{topCategory}}",
+  "profile.year.share.summary_one": "1 book · {{categories}} categories · mostly {{topCategory}}",
+  "profile.year.share.summaryNoTop": "{{count}} books · {{categories}} categories",
+  "profile.year.share.summaryNoTop_one": "1 book · {{categories}} categories",
+  "profile.year.share.delta": "{{year}}: {{prevCount}} books",
+  "profile.year.share.brand": "ReadGraph"
 }

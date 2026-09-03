@@ -326,5 +326,18 @@
   "settings.reset.running": "正在重置…",
   "settings.reset.done": "已重置，所有页面回到空态。",
   "settings.reset.failed": "重置失败，库保持完整未变更。",
-  "settings.reset.cancel": "取消"
+  "settings.reset.cancel": "取消",
+  "profile.year.share.button": "分享图",
+  "profile.year.share.dialogTitle": "年度分享图",
+  "profile.year.share.download": "下载 PNG",
+  "profile.year.share.systemShare": "系统分享",
+  "profile.year.share.privacyNote": "图片在本机生成，仅包含书名/作者/分类统计。",
+  "profile.year.share.error": "分享图生成失败，请重试。",
+  "profile.year.share.previewAria": "{{year}} 年度分享图预览",
+  "profile.year.share.summary": "共 {{count}} 本 · {{categories}} 类 · 最爱{{topCategory}}",
+  "profile.year.share.summary_one": "共 1 本 · {{categories}} 类 · 最爱{{topCategory}}",
+  "profile.year.share.summaryNoTop": "共 {{count}} 本 · {{categories}} 类",
+  "profile.year.share.summaryNoTop_one": "共 1 本 · {{categories}} 类",
+  "profile.year.share.delta": "{{year}}：{{prevCount}} 本",
+  "profile.year.share.brand": "ReadGraph"
 }
