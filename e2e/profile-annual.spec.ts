@@ -43,14 +43,15 @@ async function seed(page: Page): Promise<void> {
   }, [SEED_KEY, payload] as const)
 }
 
-/** 注入偏好（locale 固定 zh-CN 使断言确定）；ai 字段逐项给定。 */
+/** 注入偏好（locale 缺省 zh-CN 使断言确定；ai 字段逐项给定）。 */
 async function injectPrefs(
   page: Page,
   ai: { enabled: boolean; baseUrl: string; model: string; sendPreview: boolean },
   annualGoals: Record<string, number> = {},
+  locale: 'zh-CN' | 'en' = 'zh-CN',
 ): Promise<void> {
   const prefs = {
-    locale: 'zh-CN',
+    locale,
     theme: 'auto',
     displayTimezone: 'Asia/Shanghai',
     ai,
@@ -370,5 +371,129 @@ test.describe('年度叙事 AI 区（ai-features §9.1/§3.3）', () => {
     // en 场景重新请求后渲染（标注与文案按 en 命名空间解析）。
     await expect(page.getByText('AI-generated from local data')).toBeVisible()
     await expect.poll(() => chatRequests.length, { timeout: 10_000 }).toBe(2)
+  })
+})
+
+/**
+ * 年度分享图 E2E（annual-share-card-batch SC-8；reading-profile §4.1/§7）：
+ * 入口（C7 空年无按钮）→ Dialog 预览渲染（canvas + aria-label 走 t()）→ 下载
+ * （download 事件 + 文件名 readgraph-annual-{year}.png）→ 暗色模式恒亮色纸面（R6，
+ * 像素采样）→ 多 locale 文案切换 → 关闭无持久化残留 → 占位版式出图不报错（夹具
+ * 本身无封面，兼测占位降级路径）。
+ */
+test.describe('年度分享图（annual-share-card-batch SC-8）', () => {
+  test.beforeEach(async ({ page }) => {
+    await seed(page)
+    await injectPrefs(page, { enabled: false, baseUrl: '', model: '', sendPreview: true })
+  })
+
+  test('点「分享图」→ Dialog 预览渲染（canvas 元素 + aria-label 走 t()）', async ({ page }) => {
+    await page.goto('/profile/2024')
+    const button = page.locator('[data-slot="share-button"]')
+    await expect(button).toBeVisible()
+    await button.click()
+    const dialog = page.locator('[data-slot="share-dialog"]')
+    await expect(dialog).toBeVisible()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    await expect(canvas).toHaveRole('img')
+    // aria-label = t() 产物（随 locale 渲染，含年份插值）
+    await expect(canvas).toHaveAttribute('aria-label', /2024/)
+    // 隐私注脚（t() 双语，locale=zh-CN 断言确定）
+    await expect(dialog).toContainText('图片在本机生成')
+  })
+
+  test('下载按钮触发 download 事件且文件名 readgraph-annual-2024.png', async ({ page }) => {
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    await expect(page.locator('[data-slot="share-dialog"]')).toBeVisible()
+    // Dialog 开启动画（zoom-in）导致按钮短暂 not-stable：force 点击跳过稳定性等待。
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: /下载 PNG|Download PNG/ }).click({ force: true })
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe('readgraph-annual-2024.png')
+  })
+
+  test('暗色模式打开 → 分享图 canvas 恒亮色纸面（R6 像素采样）', async ({ page }) => {
+    await page.goto('/profile/2024')
+    await page.evaluate(() => document.documentElement.classList.add('dark'))
+    await page.locator('[data-slot="share-button"]').click()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    await expect(canvas).toBeVisible()
+    // 段内空白采样（x=40,y=30 → 逻辑(20,15)，位于 ① 标识段标题上方空白）：恒亮
+    // #F9F7F2（249,247,242），不读 CSS 变量。
+    const pixel = await canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext('2d')
+      if (!ctx) return null
+      const data = ctx.getImageData(40, 30, 1, 1).data
+      return { r: data[0], g: data[1], b: data[2] }
+    })
+    expect(pixel).toEqual({ r: 249, g: 247, b: 242 })
+  })
+
+  test('无封面 fixture → 占位版式出图不报错（占位块 + 题名首字路径）', async ({ page }) => {
+    // buildDesensitizedFixture 全部 coverUrl=null → 渲染器走占位块分支。
+    const pageErrors: string[] = []
+    page.on('pageerror', (err) => pageErrors.push(err.message))
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    await expect(canvas).toBeVisible()
+    // 占位块色 #EAE0D5（234,224,213）：封面槽内空白采样（避开题名首字中心）。
+    const pixel = await canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext('2d')
+      if (!ctx) return null
+      const data = ctx.getImageData(500, 800, 1, 1).data
+      return { r: data[0], g: data[1], b: data[2] }
+    })
+    expect(pixel).toEqual({ r: 234, g: 224, b: 213 })
+    expect(pageErrors).toEqual([])
+  })
+
+  test('多 locale 切换 → Dialog 内文案切换（同一 t() 链路）', async ({ page }) => {
+    // zh 打开 Dialog：图外 DOM 文案为中文。
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    const dialog = page.locator('[data-slot="share-dialog"]')
+    await expect(dialog).toContainText('年度分享图')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    // en 偏好经 addInitScript 重新种子（一次完整引导：i18n lng 从偏好解析），
+    // 等价「设置页切语言后回到年度视图」的持久化结果（i18n-conventions §5）。
+    await injectPrefs(
+      page,
+      { enabled: false, baseUrl: '', model: '', sendPreview: true },
+      {},
+      'en',
+    )
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    await expect(dialog).toContainText('Annual share card')
+    await expect(dialog).toContainText('Download PNG')
+  })
+
+  test('关闭 Dialog → 无持久化残留（readgraph:* 键集合不变，关闭即弃 C1）', async ({ page }) => {
+    await page.goto('/profile/2024')
+    // e2e-seed key 为夹具注入通道，应用首启灌库后移除（e2e-seed 语义），
+    // 不属于分享图持久化面，排除后断言 readgraph:* 键集合不变。
+    const keysBefore = await page.evaluate(() =>
+      Object.keys(localStorage).filter(
+        (k) => k.startsWith('readgraph:') && k !== 'readgraph:e2e-seed',
+      ),
+    )
+    await page.locator('[data-slot="share-button"]').click()
+    await expect(page.locator('[data-slot="share-dialog"]')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-slot="share-dialog"]')).toBeHidden()
+    const keysAfter = await page.evaluate(() =>
+      Object.keys(localStorage).filter(
+        (k) => k.startsWith('readgraph:') && k !== 'readgraph:e2e-seed',
+      ),
+    )
+    expect(keysAfter.sort()).toEqual(keysBefore.sort())
+  })
+
+  test('空年（bookCount=0）→ 无分享按钮（C7）', async ({ page }) => {
+    await page.goto('/profile/2026')
+    await expect(page.locator('[data-slot="share-button"]')).toHaveCount(0)
   })
 })

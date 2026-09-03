@@ -111,15 +111,16 @@ export function ShareDialog({ open, onOpenChange, year, slice, bookIndex, prevYe
   }, [t, i18n, prevYear])
 
   // 打开：固化快照 → 首绘（无封面立即可见）→ 封面逐张渐进补入局部重绘。
+  // 首绘延迟到 rAF：Dialog 内容经 Portal 异步挂载，effect 首拍 ref 可能尚未绑定。
   useEffect(() => {
     if (!open) return
     snapshotRef.current = inputRef.current
     coverImagesRef.current.clear()
-    draw()
+    let raf = requestAnimationFrame(() => draw())
     const snapshot = snapshotRef.current
-    if (!snapshot) return
+    if (!snapshot) return () => cancelAnimationFrame(raf)
     const ids = slotBookIds(snapshot)
-    if (ids.length === 0) return
+    if (ids.length === 0) return () => cancelAnimationFrame(raf)
     void loadShareCovers(snapshot.covers, ids, {
       onEach: (bookId, img) => {
         const slot = ids.indexOf(bookId)
@@ -129,8 +130,9 @@ export function ShareDialog({ open, onOpenChange, year, slice, bookIndex, prevYe
         forceRedraw((n) => n + 1)
       },
     })
-    // 快照语义：仅随 open 触发；draw 为稳定回调（eslint-disable 依赖收窄）
+    // 快照语义：仅随 open 触发；draw 为稳定回调（依赖收窄）
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => cancelAnimationFrame(raf)
   }, [open])
 
   const handleDownload = useCallback((): void => {
