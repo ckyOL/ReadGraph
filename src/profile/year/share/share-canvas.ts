@@ -4,6 +4,7 @@
 // 无封面槽绘占位块 + 题名首字。devicePixelRatio ×2 定标（1080×1440 逻辑 →
 // 2160×2880 物理）保证锐度；预览与导出共用本渲染函数（「预览即导出」硬约束）。
 import type {
+  ShareCollageBadgeInstruction,
   ShareCoverSlotInstruction,
   ShareLayout,
   ShareTextInstruction,
@@ -113,9 +114,28 @@ function drawEmblem(ctx: CanvasRenderingContext2D, x: number, y: number, size: n
 }
 
 /**
+ * 拼贴 +K 角标绘制（v2 §4.2.3）：直角纸面盒（不遮槽内容的弱化语义）+ 居中 mono ink 文本。
+ */
+function drawCollageBadge(
+  ctx: CanvasRenderingContext2D,
+  badge: ShareCollageBadgeInstruction,
+  fonts: ShareRenderFonts,
+): void {
+  ctx.fillStyle = SHARE_COLORS.paper
+  ctx.fillRect(badge.x, badge.y, badge.width, badge.height)
+  ctx.fillStyle = SHARE_COLORS.ink
+  ctx.font = `400 20px ${fonts.mono}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(badge.text, badge.x + badge.width / 2, badge.y + badge.height / 2)
+  ctx.textBaseline = 'alphabetic'
+}
+
+/**
  * renderShareCard：ShareLayout + 字体栈 → 逐条绘制指令到 canvas。
- * 物理尺寸 = 逻辑 × dpr（SHARE_CANVAS.dpr = 2），ctx.scale(dpr, dpr) 后全部按
- * 逻辑坐标绘制。covers 键 = slotIndex（0|1|2），由调用方把 onEach(bookId) 映射进槽位。
+ * 物理尺寸 = layout.width/height × dpr（SHARE_CANVAS.dpr = 2；v2 9:16 变体随 layout
+ * 高度 1920），ctx.scale(dpr, dpr) 后全部按逻辑坐标绘制。covers 键 = slotIndex
+ * （0..2 三联 / 0..7 拼贴），由调用方把 onEach(bookId) 映射进槽位。
  */
 export function renderShareCard(
   canvas: HTMLCanvasElement,
@@ -125,7 +145,8 @@ export function renderShareCard(
 ): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('share-canvas: 2d context unavailable')
-  const { width, height, dpr } = SHARE_CANVAS
+  const dpr = SHARE_CANVAS.dpr
+  const { width, height } = layout
   canvas.width = width * dpr
   canvas.height = height * dpr
   ctx.scale(dpr, dpr)
@@ -163,6 +184,10 @@ export function renderShareCard(
     }
   }
 
+  for (const badge of layout.collageBadges) {
+    drawCollageBadge(ctx, badge, fonts)
+  }
+
   for (const emblem of layout.emblems) {
     drawEmblem(ctx, emblem.x, emblem.y, emblem.size)
   }
@@ -179,17 +204,21 @@ export function renderShareCard(
   }
 }
 
-/** 导出 PNG 文件名（E2E 断言与 SC-5 复用同源） */
-export function sharePngFilename(year: number): string {
-  return `readgraph-annual-${year}.png`
+/** 导出 PNG 文件名（E2E 断言与 SC-5 复用同源）：'3:4' 保持原名（E2E 兼容）；'9:16' 带 -story 后缀（§4.2.2） */
+export function sharePngFilename(year: number, variant: '3:4' | '9:16' = '3:4'): string {
+  return variant === '9:16' ? `readgraph-annual-${year}-story.png` : `readgraph-annual-${year}.png`
 }
 
 /**
  * exportSharePng：canvas.toBlob('image/png') → URL.createObjectURL →
- * <a download="readgraph-annual-{year}.png"> 点击 → revoke。失败向上抛
+ * <a download="readgraph-annual-{year}[-story].png"> 点击 → revoke。失败向上抛
  * （Dialog 层 toast，规格状态表）。一次性下载微任务，不阻塞渲染。
  */
-export function exportSharePng(canvas: HTMLCanvasElement, year: number): Promise<void> {
+export function exportSharePng(
+  canvas: HTMLCanvasElement,
+  year: number,
+  variant: '3:4' | '9:16' = '3:4',
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -199,7 +228,7 @@ export function exportSharePng(canvas: HTMLCanvasElement, year: number): Promise
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = sharePngFilename(year)
+      a.download = sharePngFilename(year, variant)
       document.body.appendChild(a)
       a.click()
       a.remove()

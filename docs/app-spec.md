@@ -30,7 +30,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 设置与系统重置 | ✅ 已补规格 | [specs/settings.md](./specs/settings.md) |
 | OPAC 编目补全 | ✅ 已补规格 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) |
 | AI 功能（阅读画像分析） | ✅ 已补规格 | [specs/ai-features.md](./specs/ai-features.md) |
-| 年度分享图（阅读报告分享图） | ✅ 规格已定稿 | [specs/reading-profile.md §4.1](./specs/reading-profile.md#41-年度分享图profileyear-新增)（R1–R6 裁定）；调研见 [research/annual-share-card.md](./research/annual-share-card.md) |
+| 年度分享图（阅读报告分享图） | ✅ 已落地 | [specs/reading-profile.md §4.1](./specs/reading-profile.md#41-年度分享图profileyear-新增)（R1–R6 裁定）；调研见 [research/annual-share-card.md](./research/annual-share-card.md) |
 
 ### 1.2 非目标
 
@@ -245,6 +245,7 @@ pnpm install --ignore-scripts
 > AI 功能里程碑任务见 [tasks/ai-features-batch.md](./tasks/ai-features-batch.md)（Phase 1 落地清单：脱敏管道 → 端点客户端 → prompt → 设置页 AI 区 → /profile AI 解读区）。
 > Profile 年度视图（Phase 2）任务见 [tasks/profile-annual-view-batch.md](./tasks/profile-annual-view-batch.md)（普通静态骨架：年度书单/最常借 Top N/年度目标进度卡 + AI 年度叙事区；输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约）。
 > 年度分享图任务见 [tasks/annual-share-card-batch.md](./tasks/annual-share-card-batch.md)（Canvas 分享图：内容收敛/布局/渲染器/封面渐进加载/Dialog 预览；规格承接 [reading-profile §4.1](./specs/reading-profile.md#41-年度分享图profileyear-新增)）。
+> 年度分享图 v2 任务见 [tasks/annual-share-card-v2-batch.md](./tasks/annual-share-card-v2-batch.md)（人格化称号 / 9:16 Stories 变体 / 封面拼贴乙版式——R2/R3/R5 显式延后项；v1 已落地见 [tasks/annual-share-card-batch.md](./tasks/annual-share-card-batch.md)）。
 
 每个功能阶段开始前，对应规格文件需包含：
 

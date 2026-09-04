@@ -362,6 +362,134 @@ Dialog「年度分享图」（页内预览）
 - Dialog 焦点圈走 shadcn Dialog 既有行为；预览画布 `role="img"` + `aria-label`（t()：`profile.year.share.previewAria`）。
 - 按钮 aria 与 title 走 t()；色块条纯装饰（分类名有文字同行），不承担信息传达（色彩不作为唯一信息载体，对齐可访问性基线）。
 
+### 4.2 年度分享图 v2 扩展（2026-09-04 立项，R2/R3/R5 显式延后项）
+
+> 承接 §4.1 v1 基线（1080×1440 恒亮色三联版式），三项扩展 + 硬约束：**'3:4' 缺省路径与
+> v1 断言逐条不变**（回归门）；badge=null 与拼贴未触发路径产出与 v1 逐字节一致；
+> v1 E2E 零改动全绿；零新增运行时依赖（R1 延续）；隐私白名单不扩（新增字段仅既有
+> 公开数据的透传，黑名单字段自始不进产物）。
+
+#### 4.2.1 人格化称号（V-1，R3 v2）
+
+**裁定**：纯函数派生 + 克制呈现（调研 §1.1/§2.3 Monzo/Wrapped 结论：人格化是分享欲核心；
+但 v1 R3 裁定占比阈值文化差异值得单独规格——本节即该规格）。
+
+**称号规则**（`buildShareContent` 内派生，仅消费既有白名单产物 `topItems`/`bookCount`/
+`delta`，无新输入字段；优先级从上到下，**至多命中一条**——一张卡一个事实，调研结论 2）：
+
+1. **复借型**：`topItems[0]` 存在且 `topItems[0].count >= 3` →
+   `{ key: 'profile.year.share.badge.reborrow', params: { title, count } }`。
+   阈值边界：count=2 不命中、count=3 命中（测试逐条）；title 取 Top1 题名。
+2. **增速型**：`delta !== null && bookCount >= 2 * delta.prevBookCount`（同比增长 ≥ 100%）
+   → `{ key: 'profile.year.share.badge.growth', params: { count, prev } }`。
+   阈值边界：`bookCount = 2×prev` 恰好命中（≥）；`delta=null`（无上年/上年零读数）不判定。
+3. **兜底**：无规则命中 → `badge: null`（不虚构称号，复用 R3 总结句语义；布局不产指令）。
+
+**产物形态**：`ShareContent` 增 `badge: { key: string; params: Record<string, string | number> } | null`
+（与 `summary` 描述符同构；`t()` 渲染归 UI 层）。纯函数性维持：同输入两次调用深等价。
+
+**文案**（双语独立裁定，en 不直译 zh 的军事比喻——文化差异点是 R3 延后主因）：
+
+| key | zh-CN | en |
+|-----|-------|----|
+| `profile.year.share.badge.reborrow` | `《{{title}}》的重借大队长（借了 {{count}} 次）` | `{{count}} borrows of {{title}} — clearly a favorite` |
+| `profile.year.share.badge.growth` | `阅读加速中：{{count}} 本（上年 {{prev}} 本）` | `Reading accelerator: {{count}} books, up from {{prev}} last year` |
+
+zh 「重借大队长」沿用调研 §2.1 已拼造的身份标签示例；en 走克制陈述式。计数均 ≥ 3/ ≥ 2，
+无需复数形态 key。
+
+**版式（V-1c）**：落款段总结句上方加 badge 行——基线 = 落款段顶 + 64（3:4 y=1264；9:16
+y=1744），body 24/600、accent 色、maxWidth=内容宽、maxLines=1（长称号字符级截断归渲染器）。
+badge=null → 不产指令、总结句/落款位置**不变**（v1 逐字节一致）。段落既有留白内呈现，
+不与总结句（顶+120）罫线（段顶）重叠。
+
+**隐私护栏**：badge 派生只读 `topItems`/`bookCount`/`delta`；badge 序列化文本纳入黑名单
+穷举断言（V-1b 门禁）；`ShareContentInput` 白名单不扩。
+
+#### 4.2.2 9:16 Stories 变体（V-2，R5 v2）
+
+**裁定**：`ShareLayoutOptions` 增 `variant?: '3:4' | '9:16'`（**缺省 '3:4' 向后兼容**——
+既有调用不传 variant 行为不变，既有测试零改动）。9:16 = 1080×1920 Stories 竖版
+（调研 §2.1 Wrapped 卡片形态：社交平台原生比例）；dpr ×2、边距 64 不变。
+
+**分段高度**（视觉重心前两段：主视觉比例增大、落款压缩；段界 = 自顶累加）：
+
+| 段 | 3:4（v1 基线） | 9:16 |
+|----|---------------|------|
+| ① 标识 | 120 | 120 |
+| ② 主视觉 | 560 | **920**（47.9%，v1 38.9%） |
+| ③ 事实 | 520 | **640**（Δ 行后留白增大，Stories 呼吸感） |
+| ④ 落款 | 240 | 240（占比 16.7% → 12.5%，压缩） |
+
+**锚点公式化**（两 variant 共用段内相对偏移，3:4 推导值 = v1 绝对常量，回归门由测试锁）：
+
+- ① 基线 = `round(header × 0.72)`（= 86，不变）；段底罫线 = header − 1。
+- ② 封面三联在段内垂直居中；主数字基线 = 主视觉段底 − 24（3:4 656 / 9:16 1016）。
+- ③ 榜单首行 = 事实段顶 + 60（740 / 1100）；图例首行 = 榜单首行 + 200（940 / 1300）；
+  Δ 行 = 图例首行 + 108（1048 / 1408）。
+- ④ 段顶罫线 = 落款段顶（1200 / 1680）；badge 行 = 段顶 + 64（1264 / 1744，§4.2.1）；
+  总结句 = 段顶 + 120（1320 / 1800）；@ 字标 = 段顶 + 184（1384 / 1864）。
+- 拼贴带（§4.2.3）槽高 = `(主视觉段高 − 16) / 2`（2 行）、槽宽 = 槽高 × 3/4，槽宽超出
+  `(内容宽 − 3×16) / 4` 时以宽为限反推槽高；网格横行居中、整组段内垂直居中。
+
+**实现形态**：分段常量参数化——保留 `SHARE_SEGMENTS`（= 3:4 表，既有测试兼容）并增
+`SHARE_SEGMENTS_9_16 = { header: 120, hero: 920, facts: 640, footer: 240 }`；画布尺寸随
+variant（渲染器物理尺寸改由 `layout.width/height × dpr` 推导，`SHARE_CANVAS` 保留为
+3:4 基线常量与 dpr/边距来源）。
+
+**呈现面（V-2c）**：
+
+- Dialog 内 `SegmentedControl` 版式切换（`profile.calendar.view.*` 同款先例；两选项标签
+  `profile.year.share.variant.classic`/`profile.year.share.variant.story`，值即 `3:4`/`9:16`，
+  aria-label `profile.year.share.variant.label`）；切换即重绘（同一 `computeShareLayout`
+  两次调用，预览即导出不变）；variant 是 UI 态不进快照（打开时刻数据快照语义不变）。
+- 预览画布 CSS `aspect-ratio` 随 variant（`3 / 4` ↔ `9 / 16`），高度锚定 `min(55vh, 720px)` 不变。
+- 导出文件名：'3:4' 保持 `readgraph-annual-{year}.png`（E2E 断言不破坏）；'9:16' 为
+  `readgraph-annual-{year}-story.png`（区分两版式导出物）。dpr 定标不变。
+
+#### 4.2.3 封面拼贴乙版式（V-3，R2 v2）
+
+**裁定（触发条件——v1 R2 留白点）**：**纯自动触发**：`bookCount >= 12` → 乙版式拼贴带，
+否则甲版式三联（阈值常量 `SHARE_COLLAGE_THRESHOLD = 12`；调研「书少时拼贴带空洞」依据，
+阈值边界测试 N=11/12/13）。无手动开关：手动切换需持久化偏好（违背分享图关闭即弃/
+零持久化约束）或 Dialog 新增 UI 面（乙版式是数据形态响应，非用户选项面）——不引入。
+阈值 12 依据：三联 3 槽与拼贴 8 槽的视觉跳变点，且 12 本时「+4 本」角标仍有信息量。
+
+**主视觉段重排**：三联槽 → 拼贴带：**8 张封面 4 列 × 2 行网格**（槽 3:4 比例；3:4 版式
+槽 204×272、网格 864×560 恰满段高；9:16 按锚点公式以宽为限反推）；`+K 本` 角标
+（K = `bookCount` − 实际槽数，常态 ≥ 4）= 末槽右下角纸面色小方角标
+（`#F9F7F2` 底 + mono 20 ink 文字，直角、无渐变；文本 `profile.year.share.collageMore`
+t() 渲染后经 opts 传入，布局不触 t()）。**主数字下沉至事实段底部**（基线 = 事实段底 − 40，
+3:4 y=1160）：拼贴带满段高后落款数字不可共存，Wrapped 式「数字独立位置」；榜单/图例/
+Δ 行与甲版式同位不变。
+
+**拼贴候选与顺序**（确定性纯派生，单一事实源 = `share-content.ts` 导出的
+`collageBookIds(input)` 纯函数，布局与 Dialog 封面加载共用）：
+
+1. `topBooks`（次数降序）中有 covers 条目者依输入序取之；
+2. 不足 8 张 → `collageOrder`（新增输入字段，调用方传 `slice.bookIds` 升序——既有公开
+   字段透传，非隐私白名单扩张）中未入选者依序补足至 8；
+3. covers 无条目（entry 缺失）→ 跳过；`coverUrl=null` 仍占槽（占位块，与三联同）；
+4. 实际槽数 < 8（索引缺书）→ 网格行居中收排；K 相应增大，语义不变。
+
+产物：`ShareContent` 增 `collage: { items: { title; authors; coverUrl }[]; overflow: number } | null`
+（null = 未触发甲版式；items 不含 bookId——内部 id 不进图片内容，Dialog 经
+`collageBookIds` 映射槽位）。
+
+**指令面（V-3b）**：`ShareCoverSlotInstruction.slotIndex` 扩为 `0..7`（拼贴复用封面槽
+指令，渲染器 drawImage/占位逻辑零改动）；角标新增 `ShareCollageBadgeInstruction`
+（`kind: 'badge'`，x/y/width/height/text——纸面盒 + 居中 mono 文字）。
+
+**封面加载复用（V-3c）**：`loadShareCovers` **零改动**——目标列表长度由调用方决定
+（三联 3 → 拼贴 8），逐张回调/3s 超时/CORS 失败降级语义不变；不引入并发上限
+（8 张远低于浏览器每主机连接排队压力面）。Dialog 打开时按数据形态一次性加载目标集
+（拼贴候选 8 张或三联 3 张，与 variant 无关——乙候选集是甲的超集，variant 切换仅重绘
+不重载）；covers map 键 = slotIndex（0..7）扩展；第 4+ 张 onEach 渐进补图与三联同路径。
+
+**占位语义**：与三联同构——占位块 `#EAE0D5` + 题名首字；部分封面失败逐张降级不阻断。
+
+**状态**：2026-09-04 定稿（v2 批次 W1 规格波；V-1a/V-2a/V-3a SDD 门禁）。
+
 ## 5. 数据契约与边界
 
 - **纯前端/只读**：所有数据来自 IndexedDB（Dexie + `useLiveQuery`），无网络、无后端、无数据上传（[app-spec §1](../app-spec.md)/[ui-navigation §6](ui-navigation.md#6-数据契约与边界)）。聚合为纯函数，结果不落库、不缓存到 localStorage。**AI 功能例外**（默认关闭、显式启用）：仅向用户配置端点发送脱敏最小字段（本页 `computeProfileStats` 输出 + 脱敏书目字段（题名/作者/分类/出版/借阅次数，全量），发送前预览可见）——契约见 [AI 功能规格](ai-features.md)。
@@ -399,7 +527,7 @@ Dialog「年度分享图」（页内预览）
 21. 作为用户，浏览到无借阅的年份 → 书单与 Top 5 `Empty` 变体、目标卡「0 / M」、叙事区不渲染，页面不崩；全库空时整页 `Empty` + 导入入口。
 22. 作为用户，在 `/profile/$year` 点「分享图」→ Dialog 预览出现：题名/作者/Top 3/分类条与 `computeYearSlice` 产物一致（数字同源）；下载得到 1080×1440 PNG。
 23. 作为用户，无封面书/封面 CORS 失败 → 预览与导出以占位块（题名首字）出图，不报错不阻断；暗色模式下打开 → 分享图仍为亮色纸面（R6）。
-24. 作为用户，空年（`bookCount=0`）→ 无分享按钮；切中英 → 图内文字随 `t()` 切换；关闭 Dialog → 无任何持久化残留；`navigator.share` 不支持时系统分享按钮不渲染。
+24. 作为用户，空年（`bookCount=0`）→ 无分享按钮；切中英 → 图内文字随 `t()` 切换；关闭 Dialog → 无任何持久化残留；`navigator.share` 不支持时系统分享按钮不渲染。（✅ 已落地，annual-share-card-batch SC-1–SC-8，2026-09-04）
 
 ## 7. 测试清单
 
@@ -426,7 +554,8 @@ Dialog「年度分享图」（页内预览）
 - calendar-grid 纯函数：年/月视图产格行列正确（周起始随 locale、月初列标签、月内周行）；格色 alpha 阶（0/1/2/3/4+）；`bookIndex` 缺失 bookId 不抛错；tooltip HTML 转义书名与 URL。
 - yearSlice 口径：`borrowedAt` 恰为 `[y-01-01, (y+1)-01-01)` 边界计入/不计（左闭右开）；同书 2 周期计 1；`status='borrowed'` 在借周期计入（不依赖 returned）；设备书排除；跨年周期只计入 `borrowedAt` 所在年；空年零值结构完整、不抛错。
 - 年度视图（`src/routes/profile.$year.test.tsx` 等，U-1 起）：`$year` loader 参数校验（4 位数字年通过；非数字/3 位/5 位/空 → `notFound()` 路径）；骨架渲染（年份导航/目标卡/Top 5 列表/书单网格按 `computeYearSlice` 产物渲染，断言 `t()` 取值路径不断言字面量）；**目标卡内联编辑**（编辑态渲染数字输入框与 −/`+` 步进；提交合法值 → `writePreferences({ annualGoals })` 被调且该年条目正确；清空提交 → 该年条目删除；非法值（非整数/0/负数/>999）不写偏好；编辑态 aria 走 t() 取值路径）；空年各区块 `Empty` 变体、目标卡「0 / M」、叙事区不渲染；错误态区块降级不崩整页；年份切换更新 `$year` 参数并重算（`useTransition` 加载态）。
-- 年度分享图（§4.1，share-batch 起）：渲染函数输入快照不含 `annualGoals`/`price`/`barcode`/`isbn13`/馆名字段（黑名单穷举断言）；数字同源断言（与同一次 `computeYearSlice` 产物一致）；无封面占位降级出图；`bookCount=0` 无分享按钮；canvas 内 clamp/换行/`toBlob` 失败 toast（mock canvas 场景）。
+- 年度分享图（§4.1，share-batch 起）：渲染函数输入快照不含 `annualGoals`/`price`/`barcode`/`isbn13`/馆名字段（黑名单穷举断言，`share-content.test.ts`）；数字同源断言（与同一次 `computeYearSlice` 产物一致）；无封面占位降级出图（记录型 ctx stub 断言占位 fillRect 色 + 题名首字 fillText）；`bookCount=0` 无分享按钮；canvas 内 clamp（measureText 超限截断加省略号）/罫线与徽标指令序列/`toBlob` 失败 reject（Dialog 层 toast 场景）；布局纯函数四段区间/三联槽坐标/图例逐行/Δ 行产出逻辑（`share-layout.test.ts`）。
+- 年度分享图 v2（§4.2，share-v2-batch 起）：`share-content.test.ts`——badge 规则逐条（复借阈值 2/3 边界、增速 2× 恰好命中、优先级唯一命中、delta=null 不判定、兜底 null）、badge 序列化纳入黑名单穷举、collageBookIds 候选序（top 优先/bookIds 补足/无条目跳过/恒 ≤ 8/纯函数）；`share-layout.test.ts`——variant 缺省与显式 '3:4' 深等价（回归门）、SHARE_SEGMENTS_9_16 常量与段界、'9:16' 锚点（主数字 1016/榜单 1100/图例 1300/Δ 1408/落款 1800·1864）、拼贴 4×2 网格槽坐标与 slotIndex 0..7、+K 角标指令、collage=null 甲版式逐字节回归、候选 < 8 行居中；`share-dialog.test.tsx`——ja 明朝栈首提断言、v2 i18n 双语键、sharePngFilename variant 后缀（'3:4' 原名兼容）。
 
 **Playwright（E2E）**
 - `/profile` 空态：显示 `Empty` + 导入入口按钮，点击跳 `/import`。
@@ -435,9 +564,9 @@ Dialog「年度分享图」（页内预览）
 - 分类体系 `SegmentedControl` 切换后 canvas 重绘、类目 tooltip 文本随 locale 切换。
 - 暗色切换 → 图表配色变化（canvas 像素采样差异），reload 仍为暗色。
 - 年度视图（`e2e/profile-annual.spec.ts`，T-2 阶段）：/profile → `/profile/$year` 入口跳转；书单/Top N/目标卡数字与 `computeYearSlice` 一致；空年不崩（`Empty` 变体）；`‹`/`›` 年份切换；非法 `$year` → 404。
-- 年度分享图（`e2e/profile-annual.spec.ts` 增补）：点「分享图」→ Dialog 预览渲染（canvas 元素 + aria-label）；下载产物尺寸断言；暗色模式开分享图恒亮色；多 locale 图内文字切换；关闭后无持久化残留。
+- 年度分享图（`e2e/profile-annual.spec.ts` 增补，2026-09-04 随 `1db9165` 迁位）：入口为页首工具条右上角「分享图」按钮（`data-slot="share-button"`，非书单标题行）；Dialog 预览渲染（canvas 元素 + `role="img"` aria-label 含年份）；下载触发 download 事件且文件名 `readgraph-annual-{year}.png`；暗色模式恒亮色（像素采样 #F9F7F2）；无封面占位色出图不报错（pageerror 监听）；多 locale Dialog 文案切换；关闭后无持久化残留；空年无分享按钮。
+- 年度分享图 v2（`e2e/profile-annual.spec.ts` 增补，share-v2-batch V-4b）：badge 命中年/badge=null 年 canvas 物理尺寸 2160×2880（v1 回归门）；9:16 切换 → canvas 高宽比 1920/1080（物理 2160×3840，expect.poll 轮询重绘）+ 下载文件名 `readgraph-annual-{year}-story.png` + 切回物理尺寸回基线；拼贴夹具 bookCount=14（≥ 阈值 12）→ 拼贴带占位色出图不报错（pageerror 监听）；既有 v1 E2E 零改动全绿。
 
-## 8. React 性能规则引用
 
 - `bundle-barrel-imports`：`echarts` 按 `echarts/core` + 按图种引入，shadcn 组件按需 import，避免 barrel 拉宽依赖。
 - `bundle-dynamic-imports` / `bundle-conditional`：ECharts 初始化与各图组件在 `/profile` 激活时动态加载。

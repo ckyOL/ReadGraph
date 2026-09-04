@@ -210,6 +210,28 @@ export function buildDesensitizedFixture(): FixturePayload {
   return { sources: [src], books, catalogRecords: cats, borrowCycles: cycles }
 }
 
+/**
+ * 拼贴乙版式夹具（v2 §4.2.3 E2E 增补）：14 本书各 1 周期（bookCount=14 ≥ 阈值 12），
+ * 触发拼贴带 + 「+6 本」角标；其余结构与脱敏小数据集同形态（无封面 → 占位路径）。
+ * id 偏移 2000 起，与基础数据集不冲突。
+ */
+export function buildCollageFixture(): FixturePayload {
+  const src = source()
+  const books: FixtureBook[] = []
+  const cats: FixtureCatalogRecord[] = []
+  const cycles: FixtureBorrowCycle[] = []
+  const base = Date.UTC(2024, 0, 10)
+  for (let i = 0; i < 14; i++) {
+    const n = 2000 + i
+    books.push(book(n, `拼贴书${i + 1}`, `9788${String(i).padStart(9, '0')}`, 'I', src.id))
+    cats.push(catalog(n, `book-${n}`, src.id, `BC${n}`, 'I'))
+    cycles.push(
+      cycle(n, `book-${n}`, src.id, `BC${n}`, base + i * 3 * DAY, base + i * 3 * DAY + DAY, 'returned'),
+    )
+  }
+  return { sources: [src], books, catalogRecords: cats, borrowCycles: cycles }
+}
+
 function source(): FixtureSource {
   return {
     id: 'src-e2e',

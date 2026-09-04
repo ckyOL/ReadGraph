@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Annual share card** — a downloadable/shareable 1080×1440 PNG generated on
+  `/profile/$year` from the same `computeYearSlice` slice as the rest of the
+  annual view (`docs/specs/reading-profile.md` §4.1): Top-3 cover trio with the
+  year's book count as the hero number, Top-3 borrow list, per-row category
+  legend, previous-year delta line, and a plain-language summary — drawn on a
+  constant light paper canvas (independent of the dark theme) by pure layout
+  functions plus a hand-written Canvas 2D renderer (zero new dependencies).
+  Covers load progressively with per-slot placeholder fallback; export via
+  `canvas.toBlob` download or the Web Share API when supported. Fully local
+  (no network, no persistence), field whitelist excludes goals/prices/
+  barcodes/ISBN/library names, and all canvas-adjacent strings render through
+  `t()` in both locales.
+- **Annual share card v2: persona badge, 9:16 story variant, cover collage** —
+  three extensions to the annual share card (`docs/specs/reading-profile.md` §4.2),
+  all backward-compatible with the v1 3:4 layout (default path byte-identical,
+  existing E2E untouched):
+  - *Persona badge* — a pure-function derived title line above the summary
+    ("《…》的重借大队长" when the top book was borrowed ≥ 3 times, "阅读加速中"
+    when the year doubled the previous year's count; `null` otherwise — no
+    fabricated titles). English copy is independently authored, not translated.
+  - *9:16 story variant* — a `SegmentedControl` in the dialog switches between
+    the classic 3:4 (1080×1440) and a Stories-tall 9:16 (1080×1920) layout with
+    an enlarged hero segment; switching redraws through the same layout path and
+    exports as `readgraph-annual-{year}-story.png` (the 3:4 filename is
+    unchanged).
+  - *Cover collage* — at bookCount ≥ 12 (threshold constant) the hero segment
+    becomes a 4×2 grid of up to 8 covers with a "+K more" corner badge and the
+    count sinks into the facts segment; placeholder and CORS-failure fallbacks
+    match the trio layout, and cover loading stays a single progressive pass.
+
 ### Changed
 
 - **AI insights streamed as Markdown** — profile AI insights switched from

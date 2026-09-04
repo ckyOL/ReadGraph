@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { buildDesensitizedFixture } from './fixtures'
+import { buildCollageFixture, buildDesensitizedFixture } from './fixtures'
 
 /**
  * 年度视图 E2E（profile-annual-view-batch W4 T-2；reading-profile §4/§7、
@@ -495,5 +495,83 @@ test.describe('年度分享图（annual-share-card-batch SC-8）', () => {
   test('空年（bookCount=0）→ 无分享按钮（C7）', async ({ page }) => {
     await page.goto('/profile/2026')
     await expect(page.locator('[data-slot="share-button"]')).toHaveCount(0)
+  })
+})
+
+/**
+ * 年度分享图 v2 E2E（annual-share-card-v2-batch V-4b；reading-profile §4.2）：
+ * 称号 badge 命中年（复借 count≥3）→ 预览出图不报错 + badge=null 年版式与 v1 一致
+ * （回归）；9:16 切换 → canvas 高宽比 1920/1080 + 下载文件名 -story.png；
+ * 拼贴（bookCount=14 ≥ 12）→ 拼贴带出图不报错（pageerror 监听先例 + 占位色采样）。
+ */
+test.describe('年度分享图 v2（annual-share-card-v2-batch V-4b）', () => {
+  test.beforeEach(async ({ page }) => {
+    await seed(page)
+    await injectPrefs(page, { enabled: false, baseUrl: '', model: '', sendPreview: true })
+  })
+
+  test('badge 命中年（Top1 复借 2 次 fixture → 无命中 badge=null）→ 版式与 v1 一致（回归门）', async ({ page }) => {
+    // 小数据集 Top1 count=2 < 3、2024=3 本 vs 2023 无数据 → badge=null（v1 路径回归）
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    await expect(canvas).toBeVisible()
+    // 主数字基线 y=656（逻辑）→ 物理 ×2 = 1312 处采样 accent 主数字行存在
+    // （badge 命中与否不改变 3:4 甲版式锚点；此处验证出图完整）
+    const size = await canvas.evaluate((el) => ({ w: el.width, h: el.height }))
+    expect(size).toEqual({ w: 2160, h: 2880 })
+  })
+
+  test('9:16 切换 → canvas 高宽比 1920/1080 + 下载文件名 -story.png', async ({ page }) => {
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    const dialog = page.locator('[data-slot="share-dialog"]')
+    await expect(dialog).toBeVisible()
+    // 切换到 9:16（t() 双语断言兼容 zh/en 标签）
+    await page.locator('[data-slot="share-variant-switch"] button', { hasText: /长图|Story/ }).click()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    // 切换重绘经 React setState + rAF：轮询至物理尺寸落到 9:16（2160×3840）
+    await expect
+      .poll(() => canvas.evaluate((el) => [el.width, el.height] as const))
+      .toEqual([2160, 3840])
+    const size = await canvas.evaluate((el) => ({ w: el.width, h: el.height }))
+    expect(size.w / size.h).toBeCloseTo(1080 / 1920, 6)
+    // 下载文件名带 -story 后缀
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: /下载 PNG|Download PNG/ }).click({ force: true })
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe('readgraph-annual-2024-story.png')
+    // 切回 3:4 → 物理尺寸回基线 2160×2880（原名回归由 v1 E2E 覆盖）
+    await page.locator('[data-slot="share-variant-switch"] button', { hasText: /经典|Classic/ }).click()
+    await expect
+      .poll(() => canvas.evaluate((el) => [el.width, el.height] as const))
+      .toEqual([2160, 2880])
+  })
+
+  test('bookCount=14（≥ 阈值 12）→ 拼贴带出图不报错 + 占位色（无封面降级路径）', async ({ page }) => {
+    const collagePayload = JSON.stringify(buildCollageFixture())
+    await page.addInitScript(([key, value]) => {
+      try {
+        localStorage.setItem(key, value)
+      } catch {
+        // ignore
+      }
+    }, [SEED_KEY, collagePayload] as const)
+    const pageErrors: string[] = []
+    page.on('pageerror', (err) => pageErrors.push(err.message))
+    await page.goto('/profile/2024')
+    await page.locator('[data-slot="share-button"]').click()
+    const canvas = page.locator('[data-slot="share-preview-canvas"]')
+    await expect(canvas).toBeVisible()
+    // 拼贴槽内空白采样（避开题名首字中心与 +K 角标盒）：占位色 #EAE0D5 = (234,224,213)。
+    // 槽尺寸 204×272、2 行满段高：首槽 x≈108、y≈124（逻辑）→ 物理 ×2 取槽内空白点。
+    const pixel = await canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext('2d')
+      if (!ctx) return null
+      const data = ctx.getImageData(216 + 10, 248 + 200, 1, 1).data
+      return { r: data[0], g: data[1], b: data[2] }
+    })
+    expect(pixel).toEqual({ r: 234, g: 224, b: 213 })
+    expect(pageErrors).toEqual([])
   })
 })

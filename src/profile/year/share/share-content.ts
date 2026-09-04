@@ -19,10 +19,15 @@ export interface ShareContentInput {
   topBooks: { bookId: string; count: number }[]
   /** 分类分布（调用方传 slice.classification，函数内按 value 降序截取 Top 3；占比 = value/bookCount） */
   classification: { name: string; value: number }[]
-  /** bookId → 书目索引（year-book-index 同构；无对应书 → 跳过该 Top 项） */
-  covers: Record<string, YearBookIndexEntry | undefined>
   /** 上一年对照（R4；同一切片函数对 year-1 的产物，无上年数据 → null） */
   prevYear: { year: number; bookCount: number } | null
+  /**
+   * 拼贴候选顺序（v2 §4.2.3，V-3b）：调用方传 `slice.bookIds` 升序（既有公开字段透传，
+   * 非隐私白名单扩张）；缺省按 covers 键序兜底。仅被 collageBookIds 消费，不进产物。
+   */
+  collageOrder?: string[]
+  /** bookId → 书目索引（year-book-index 同构；无对应书 → 跳过该 Top 项） */
+  covers: Record<string, YearBookIndexEntry | undefined>
 }
 
 /** 分享图内容（ShareContentInput 收敛产物，SC-2 布局唯一输入）。 */
@@ -40,6 +45,16 @@ export interface ShareContent {
   }
   /** R4 历年对照（无上年数据 → null，布局不产出对照行指令） */
   delta: { prevBookCount: number } | null
+  /**
+   * 人格化称号（v2 §4.2.1，V-1b）：i18n 描述符（与 summary 同构，t() 渲染归 UI 层）；
+   * 无规则命中 → null（不虚构称号，布局不产指令）。
+   */
+  badge: { key: string; params: Record<string, string | number> } | null
+  /**
+   * 封面拼贴（v2 §4.2.3，V-3b）：bookCount ≥ SHARE_COLLAGE_THRESHOLD 时非 null；
+   * items ≤ 8（题名/作者/封面，不含 bookId——内部 id 不进图片内容）、overflow = +K。
+   */
+  collage: { items: { title: string; authors: string[]; coverUrl: string | null }[]; overflow: number } | null
 }
 
 /**
@@ -97,5 +112,65 @@ export function buildShareContent(input: ShareContentInput): ShareContent {
   const delta: ShareContent['delta'] =
     prevYear !== null && prevYear.bookCount > 0 ? { prevBookCount: prevYear.bookCount } : null
 
-  return { year, bookCount, topItems, topCategories, summary, delta }
+  // 人格化称号（v2 §4.2.1，V-1b）：规则从上到下至多命中一条（一张卡一个事实）。
+  // 复借型优先；增速型 `bookCount ≥ 2×prev`（同比增长 ≥ 100%，恰好 2× 命中）；
+  // 兜底 null（不虚构称号——复用 R3 总结句语义）。仅消费既有白名单产物。
+  const badge: ShareContent['badge'] = (() => {
+    const top = topItems[0]
+    if (top !== undefined && top.count >= 3) {
+      const params: Record<string, string | number> = { title: top.title, count: top.count }
+      return { key: 'profile.year.share.badge.reborrow', params }
+    }
+    if (delta !== null && bookCount >= 2 * delta.prevBookCount && bookCount > 0) {
+      const params: Record<string, string | number> = { count: bookCount, prev: delta.prevBookCount }
+      return { key: 'profile.year.share.badge.growth', params }
+    }
+    return null
+  })()
+
+  // 封面拼贴（v2 §4.2.3，V-3b）：bookCount ≥ 阈值（§4.2.3 裁定 12，书少拼贴带空洞）
+  // → 乙版式候选 ≤ 8 张 + overflow = +K；未触发 → null（甲版式三联，v1 路径逐字节一致）。
+  const collage: ShareContent['collage'] = (() => {
+    if (bookCount < SHARE_COLLAGE_THRESHOLD) return null
+    const ids = collageBookIds(input)
+    const items = ids.map((id) => {
+      const entry = covers[id]!
+      return { title: entry.title, authors: entry.authors, coverUrl: entry.coverUrl }
+    })
+    return { items, overflow: Math.max(0, bookCount - items.length) }
+  })()
+
+  return { year, bookCount, topItems, topCategories, summary, delta, badge, collage }
+}
+
+/** 拼贴触发阈值（v2 §4.2.3 裁定）：bookCount ≥ 12 自动切乙版式（书少时拼贴带空洞） */
+export const SHARE_COLLAGE_THRESHOLD = 12
+
+/** 拼贴槽位数（§4.2.3 裁定：8 张 4 列 × 2 行网格；超额由 +K 角标承载） */
+export const SHARE_COLLAGE_SLOTS = 8
+
+/**
+ * 拼贴候选 id 序列（§4.2.3 单一事实源：布局产槽与 Dialog 封面加载共用）：
+ * 1) topBooks（次数降序输入序）中有 covers 条目者依序入选；
+ * 2) 不足 → collageOrder（调用方传 slice.bookIds 升序；缺省 covers 键序）未入选者补足；
+ * 3) covers 无条目 → 跳过（不占槽不报错）；恒 ≤ 8；纯函数：不改写输入。
+ */
+export function collageBookIds(input: ShareContentInput): string[] {
+  const { topBooks, covers, collageOrder } = input
+  const picked: string[] = []
+  const seen = new Set<string>()
+  for (const top of topBooks) {
+    if (picked.length >= SHARE_COLLAGE_SLOTS) return picked
+    if (covers[top.bookId] === undefined || seen.has(top.bookId)) continue
+    picked.push(top.bookId)
+    seen.add(top.bookId)
+  }
+  const rest = collageOrder ?? Object.keys(covers)
+  for (const id of rest) {
+    if (picked.length >= SHARE_COLLAGE_SLOTS) break
+    if (seen.has(id) || covers[id] === undefined) continue
+    picked.push(id)
+    seen.add(id)
+  }
+  return picked
 }

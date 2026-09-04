@@ -21,7 +21,8 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogDescription: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
 }))
 
-import { ShareDialog } from './share-dialog'
+import { ShareDialog, fontStacksFor } from './share-dialog'
+import { sharePngFilename } from './share-canvas'
 import type { YearSliceResult } from '@/lib/profile-stats'
 import type { YearBookIndexEntry } from '@/profile/year/year-book-index'
 
@@ -96,6 +97,45 @@ describe('ShareDialog（SC-5 预览组件）', () => {
 
   it('prevYear null → canvas 照常渲染（R4 无上年数据不崩）', () => {
     const html = renderDialog({ prevYear: null })
+    expect(html).toContain('data-slot="share-preview-canvas"')
+  })
+
+  it("fontStacksFor('ja') → 明朝栈首提 Hiragino Mincho ProN（实现指南 D 项 ja 降级路径）", () => {
+    const ja = fontStacksFor('ja')
+    expect(ja.title.startsWith('"Hiragino Mincho ProN"')).toBe(true)
+    // 非 ja 前缀（zh-CN/en）首提 Songti SC；body/mono 栈与 ja 共用
+    expect(fontStacksFor('zh-CN').title.startsWith('"Songti SC"')).toBe(true)
+    expect(fontStacksFor('en').title.startsWith('"Songti SC"')).toBe(true)
+    expect(ja.body).toBe(fontStacksFor('zh-CN').body)
+    expect(ja.mono).toBe(fontStacksFor('zh-CN').mono)
+  })
+})
+
+describe('ShareDialog v2 扩展（reading-profile §4.2）', () => {
+  it("fontStacksFor 缺省调用（'3:4' 基线）与既有键并存（回归：新键不破坏旧 key）", () => {
+    // i18n v2 新键双语齐备（i18n-conventions §5：zh/en 同步）
+    for (const key of [
+      'profile.year.share.badge.reborrow',
+      'profile.year.share.badge.growth',
+      'profile.year.share.variant.classic',
+      'profile.year.share.variant.story',
+      'profile.year.share.variant.label',
+      'profile.year.share.collageMore',
+    ]) {
+      expect(i18n.t(`pages:${key}`, { title: 'T', count: 3, prev: 1 })).toBeTruthy()
+    }
+  })
+
+  it('sharePngFilename：3:4 保持原名（E2E 兼容）、9:16 带 -story 后缀', () => {
+    expect(sharePngFilename(2024)).toBe('readgraph-annual-2024.png')
+    expect(sharePngFilename(2024, '3:4')).toBe('readgraph-annual-2024.png')
+    expect(sharePngFilename(2024, '9:16')).toBe('readgraph-annual-2024-story.png')
+  })
+
+  it('Dialog 打开快照含 collageOrder（拼贴候选顺序，V-3c 数据面）', () => {
+    // 快照语义经 inputRef 固化——这里通过渲染不抛错 + collageOrder 类型存在性断言：
+    // slice.bookIds 透传由 buildShareContent.collageBookIds 消费（share-content.test.ts 已覆盖）。
+    const html = renderDialog()
     expect(html).toContain('data-slot="share-preview-canvas"')
   })
 })

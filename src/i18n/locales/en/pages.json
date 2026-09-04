@@ -344,5 +344,11 @@
   "profile.year.share.summaryNoTop": "{{count}} books · {{categories}} categories",
   "profile.year.share.summaryNoTop_one": "1 book · {{categories}} categories",
   "profile.year.share.delta": "{{year}}: {{prevCount}} books",
+  "profile.year.share.badge.reborrow": "{{count}} borrows of {{title}} — clearly a favorite",
+  "profile.year.share.badge.growth": "Reading accelerator: {{count}} books, up from {{prev}} last year",
+  "profile.year.share.variant.label": "Layout",
+  "profile.year.share.variant.classic": "Classic 3:4",
+  "profile.year.share.variant.story": "Story 9:16",
+  "profile.year.share.collageMore": "+{{count}} more",
   "profile.year.share.brand": "ReadGraph"
 }

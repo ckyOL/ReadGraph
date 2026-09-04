@@ -91,6 +91,8 @@ function content(over: Partial<ShareContent> = {}): ShareContent {
     ],
     summary: { key: 'profile.year.share.summary', params: { count: 27, categories: 2, topCategory: '文学' } },
     delta: { prevBookCount: 20 },
+    badge: null,
+    collage: null,
     ...over,
   }
 }

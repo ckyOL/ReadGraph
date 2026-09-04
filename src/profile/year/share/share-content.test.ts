@@ -4,7 +4,7 @@
 // 空数据降级/纯函数性。纯函数：无 DOM/时钟/存储，同输入两次调用深等价。
 import { describe, expect, it } from 'vitest'
 
-import { buildShareContent } from './share-content'
+import { buildShareContent, collageBookIds } from './share-content'
 import type { ShareContentInput } from './share-content'
 
 /** 黑名单穷举夹具值（C2）：annualGoals/price/barcode/isbn13/馆名 各一个唯一秘密串。 */
@@ -271,5 +271,183 @@ describe('buildShareContent', () => {
   it('纯函数性：同输入两次调用深等价', () => {
     const input = blacklistedInput()
     expect(buildShareContent(input)).toEqual(buildShareContent(input))
+  })
+})
+
+describe('badge 派生（v2 V-1b，reading-profile §4.2.1）', () => {
+  it('复借型：topItems[0].count ≥ 3 → reborrow badge（title/count 参数）', () => {
+    const input = cleanInput()
+    input.topBooks = [{ bookId: 'b1', count: 3 }]
+    const content = buildShareContent(input)
+    expect(content.badge).toEqual({
+      key: 'profile.year.share.badge.reborrow',
+      params: { title: '三体', count: 3 },
+    })
+  })
+
+  it('复借阈值边界：count=2 不命中（增速/兜底继续判定）', () => {
+    const input = cleanInput()
+    input.topBooks = [{ bookId: 'b1', count: 2 }]
+    input.bookCount = 2
+    input.prevYear = { year: 2024, bookCount: 1 } // 2 ≥ 2×1 增速命中
+    const content = buildShareContent(input)
+    expect(content.badge).toEqual({
+      key: 'profile.year.share.badge.growth',
+      params: { count: 2, prev: 1 },
+    })
+  })
+
+  it('增速型：bookCount ≥ 2×prevBookCount → growth badge（恰好 2× 命中）', () => {
+    const input = cleanInput()
+    input.topBooks = [{ bookId: 'b1', count: 2 }]
+    input.bookCount = 6
+    input.prevYear = { year: 2024, bookCount: 3 } // 恰好 2×：命中
+    const content = buildShareContent(input)
+    expect(content.badge).toEqual({
+      key: 'profile.year.share.badge.growth',
+      params: { count: 6, prev: 3 },
+    })
+  })
+
+  it('增速边界：bookCount < 2×prev 不命中 → badge=null（兜底，不虚构称号）', () => {
+    const input = cleanInput()
+    input.topBooks = [{ bookId: 'b1', count: 2 }]
+    input.bookCount = 5
+    input.prevYear = { year: 2024, bookCount: 3 } // 5 < 6
+    expect(buildShareContent(input).badge).toBeNull()
+  })
+
+  it('复借优先于增速：双条件命中 → 只产 reborrow（至多一条）', () => {
+    const input = cleanInput() // count=5 ≥3 且 3 ≥ 2×2? no——直接构造双命中
+    input.topBooks = [{ bookId: 'b1', count: 3 }]
+    input.bookCount = 6
+    input.prevYear = { year: 2024, bookCount: 3 }
+    const content = buildShareContent(input)
+    expect(content.badge?.key).toBe('profile.year.share.badge.reborrow')
+  })
+
+  it('delta=null（无上年）→ 增速不判定；无复借命中 → badge=null', () => {
+    const input = cleanInput()
+    input.topBooks = [{ bookId: 'b1', count: 2 }]
+    input.prevYear = null
+    expect(buildShareContent(input).badge).toBeNull()
+  })
+
+  it('topBooks 空（bookCount>0 无复借）→ 兜底 badge=null', () => {
+    const input = cleanInput()
+    input.topBooks = []
+    expect(buildShareContent(input).badge).toBeNull()
+  })
+
+  it('bookCount=0 → badge=null（空年无称号）', () => {
+    const input = cleanInput()
+    input.bookCount = 0
+    input.topBooks = []
+    expect(buildShareContent(input).badge).toBeNull()
+  })
+
+  it('badge 序列化文本不含黑名单值（badge 派生自公开字段，护栏维持）', () => {
+    const input = blacklistedInput()
+    input.topBooks = [{ bookId: 'b1', count: 5 }]
+    const content = buildShareContent(input)
+    expect(content.badge).not.toBeNull()
+    const serialized = JSON.stringify(content)
+    for (const value of BLACKLIST_VALUES) {
+      expect(serialized).not.toContain(value)
+    }
+  })
+
+  it('纯函数性：badge 派生同输入两次调用深等价', () => {
+    const input = cleanInput()
+    expect(buildShareContent(input).badge).toEqual(buildShareContent(input).badge)
+  })
+})
+
+describe('collageBookIds（v2 V-3b 前置，reading-profile §4.2.3 拼贴候选）', () => {
+  it('Top 命中优先（输入序），bookIds 升序补足至 8', () => {
+    const input: ShareContentInput = {
+      year: 2025,
+      bookCount: 10,
+      topBooks: [
+        { bookId: 'b9', count: 5 },
+        { bookId: 'b2', count: 3 },
+      ],
+      classification: [],
+      covers: {
+        b2: { title: 'T2', authors: [], coverUrl: null },
+        b9: { title: 'T9', authors: [], coverUrl: null },
+        b1: { title: 'T1', authors: [], coverUrl: null },
+        b3: { title: 'T3', authors: [], coverUrl: null },
+        b4: { title: 'T4', authors: [], coverUrl: null },
+        b5: { title: 'T5', authors: [], coverUrl: null },
+        b6: { title: 'T6', authors: [], coverUrl: null },
+        b7: { title: 'T7', authors: [], coverUrl: null },
+      },
+      collageOrder: ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10'],
+      prevYear: null,
+    }
+    expect(collageBookIds(input)).toEqual(['b9', 'b2', 'b1', 'b3', 'b4', 'b5', 'b6', 'b7'])
+  })
+
+  it('covers 无条目的候选跳过（不占槽不报错）', () => {
+    const input: ShareContentInput = {
+      year: 2025,
+      bookCount: 5,
+      topBooks: [{ bookId: 'bx', count: 5 }],
+      classification: [],
+      covers: { b1: { title: 'T1', authors: [], coverUrl: null } },
+      collageOrder: ['b1', 'bx', 'b2'],
+      prevYear: null,
+    }
+    // bx 无 covers 条目 → 跳过（规格：covers 无条目跳过，不占槽不报错）
+    expect(collageBookIds(input)).toEqual(['b1'])
+  })
+
+  it('collageOrder 缺省/缺失 → 按 covers 键序兜底补足', () => {
+    const input: ShareContentInput = {
+      year: 2025,
+      bookCount: 5,
+      topBooks: [],
+      classification: [],
+      covers: {
+        b2: { title: 'T2', authors: [], coverUrl: null },
+        b1: { title: 'T1', authors: [], coverUrl: null },
+        b3: { title: 'T3', authors: [], coverUrl: null },
+      },
+      prevYear: null,
+    }
+    const ids = collageBookIds(input)
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids)).toEqual(new Set(['b1', 'b2', 'b3']))
+  })
+
+  it('恒 ≤ 8：候选超出截断（超额由 +K 角标承载）', () => {
+    const input: ShareContentInput = {
+      year: 2025,
+      bookCount: 30,
+      topBooks: [],
+      classification: [],
+      covers: Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`b${i}`, { title: `T${i}`, authors: [], coverUrl: null }]),
+      ),
+      collageOrder: Array.from({ length: 12 }, (_, i) => `b${i}`),
+      prevYear: null,
+    }
+    expect(collageBookIds(input)).toHaveLength(8)
+  })
+
+  it('纯函数性：同输入两次调用深等价、输入不被改写', () => {
+    const input: ShareContentInput = {
+      year: 2025,
+      bookCount: 10,
+      topBooks: [{ bookId: 'b2', count: 5 }],
+      classification: [],
+      covers: { b2: { title: 'T2', authors: [], coverUrl: null }, b1: { title: 'T1', authors: [], coverUrl: null } },
+      collageOrder: ['b1', 'b2'],
+      prevYear: null,
+    }
+    const snapshot = JSON.stringify(input)
+    expect(collageBookIds(input)).toEqual(collageBookIds(input))
+    expect(JSON.stringify(input)).toBe(snapshot)
   })
 })

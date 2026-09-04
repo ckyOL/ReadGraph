@@ -36,6 +36,12 @@ export interface ShareLayoutOptions {
   brandText: string
   /** 字体栈（调用方按 locale 传入完整 font-family 串；布局只存 family 引用） */
   fontStack: { title: string; body: string; mono: string }
+  /** 版式变体（v2 §4.2.2）：缺省 '3:4' 向后兼容——既有调用行为不变 */
+  variant?: '3:4' | '9:16'
+  /** 拼贴 +K 角标文案（t() 渲染后，如 "+6"；collage 非 null 时必传） */
+  collageMoreText?: string
+  /** 人格化称号行文案（t() 渲染后；badge=null → 不传，布局不产指令，§4.2.1） */
+  badgeText?: string | null
 }
 
 /** 文本指令：基线 y，font 只携带 size/weight/family token，完整 font 串拼接归渲染器 */
@@ -60,14 +66,31 @@ export interface ShareEmblemInstruction {
   size: number
 }
 
-/** 封面槽指令：占位字符 = 题名首字（无封面降级时由渲染器绘制占位块 + 首字） */
+/**
+ * 封面槽指令：占位字符 = 题名首字（无封面降级时由渲染器绘制占位块 + 首字）。
+ * slotIndex 0..2 = 甲版式三联；0..7 = 乙版式拼贴带（v2 §4.2.3，渲染器 drawImage/
+ * 占位逻辑复用，covers map 键同步扩展）。
+ */
 export interface ShareCoverSlotInstruction {
   x: number
   y: number
   width: number
   height: number
-  slotIndex: 0 | 1 | 2
+  slotIndex: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
   placeholderChar: string
+}
+
+/**
+ * 拼贴 +K 角标指令（v2 §4.2.3，V-3b）：纸面色小方盒（直角、罫线弱化语义）+ 居中
+ * mono ink 文本；盒贴末槽右下角。文本由调用方 t() 渲染后经 opts.collageMoreText 传入。
+ */
+export interface ShareCollageBadgeInstruction {
+  kind: 'badge'
+  x: number
+  y: number
+  width: number
+  height: number
+  text: string
 }
 
 /** 色块条指令：segments 按 topCategories ratio 分段，colorIndex = SHARE_BAR_COLORS 下标；label 行随条产出（类目名 + 占比，§4.1「色块条 + 类目名」） */
@@ -95,16 +118,28 @@ export interface ShareLayout {
   bars: ShareBarInstruction[]
   rules: ShareRuleInstruction[]
   emblems: ShareEmblemInstruction[]
+  /** 拼贴 +K 角标（v2 §4.2.3）：乙版式产出一条；甲版式/缺省为空数组 */
+  collageBadges: ShareCollageBadgeInstruction[]
 }
+
+/**
+ * 9:16 Stories 分段高度（v2 §4.2.2 裁定：主视觉段比例增大 920、事实段 640、落款 240
+ * 压缩；段界合计 = 1920）。SHARE_SEGMENTS 保持 3:4 基线（既有测试/调用兼容）。
+ */
+export const SHARE_SEGMENTS_9_16 = { header: 120, hero: 920, facts: 640, footer: 240 } as const
+
+/** 拼贴带几何（v2 §4.2.3 裁定：8 张 4 列 × 2 行、槽 3:4 比例、间隙 16） */
+const COLLAGE_COLS = 4
+const COLLAGE_ROWS = 2
+const COLLAGE_GAP = 16
+const COLLAGE_BADGE_W = 88 // +K 角标盒宽（mono 20px「+99 本」内边距充裕）
+const COLLAGE_BADGE_H = 40 // +K 角标盒高
 
 // ---- 版式内部常量（单位：逻辑 px；段内锚点推导自 §4.1 结构与四段界） ----
 const COVER_GAP = 24 // 封面三联槽间隙
 const COVER_SLOTS_MAX = 3 // 槽数上限（slotIndex 0|1|2 枚举宽度）
 
 const LIST_ROW_H = 56 // ③ 榜单行高
-const LIST_FIRST_Y = 740 // ③ 榜单首行基线（段顶 680 + 两行版间距）
-const LEGEND_FIRST_Y = 940 // ③ 图例首行基线（榜单 3 行后；3 行时末行 1020，Δ 行 1048 前留 28 间隙）
-const DELTA_Y = 1048 // ③ Δ 对照行基线
 const SUM_MAX_LINES = 2 // ④ 总结句两行 clamp（§4.1 canvas 内文本截断）
 const SUM_LINE_H = 40 // ④ 总结句行高（28px body 宽松行距）
 const EMBLEM_SIZE = 44 // ① 品牌徽标边长（favicon 同构圆弧 + 三书脊）
@@ -125,10 +160,14 @@ export function computeShareLayout(
   content: ShareContent,
   opts: ShareLayoutOptions,
 ): ShareLayout {
-  const { width, margin } = SHARE_CANVAS
-  const contentW = width - margin * 2 // 内容横宽（左右边距之间）
-  const left = margin
-  const right = width - margin
+  const variant = opts.variant ?? '3:4'
+  const height = variant === '9:16' ? 1920 : SHARE_CANVAS.height
+  const segs = variant === '9:16' ? SHARE_SEGMENTS_9_16 : SHARE_SEGMENTS
+  const segTop = { header: 0, hero: segs.header, facts: segs.header + segs.hero, footer: segs.header + segs.hero + segs.facts }
+  const width = SHARE_CANVAS.width
+  const contentW = width - SHARE_CANVAS.margin * 2 // 内容横宽（左右边距之间）
+  const left = SHARE_CANVAS.margin
+  const right = width - SHARE_CANVAS.margin
 
   // ---- 指令收集器（push 序即渲染序） ----
   const textBlocks: ShareTextInstruction[] = []
@@ -136,9 +175,11 @@ export function computeShareLayout(
   const bars: ShareBarInstruction[] = []
   const rules: ShareRuleInstruction[] = []
   const emblems: ShareEmblemInstruction[] = []
-  // ---- ① 标识段（y[0,120)）：徽标 + 年份大字（title/ink）左 + 字标（mono）右 + 段底罫线 ----
-  // 年份大字与字标共基线：段内偏高（约 0.72 段高，容 56px 字形下行）
-  const headerBaselineY = Math.round(SHARE_SEGMENTS.header * 0.72)
+  const collageBadges: ShareCollageBadgeInstruction[] = []
+
+  // ---- ① 标识段（y[0,header)）：徽标 + 年份大字（title/ink）左 + 字标（mono）右 + 段底罫线 ----
+  // 年份大字与字标共基线：段内偏高（约 0.72 段高，容 56px 字形下行）。两 variant 共用公式。
+  const headerBaselineY = Math.round(segs.header * 0.72)
   // 徽标与标题**视觉对齐**：56px 明朝 cap 高 ≈ 0.72em，字形视觉中心在基线上方约 20px
   // （cap/2），徽标盒中心对到该视觉中心（而非段盒居中——那是与基线 86 的文字盒错位的根源）。
   const titleOpticalCenterY = headerBaselineY - TITLE_OPTICAL_HALF
@@ -163,46 +204,96 @@ export function computeShareLayout(
     align: 'right',
     color: 'muted',
   })
-  rules.push({ x: left, y: SHARE_SEGMENTS.header - 1, width: contentW })
+  rules.push({ x: left, y: segs.header - 1, width: contentW })
 
-  // ---- ② 主视觉段（y[120,680)）：Top 3 封面三联 + 主数字（R2 甲） ----
-  const items = content.topItems.slice(0, COVER_SLOTS_MAX)
-  if (items.length > 0) {
-    const coverW = (contentW - COVER_GAP * (COVER_SLOTS_MAX - 1)) / COVER_SLOTS_MAX
-    const coverH = (coverW * 4) / 3 // 封面 3:4（槽高 = 宽 * 4/3）
-    const groupW = items.length * coverW + COVER_GAP * (items.length - 1)
-    // 不足 3 槽时整组居中：槽宽与间隙不变，左右留白对分
-    const groupX = left + (contentW - groupW) / 2
-    // 整组在段内垂直居中（组高 = 槽高），主数字基线另置槽组下方
-    const coverY = SHARE_SEGMENTS.header + (SHARE_SEGMENTS.hero - coverH) / 2
-    items.forEach((item, i) => {
+  // ---- ② 主视觉段：乙版式拼贴带（v2 §4.2.3，content.collage 非 null）或甲版式三联（R2 甲） ----
+  const heroTop = segTop.hero
+  const collage = content.collage
+  if (collage !== null && collage.items.length > 0) {
+    // 拼贴带：4 列 × 2 行网格、槽 3:4、间隙 16；行数随实际槽数（< 8 → 末行居中收排）。
+    // 槽尺寸：高 = (段高 − 16) / 2（2 行满段高）；宽 = 高 × 3/4；宽超列限反推（9:16 以宽为限）。
+    const rows = Math.ceil(collage.items.length / COLLAGE_COLS)
+    let slotH = (segs.hero - COLLAGE_GAP) / COLLAGE_ROWS
+    let slotW = (slotH * 3) / 4
+    const maxSlotW = (contentW - COLLAGE_GAP * (COLLAGE_COLS - 1)) / COLLAGE_COLS
+    if (slotW > maxSlotW) {
+      slotW = maxSlotW
+      slotH = (slotW * 4) / 3
+    }
+    const gridH = rows * slotH + (rows - 1) * COLLAGE_GAP
+    const gridY = heroTop + (segs.hero - gridH) / 2
+    collage.items.forEach((item, i) => {
+      const row = Math.floor(i / COLLAGE_COLS)
+      const rowCols = Math.min(COLLAGE_COLS, collage.items.length - row * COLLAGE_COLS)
+      const rowW = rowCols * slotW + (rowCols - 1) * COLLAGE_GAP
+      const rowX = left + (contentW - rowW) / 2 // 末行不满 → 行内居中
+      const col = i % COLLAGE_COLS
       coverSlots.push({
-        x: groupX + i * (coverW + COVER_GAP),
-        y: coverY,
-        width: coverW,
-        height: coverH,
-        slotIndex: i as 0 | 1 | 2,
+        x: rowX + col * (slotW + COLLAGE_GAP),
+        y: gridY + row * (slotH + COLLAGE_GAP),
+        width: slotW,
+        height: slotH,
+        slotIndex: i as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7,
         placeholderChar: item.title.trim().charAt(0) || '·',
       })
     })
+    // +K 角标：贴末槽右下角内侧（直角纸面盒 + mono ink 文本，§4.2.3）
+    if (opts.collageMoreText) {
+      const last = coverSlots[coverSlots.length - 1]!
+      collageBadges.push({
+        kind: 'badge',
+        x: last.x + last.width - COLLAGE_BADGE_W,
+        y: last.y + last.height - COLLAGE_BADGE_H,
+        width: COLLAGE_BADGE_W,
+        height: COLLAGE_BADGE_H,
+        text: opts.collageMoreText,
+      })
+    }
+  } else {
+    // 甲版式：Top 3 封面三联 + 主数字次级（R2 甲）
+    const items = content.topItems.slice(0, COVER_SLOTS_MAX)
+    if (items.length > 0) {
+      const coverW = (contentW - COVER_GAP * (COVER_SLOTS_MAX - 1)) / COVER_SLOTS_MAX
+      const coverH = (coverW * 4) / 3 // 封面 3:4（槽高 = 宽 * 4/3）
+      const groupW = items.length * coverW + COVER_GAP * (items.length - 1)
+      // 不足 3 槽时整组居中：槽宽与间隙不变，左右留白对分
+      const groupX = left + (contentW - groupW) / 2
+      // 整组在段内垂直居中（组高 = 槽高），主数字基线另置槽组下方
+      const coverY = heroTop + (segs.hero - coverH) / 2
+      items.forEach((item, i) => {
+        coverSlots.push({
+          x: groupX + i * (coverW + COVER_GAP),
+          y: coverY,
+          width: coverW,
+          height: coverH,
+          slotIndex: i as 0 | 1 | 2,
+          placeholderChar: item.title.trim().charAt(0) || '·',
+        })
+      })
+    }
   }
-  // 主数字（bookCount，mono 大号 accent）置于封面行下方段内
+  // 主数字（bookCount，mono 大号 accent）：甲版式置于封面行下方段内；乙版式下沉事实段底
+  // （v2 §4.2.3：拼贴带满段高，Wrapped 式「数字独立位置」）。
+  const numberY = collage !== null ? segTop.facts + segs.facts - 40 : heroTop + segs.hero - 24
   textBlocks.push({
     kind: 'text',
     x: width / 2,
-    y: 656,
+    y: numberY,
     text: String(content.bookCount),
     font: { size: 96, weight: 600, family: 'mono' },
     align: 'center',
     color: 'accent',
   })
 
-  // ---- ③ 事实段（y[680,1200)）：Top 3 榜单 + 分类色块条 + Δ 对照行（R4） ----
+  // ---- ③ 事实段：Top 3 榜单 + 分类色块条 + Δ 对照行（R4）——锚点公式化（§4.2.2） ----
   // 榜单：序号 mono 弱字 + 题名 body（maxWidth/maxLines clamp 交渲染器）+ 次数 mono 右对齐（等宽 tabular 语义）
   const rankColW = 40 // 序号列宽（左边距起）
   const countColW = 128 // 次数右对齐预留列宽
+  const listFirstY = segTop.facts + 60
+  const legendFirstY = listFirstY + 200
+  const deltaY = legendFirstY + 108
   content.topItems.slice(0, COVER_SLOTS_MAX).forEach((item, i) => {
-    const y = LIST_FIRST_Y + i * LIST_ROW_H
+    const y = listFirstY + i * LIST_ROW_H
     textBlocks.push({
       kind: 'text',
       x: left,
@@ -240,7 +331,7 @@ export function computeShareLayout(
   // 占比 mono 右对齐。§4.1「画像图例」。
   const cats = content.topCategories.filter((c) => c.ratio > 0)
   cats.forEach((c, i) => {
-    const y = LEGEND_FIRST_Y + i * LEGEND_ROW_H
+    const y = legendFirstY + i * LEGEND_ROW_H
     bars.push({
       x: left,
       y: y - LEGEND_SWATCH / 2 - 2,
@@ -277,7 +368,7 @@ export function computeShareLayout(
     textBlocks.push({
       kind: 'text',
       x: left,
-      y: DELTA_Y,
+      y: deltaY,
       text: opts.deltaText,
       font: { size: 20, weight: 400, family: 'mono' },
       align: 'left',
@@ -285,12 +376,25 @@ export function computeShareLayout(
     })
   }
 
-  // ---- ④ 落款段（y[1200,1440)）：总结句（body 两行 clamp）+ '@'字标弱字 + 段顶罫线 ----
-  rules.push({ x: left, y: 1200, width: contentW })
+  // ---- ④ 落款段：段顶罫线 + badge 行（v2 §4.2.1，badge 非 null 且有文案才产出）+ 总结句 + '@'字标弱字 ----
+  rules.push({ x: left, y: segTop.footer, width: contentW })
+  if (content.badge !== null && opts.badgeText) {
+    textBlocks.push({
+      kind: 'text',
+      x: left,
+      y: segTop.footer + 64,
+      text: opts.badgeText,
+      font: { size: 24, weight: 600, family: 'body' },
+      align: 'left',
+      color: 'accent',
+      maxWidth: contentW,
+      maxLines: 1,
+    })
+  }
   textBlocks.push({
     kind: 'text',
     x: left,
-    y: 1320,
+    y: segTop.footer + 120,
     text: opts.summaryText,
     font: { size: 28, weight: 400, family: 'body' },
     align: 'left',
@@ -302,7 +406,7 @@ export function computeShareLayout(
   textBlocks.push({
     kind: 'text',
     x: left,
-    y: 1384,
+    y: segTop.footer + 184,
     text: `@${opts.brandText}`,
     font: { size: 20, weight: 400, family: 'mono' },
     align: 'left',
@@ -311,11 +415,12 @@ export function computeShareLayout(
 
   return {
     width,
-    height: SHARE_CANVAS.height,
+    height,
     textBlocks,
     coverSlots,
     bars,
     rules,
     emblems,
+    collageBadges,
   }
 }

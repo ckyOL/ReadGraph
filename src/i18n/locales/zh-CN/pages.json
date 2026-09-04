@@ -340,5 +340,11 @@
   "profile.year.share.summaryNoTop": "共 {{count}} 本 · {{categories}} 类",
   "profile.year.share.summaryNoTop_one": "共 1 本 · {{categories}} 类",
   "profile.year.share.delta": "{{year}}：{{prevCount}} 本",
+  "profile.year.share.badge.reborrow": "《{{title}}》的重借大队长（借了 {{count}} 次）",
+  "profile.year.share.badge.growth": "阅读加速中：{{count}} 本（上年 {{prev}} 本）",
+  "profile.year.share.variant.label": "版式",
+  "profile.year.share.variant.classic": "经典 3:4",
+  "profile.year.share.variant.story": "长图 9:16",
+  "profile.year.share.collageMore": "+{{count}} 本",
   "profile.year.share.brand": "ReadGraph"
 }

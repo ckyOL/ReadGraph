@@ -8,6 +8,7 @@ import type { ShareLayoutOptions } from './share-layout'
 import {
   SHARE_CANVAS,
   SHARE_SEGMENTS,
+  SHARE_SEGMENTS_9_16,
   SHARE_COLORS,
   SHARE_BAR_COLORS,
   computeShareLayout,
@@ -51,6 +52,8 @@ function makeContent(over: Partial<ShareContent> = {}): ShareContent {
     ],
     summary: summaryOf('profile.year.share.summary'),
     delta: { prevBookCount: 21 },
+    badge: null,
+    collage: null,
     ...over,
   }
 }
@@ -449,5 +452,160 @@ describe('纯函数性与降级结构', () => {
     expect(layout.emblems).toHaveLength(1)
     expect(layout.width).toBe(1080)
     expect(layout.height).toBe(1440)
+  })
+})
+
+describe('v2 V-2b：variant 9:16 Stories 变体（reading-profile §4.2.2）', () => {
+  it("缺省（不传 variant）与显式 '3:4' 产出深等价，且与 v1 断言同构（回归门）", () => {
+    const content = makeContent()
+    const implicit = computeShareLayout(content, { ...OPTS })
+    const explicit = computeShareLayout(content, { ...OPTS, variant: '3:4' })
+    expect(implicit).toEqual(explicit)
+    expect(explicit.width).toBe(1080)
+    expect(explicit.height).toBe(1440)
+    // v1 锚点抽查（绝对常量不变）
+    expect(byText(explicit, '27').y).toBe(656)
+    expect(explicit.rules).toEqual([
+      { x: M, y: 119, width: CW },
+      { x: M, y: 1200, width: CW },
+    ])
+  })
+
+  it("常量：SHARE_SEGMENTS 保持 3:4 基线；SHARE_SEGMENTS_9_16 = 120/920/640/240 合计 1920", () => {
+    expect(SHARE_SEGMENTS).toEqual({ header: 120, hero: 560, facts: 520, footer: 240 })
+    expect(SHARE_SEGMENTS_9_16).toEqual({ header: 120, hero: 920, facts: 640, footer: 240 })
+    const s = SHARE_SEGMENTS_9_16
+    expect(s.header + s.hero + s.facts + s.footer).toBe(1920)
+  })
+
+  it("'9:16'：画布 1080×1920、四段区间按新段界", () => {
+    const layout = layoutOf(makeContent(), { ...OPTS, variant: '9:16' })
+    expect(layout.width).toBe(1080)
+    expect(layout.height).toBe(1920)
+    expect(layout.rules).toEqual([
+      { x: M, y: 119, width: CW },
+      { x: M, y: 1680, width: CW },
+    ])
+    // 封面槽整槽落主视觉段 [120, 1040)
+    for (const s of layout.coverSlots) {
+      expect(s.y).toBeGreaterThanOrEqual(120)
+      expect(s.y + s.height).toBeLessThanOrEqual(1040)
+    }
+    // 主数字基线 = 主视觉段底 − 24 = 1016
+    expect(byText(layout, '27').y).toBe(1016)
+    // 榜单首行 = 事实段顶 + 60 = 1100；图例首行 = 1300；Δ 行 = 1408
+    expect(byText(layout, '1').y).toBe(1100)
+    expect(byText(layout, '文学').y).toBe(1300)
+    expect(byText(layout, OPTS.deltaText as string).y).toBe(1408)
+    // 总结句 = 1680 + 120 = 1800；@ 字标 = 1680 + 184 = 1864
+    expect(byText(layout, OPTS.summaryText).y).toBe(1800)
+    expect(byText(layout, '@ReadGraph').y).toBe(1864)
+  })
+
+  it("'9:16' 与 '3:4' 段内结构同构：指令集合文本一致（仅坐标不同）", () => {
+    const content = makeContent()
+    const a = computeShareLayout(content, { ...OPTS })
+    const b = computeShareLayout(content, { ...OPTS, variant: '9:16' })
+    expect(a.textBlocks.map((t) => t.text)).toEqual(b.textBlocks.map((t) => t.text))
+    expect(a.coverSlots).toHaveLength(b.coverSlots.length)
+    expect(a.bars).toHaveLength(b.bars.length)
+  })
+
+  it("'9:16' 徽标锚点不变（标识段公式共用）", () => {
+    const layout = layoutOf(makeContent(), { ...OPTS, variant: '9:16' })
+    expect(layout.emblems).toEqual([{ kind: 'emblem', x: M, y: 86 - 42, size: 44 }])
+  })
+
+  it('纯函数性：9:16 同输入两次调用深等价', () => {
+    const content = makeContent()
+    const opts = { ...OPTS, variant: '9:16' as const }
+    expect(computeShareLayout(content, opts)).toEqual(computeShareLayout(content, opts))
+  })
+})
+
+describe('v2 V-3b：封面拼贴乙版式指令（reading-profile §4.2.3）', () => {
+  function collageContent(over: Partial<ShareContent> = {}): ShareContent {
+    return makeContent({
+      bookCount: 14,
+      topItems: [
+        { title: '三体：地球往事', authors: ['刘慈欣'], coverUrl: null, count: 12 },
+        { title: '百年孤独', authors: ['加西亚·马尔克斯'], coverUrl: null, count: 8 },
+        { title: '历史三', authors: ['作者丙'], coverUrl: null, count: 1 },
+      ],
+      topCategories: [{ name: '文学', ratio: 0.5 }],
+      collage: {
+        items: Array.from({ length: 8 }, (_, i) => ({
+          title: `拼贴书${i + 1}`,
+          authors: [],
+          coverUrl: null,
+        })),
+        overflow: 6,
+      },
+      ...over,
+    })
+  }
+
+  it('collage 非 null → 8 槽 4×2 网格：槽宽 204、槽高 272（= 槽宽×4/3）、slotIndex 0..7', () => {
+    const layout = layoutOf(collageContent())
+    expect(layout.coverSlots).toHaveLength(8)
+    for (const [i, s] of layout.coverSlots.entries()) {
+      expect(s.slotIndex).toBe(i as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7)
+      expect(s.width).toBeCloseTo(204, 6)
+      expect(s.height).toBeCloseTo(272, 6)
+    }
+    // 4 列等差 204+16；2 行：行距 = 槽高 + 16
+    expect(layout.coverSlots[1]!.x - layout.coverSlots[0]!.x).toBeCloseTo(220, 6)
+    expect(layout.coverSlots[4]!.y - layout.coverSlots[0]!.y).toBeCloseTo(288, 6)
+    // 网格横行居中（左右留白相等）、整组段内垂直居中
+    expect(layout.coverSlots[0]!.x - M).toBeCloseTo(RIGHT - (layout.coverSlots[3]!.x + 204), 6)
+    for (const s of layout.coverSlots) {
+      expect(s.y).toBeGreaterThanOrEqual(120)
+      expect(s.y + s.height).toBeLessThanOrEqual(680)
+    }
+  })
+
+  it('collage 非 null → 主数字下沉事实段底（基线 = 1160），badge 角标指令产出（纸面盒 + mono ink 文本）', () => {
+    const layout = layoutOf(collageContent(), { ...OPTS, collageMoreText: '+6' })
+    expect(byText(layout, '14').y).toBe(1160)
+    const badge = layout.collageBadges.find((b) => b.text === '+6')
+    expect(badge).toBeDefined()
+    expect(badge!.text).toBe('+6')
+    expect(badge!.width).toBeGreaterThan(0)
+    // 末槽右下角内侧（3:4：槽 204×272、间隙 16）
+    const slots = layoutOf(collageContent()).coverSlots
+    const lastSlot = slots[slots.length - 1]!
+    expect(badge!.x).toBeCloseTo(lastSlot.x + lastSlot.width - 88, 6)
+    expect(badge!.y).toBeCloseTo(lastSlot.y + lastSlot.height - 40, 6)
+    // 主视觉段内（贴末槽）
+    expect(badge!.y).toBeGreaterThanOrEqual(120)
+    expect(badge!.y + badge!.height).toBeLessThanOrEqual(680)
+  })
+
+  it('collage=null → 甲版式三联路径与 v1 逐字节一致（回归门）', () => {
+    const base = makeContent()
+    const layout = layoutOf(base)
+    expect(layout.coverSlots).toHaveLength(3)
+    // 主数字仍在 hero 段（656），无 badge 文本
+    expect(byText(layout, '27').y).toBe(656)
+    expect(layout.textBlocks.some((b) => b.text.startsWith('+'))).toBe(false)
+  })
+
+  it('拼贴候选 < 8（索引缺书）→ 行居中收排不占位', () => {
+    const content = collageContent({
+      collage: {
+        items: Array.from({ length: 5 }, (_, i) => ({ title: `书${i}`, authors: [], coverUrl: null })),
+        overflow: 9,
+      },
+    })
+    const layout = layoutOf(content)
+    expect(layout.coverSlots).toHaveLength(5)
+    // 第二行 1 张 → 行内居中
+    const last = layout.coverSlots[4]!
+    expect((last.x + last.x + last.width) / 2).toBeCloseTo(W / 2, 6)
+  })
+
+  it('占位字符 = 题名首字（与三联同构）', () => {
+    const layout = layoutOf(collageContent())
+    expect(layout.coverSlots[0]!.placeholderChar).toBe('拼')
   })
 })

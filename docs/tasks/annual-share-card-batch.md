@@ -27,12 +27,12 @@
 
 ## 阶段 1：纯函数层（W1 并行，TDD 核心）
 
-- [ ] **SC-1（W1）** `src/profile/year/share/share-content.ts`：分享图内容收敛纯函数 `buildShareContent(input): ShareContent`：
+- [x] **SC-1（W1）** `src/profile/year/share/share-content.ts`：分享图内容收敛纯函数 `buildShareContent(input): ShareContent`：
   - 输入类型 `ShareContentInput` 为**白名单硬约束面**：仅 `year`、`bookCount`、`topBooks`（Top 3，`{ bookId, count }`）、`classification`（Top 3）、`covers`（`Record<bookId, { title, authors, coverUrl } | undefined>`，year-book-index 同构）、`prevYear`（`{ year, bookCount } | null`，R4 历年对照）——**不含** `annualGoals`/`price`/`barcode`/`isbn13`/馆名字段（类型层面排除；规格 C2、§4.1 白名单审计）。
   - 输出 `ShareContent`：`{ year, bookCount, topItems: { title, authors, coverUrl, count }[]`（≤3，无对应书则跳过）、`topCategories: { name, ratio }[]`（≤3，占比 = value/bookCount）、`summary: { key, params }`（R3 平实总结句 i18n 描述符）、`delta: { prevBookCount } | null` }。
   - 纯函数：无 DOM/时钟/存储；同输入两次调用深等价。
   - 测试（Red 先行）：**黑名单穷举断言**——构造含 `annualGoals`/`price`/`barcode`/`isbn13`/馆名数据，断言 `buildShareContent` 输入类型编译期排除 + 运行时输出序列化文本不含任何黑名单值（逐值断言，同 ai-features §3.3 形态）；Top 3 截取（N>3 舍弃）；占比归一；无上年数据 → `delta=null`；空分类/空 Top3 降级；纯函数性。
-- [ ] **SC-2（W1）** `src/profile/year/share/share-layout.ts`：canvas 逻辑坐标布局纯函数 `computeShareLayout(content: ShareContent, opts: ShareLayoutOptions): ShareLayout`：
+- [x] **SC-2（W1）** `src/profile/year/share/share-layout.ts`：canvas 逻辑坐标布局纯函数 `computeShareLayout(content: ShareContent, opts: ShareLayoutOptions): ShareLayout`：
   - 版式按规格 §4.1 四段（标识段 ~120 / 主视觉段 ~560 / 事实段 ~520 / 落款段 ~240，逻辑高 1440、宽 1080、边距 64）；每段产出**位置化绘制指令**（文本块：坐标/字号/字重/对齐/最大宽/最大行数 clamp；封面槽：坐标/宽高/占位字符；色块条：分段比例与颜色索引；罫线：坐标）。
   - `ShareLayoutOptions`：`yearLabel`（locale 数字格式由调用方传入，布局不触 `Intl`）、`summaryText`（i18n 渲染由调用方完成，布局只消费字符串）、`fontStack`（明朝大标题/sans 正文双栈，规格 §4.1 字体）。
   - 布局与文本内容解耦：布局不调 `t()`、不触 canvas——**同一布局描述可被真实 canvas 渲染器（SC-3）与测试断言（结构/坐标/行数 clamp 断言）共同消费**（防「预览一套导出另一套」漂移的规格基础）。
@@ -40,33 +40,33 @@
 
 ## 阶段 2：渲染与封面加载（W2 并行）
 
-- [ ] **SC-3（W2，前置 SC-2）** `src/profile/year/share/share-canvas.ts`：渲染器 `renderShareCard(canvas, layout, opts): void` + 导出 `exportSharePng(canvas, filename): Promise<void>`：
+- [x] **SC-3（W2，前置 SC-2）** `src/profile/year/share/share-canvas.ts`：渲染器 `renderShareCard(canvas, layout, opts): void` + 导出 `exportSharePng(canvas, filename): Promise<void>`：
   - `renderShareCard`：消费 SC-2 的 `ShareLayout` 指令逐条绘制（`fillText`/`drawImage`/`fillRect`/1px 罫线）；**恒亮色纸面**（R6：`#F9F7F2` 底 + `#2A2A2A` 字，不读当前主题）；数字半角 + tabular（规格 §4.1）；无封面槽绘占位块 `#EAE0D5` + 题名首字。
   - `exportSharePng`：`canvas.toBlob('image/png')` → `URL.createObjectURL` → `<a download="readgraph-annual-{year}.png">` 点击 → revoke；失败向上抛（Dialog 层 toast，规格状态表）。
   - devicePixelRatio ×2 定标（1080×1440 逻辑 → 2160×2880 物理）保证锐度；预览与导出**同一渲染函数**（预览缩放仅 CSS，规格「预览即导出」硬约束）。
   - 测试：vitest `node` 环境（现状，无 jsdom）——canvas 不可真实绘制，按 repo 既有「cheap stand-ins」模式（参照 `src/lib/locale.test.ts`）注入记录型 2D context stub：断言指令序列（drawImage 顺序=封面槽、占位槽 fillRect 色值、fillText 参数=坐标+字号、罫线调用数）；`toBlob` 失败路径（stub 抛错 → `exportSharePng` reject）；dpr 定标参数断言。**不引入 node-canvas/happy-dom**（供应链面零新增）。
-- [ ] **SC-4（W2，前置 SC-1）** `src/profile/year/share/share-cover-loader.ts`：封面渐进加载纯编排 `loadShareCovers(covers, { onEach }): Promise<void>`：
+- [x] **SC-4（W2，前置 SC-1）** `src/profile/year/share/share-cover-loader.ts`：封面渐进加载纯编排 `loadShareCovers(covers, { onEach }): Promise<void>`：
   - 逐张 `Image` + `crossOrigin='anonymous'` 试加载（规格「封面加载时序」）；成功 → `onEach(bookId, img)` 回调触发局部重绘；失败/超时不重试不阻断（单张 timeout 常量）。
   - 无网络字体（C1）同约束此处不涉及；不触 Dialog/React 状态（回调注入，UI 层接线）。
   - 测试（mock `Image` 构造器 + `load`/`error` 事件手动触发）：成功回调逐张触发；CORS 失败（error 事件）→ 跳过不重试；全部失败 → resolve 不抛错；`crossOrigin` 属性断言；无 coverUrl 的书不发起加载。
 
 ## 阶段 3：UI 接线（W3 并行）
 
-- [ ] **SC-5（W3，前置 SC-3 + SC-4）** `src/profile/year/share/share-dialog.tsx`：Dialog 预览组件（`dialog.tsx` 既有组件，按需 import）：
+- [x] **SC-5（W3，前置 SC-3 + SC-4）** `src/profile/year/share/share-dialog.tsx`：Dialog 预览组件（`dialog.tsx` 既有组件，按需 import）：
   - 打开时一次构建：`buildShareContent` → i18n summary/delta 文案渲染（`t()`）→ `computeShareLayout` → `renderShareCard` 到预览 canvas（`role="img"` + `aria-label` `profile.year.share.previewAria`）；封面由 SC-4 渐进补入（回调局部重绘）。
   - 动作：[下载 PNG]（主按钮 → `exportSharePng`；失败 toast `profile.year.share.error`，Dialog 不关闭）；[系统分享]（`navigator.share({ files })` 支持检测 `canShare` → 支持才渲染，File 构造自同一 Blob）。
   - 隐私注脚（`profile.year.share.privacyNote`）；**无任何持久化**（关闭即弃，不做 localStorage/IndexedDB 写）；数据变更不实时重绘（打开时刻快照语义，规格交互流程）。
   - i18n key 消费走 `t()` 取值路径断言（不断言字面量，i18n-conventions §8）。
   - 测试（`renderToStaticMarkup` + mock canvas/toBlob，参照 `profile.$year.test.tsx` 模式）：Dialog 打开渲染 canvas 与 aria-label；下载按钮触发 `exportSharePng`（mock 断言文件名）；`canShare` false → 系统分享按钮不渲染；空内容降级（Top 3 空 → 占位文案）。
-- [ ] **SC-6（W3，前置 SC-4 + SC-5；同文件改动 = `profile.$year.tsx` 唯一波次）** 入口接线 + i18n：
+- [x] **SC-6（W3，前置 SC-4 + SC-5；同文件改动 = `profile.$year.tsx` 唯一波次）** 入口接线 + i18n：
   - `src/routes/profile.$year.tsx` 书单区块标题行右侧「分享图」次按钮（GhostButton + `Share2Icon`，规格入口流程）：`slice !== null && slice.bookCount > 0` 才渲染（C7；`bundle-conditional` 三元非 `&&`）；点击挂载 SC-5 Dialog（lazy 动态加载，`bundle-dynamic-imports`——分享模块不进年度视图主包）。
   - i18n `profile.year.share.*` 双语同步补齐（`src/i18n/locales/{zh-CN,en}/pages.json`）：`share.button`/`share.dialogTitle`/`share.download`/`share.systemShare`/`share.privacyNote`/`share.error`/`share.previewAria`/`share.summary`（R3 平实句，含 `{count}`/`{categories}`/`{topCategory}` 插值）/`share.delta`（`{prevCount}` 插值，R4）/`share.brand`（字标）；对齐 [i18n-conventions](../i18n-conventions.md) 两语同时补齐 + 复数形态（`_one` 后缀先例）。
   - 测试：`bookCount=0` → 无分享按钮（C7 渲染断言）；按钮 aria/title 走 `t()` 取值路径；`year-book-grid` 标题行布局不破（快照或结构断言）。
 
 ## 阶段 4：验证（W4）
 
-- [ ] **SC-7（W4）** Vitest 全量回归：SC-1–SC-6 各阶段用例 + 既有全部用例绿；`pnpm exec tsc --noEmit` + `pnpm build` 通过；`pnpm audit --audit-level=high` 通过（零新增依赖，预期无告警）。
-- [ ] **SC-8（W4）** Playwright E2E 增补（`e2e/profile-annual.spec.ts`，规格 §7 E2E 行）：
+- [x] **SC-7（W4）** Vitest 全量回归：SC-1–SC-6 各阶段用例 + 既有全部用例绿；`pnpm exec tsc --noEmit` + `pnpm build` 通过；`pnpm audit --audit-level=high` 通过（零新增依赖，预期无告警）。
+- [x] **SC-8（W4）** Playwright E2E 增补（`e2e/profile-annual.spec.ts`，规格 §7 E2E 行）：
   - 点「分享图」→ Dialog 预览渲染（canvas 元素 + aria-label 走 t()）；下载按钮触发 download 事件且文件名 `readgraph-annual-{year}.png`。
   - 无封面 fixture（导入不含 coverUrl 数据）→ 占位版式出图不报错；暗色模式打开 → canvas 亮色底像素断言（R6，`getComputedStyle`/像素采样先例同 `e2e/profile.spec.ts` canvas 采样）。
   - 多 locale 切换 → Dialog 内文案切换（图内文字由同一 `t()` 链路产出）；关闭 Dialog → 无持久化残留（localStorage key 数量断言）；空年无分享按钮（C7）。
@@ -115,20 +115,18 @@ pnpm audit --audit-level=high                          # SC-7
   - 总结句插值（R3）：zh `共 {count} 本 · {categories} 类 · 最爱{topCategory}`，en `{count} books · {categories} categories · mostly {topCategory}`；`{count}` 复数走 `_one` 后缀先例；`{topCategory}` 取 Top 1 分类名，无分类 → 省略该段（zh `共 {count} 本 · {categories} 类`）。
 - **D. 验收 checklist（规格 §7 验收行逐条）**：
 
-- [ ] `/profile/2025`（有数据）→ 点「分享图」→ Dialog 预览：题名/作者/Top 3/分类条与 `computeYearSlice` 产物一致（数字同源断言）；下载得到 1080×1440 PNG；
-- [ ] 数据白名单断言：渲染函数输入不含 `annualGoals`/`price`/`barcode`/`isbn13`/馆名（SC-1 编译期 + 运行时断言）；
-- [ ] 无封面书 → 占位块显题名首字；封面 CORS 失败 → 占位降级出图不报错；
-- [ ] 空年（`bookCount=0`）→ 无分享按钮；多 locale → 图内文字随 `t()` 切换；ja locale 字体栈降级路径出图不崩；
-- [ ] 关闭 Dialog 无任何持久化残留；`navigator.share` 不支持时按钮不渲染。
+- [x] `/profile/2025`（有数据）→ 点「分享图」→ Dialog 预览：题名/作者/Top 3/分类条与 `computeYearSlice` 产物一致（数字同源断言）；下载得到 1080×1440 PNG；
+- [x] 数据白名单断言：渲染函数输入不含 `annualGoals`/`price`/`barcode`/`isbn13`/馆名（SC-1 编译期 + 运行时断言）；
+- [x] 无封面书 → 占位块显题名首字；封面 CORS 失败 → 占位降级出图不报错；
+- [x] 空年（`bookCount=0`）→ 无分享按钮；多 locale → 图内文字随 `t()` 切换；ja locale 字体栈降级路径出图不崩；
+- [x] 关闭 Dialog 无任何持久化残留；`navigator.share` 不支持时按钮不渲染。
 
-- **E. 后置阶段（不在本批次）**：
-  - **人格化称号**（R3 留 v2）：纯函数派生称号规则（复借 ≥3 次/同比增速/兜底句），需单独规格（占比阈值文化差异、en 文案独立裁定）。
-  - **9:16 Stories 变体**（R5 记增强）：`ShareLayoutOptions` 增 `variant: '3:4' | '9:16'`，布局函数分段高度重排；双版式切换 UI（SegmentedControl 先例在位）。
-  - **封面拼贴乙版式**（R2 留 v2）：bookCount 大时封面拼贴带 + 「+K 本」；复用 SC-1 `covers` 与 SC-4 loader，仅布局扩展。
+- **E. 后置阶段（不在本批次，已立项 v2）**：
+  - **人格化称号**（R3 留 v2）/ **9:16 Stories 变体**（R5 记增强）/ **封面拼贴乙版式**（R2 留 v2）——三项均已立项至 [annual-share-card-v2-batch.md](./annual-share-card-v2-batch.md)（V-1/V-2/V-3，含规格波 SDD 门禁与收尾遗留 V-0）。
 - **F. 依赖**：
 
 **零新增运行时依赖确认**（R1 裁定）：分享图运行时 = 原生 `Canvas 2D API` + `Image` + `canvas.toBlob` + `URL.createObjectURL` + `navigator.share`（特性检测）；UI 层复用既有 `dialog.tsx`/`lucide-react`/`zod`。无任何新包引入，无需过 npm-supply-chain-security §3 审查门；测试不引入 node-canvas/happy-dom（stub 模式，SC-3 测试策略）。
 
 ## 状态
-
 - 2026-09-03 建档：设计调研与 UI/UX 规格定稿（R1–R6 裁定记录落 reading-profile §4.1；调研记录落 [research/annual-share-card.md](../research/annual-share-card.md)；原草案 `docs/tasks/annual-share-card-design.md` 拆分后移除）。阶段 1–4 待启动；推进顺序 SC-1/SC-2（W1 并行）→ SC-3/SC-4（W2）→ SC-5/SC-6（W3）→ SC-7/SC-8（W4）。
+- 2026-09-04 **批次完成**：SC-1–SC-8 四波全部落地（`6bc4b0d` W1 → `f274781` W2 → `8ec81ad` W3 → `349dd13` W4），另有两笔截图反馈修正（`be52683` 标题/徽标/分类图例、`1db9165` 图例逐行/Dialog 视口适配/入口迁至工具条右上角，裁定增量落 reading-profile §4.1 2026-09-03 修正注记）。门禁：`pnpm test` 1080 用例全绿、`tsc --noEmit` 过、`pnpm build` 过（`share-dialog-*.js` 独立 chunk 保持 lazy）、`e2e/profile-annual.spec.ts` 20/20 绿。后续任务（§E v2 三项 + 收尾遗留）立项 [annual-share-card-v2-batch.md](./annual-share-card-v2-batch.md)。
