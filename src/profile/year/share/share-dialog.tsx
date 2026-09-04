@@ -170,19 +170,29 @@ export function ShareDialog({ open, onOpenChange, year, slice, bookIndex, prevYe
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px]" data-slot="share-dialog">
+      {/* 视口适配（2026-09-04）：3:4 预览在笔记本竖向空间不足 → canvas 高度锚定
+          min(55vh, 540px 宽对应高)，宽度随之自适应（aspect-ratio 保形，不裁切不滚动）；
+          Dialog 本体 max-h + overflow-y-auto 兜底极矮视口（动作行永不因溢出不可达）。
+          DialogFooter 置底吸边，按钮常可见。 */}
+      <DialogContent
+        className="flex max-h-[100dvh-2rem] flex-col gap-3 overflow-y-auto p-4 sm:max-w-[560px]"
+        data-slot="share-dialog"
+      >
         <DialogHeader>
           <DialogTitle>{t('profile.year.share.dialogTitle')}</DialogTitle>
           <DialogDescription>{t('profile.year.share.privacyNote')}</DialogDescription>
         </DialogHeader>
-        <canvas
-          ref={canvasRef}
-          role="img"
-          aria-label={ariaLabel}
-          data-slot="share-preview-canvas"
-          className="w-full rounded-md border border-border bg-background"
-        />
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={ariaLabel}
+            data-slot="share-preview-canvas"
+            className="h-auto max-h-[min(55vh,720px)] w-auto max-w-full self-center rounded-md border border-border bg-background"
+            style={{ aspectRatio: '3 / 4' }}
+          />
+        </div>
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 bg-popover pb-1">
           {canShare ? (
             <Button variant="ghost" onClick={() => void handleSystemShare()}>
               {t('profile.year.share.systemShare')}

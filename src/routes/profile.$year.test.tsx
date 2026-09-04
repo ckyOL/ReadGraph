@@ -264,17 +264,19 @@ describe('ProfileYearPage — 空年/全库空/加载态', () => {
 })
 
 describe('ProfileYearPage — 分享图入口（SC-6，annual-share-card-batch）', () => {
-  it('数据年 → 书单标题行渲染分享图按钮（aria/title 走 t() 取值路径）', () => {
+  it('数据年 → 页首工具条右上角渲染分享图按钮（aria/title 走 t() 取值路径）', () => {
     const f = fixtures()
     useLiveQueryMock.mockReturnValue(entitiesOf(f))
     const html = renderYearPage(2026)
     expect(html).toContain('data-slot="share-button"')
     expect(html).toContain(i18n.t('pages:profile.year.share.button'))
-    // 标题行结构不破：h2 与按钮同处 year-book-grid 区块
-    const gridStart = html.indexOf('data-slot="year-book-grid"')
+    // 按钮在页首工具条（year-nav）行内右缘：share-button 位于 nav 标记之后、概览卡之前
+    const navStart = html.indexOf('data-slot="year-nav-prev"')
     const buttonStart = html.indexOf('data-slot="share-button"')
-    expect(gridStart).toBeGreaterThanOrEqual(0)
-    expect(buttonStart).toBeGreaterThan(gridStart)
+    const summaryStart = html.indexOf('data-slot="year-summary-card"')
+    expect(navStart).toBeGreaterThanOrEqual(0)
+    expect(buttonStart).toBeGreaterThan(navStart)
+    expect(buttonStart).toBeLessThan(summaryStart)
   })
 
   it('空年（bookCount=0）→ 无分享按钮（C7 空年不入口）', () => {

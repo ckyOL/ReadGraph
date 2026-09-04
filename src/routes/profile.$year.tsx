@@ -1,11 +1,12 @@
 // 年度视图路由（/profile/$year，Phase 2 静态骨架 + AI 叙事区：reading-profile §4/§2.7、
 // ai-features §9.1）。静态骨架（非 AI，本地直出）：年份导航 → 概览窄卡行（年度目标进度卡
-// + 本年借阅卡）→ 最常借 Top 5 → 年度书单封面网格（标题行含分享图入口）→ AI 年度叙事区
-// （U-2）；数字全部来自单次 computeYearSlice 产物（数字同源，分享图 prevYear 同链路）。
+// + 本年借阅卡）→ 最常借 Top 5 → 年度书单封面网格 → AI 年度叙事区
+// （U-2）；分享图入口在页首工具条右上角（2026-09-04 从书单标题行迁出）；数字全部来自单次 computeYearSlice 产物（数字同源，分享图 prevYear 同链路）。
 // AI 叙事区按 aiEnabled 门控 + lazy 动态加载（§8 bundle-dynamic-imports：AI 未启用不拉
 // src/ai/ chunk）；分享图 Dialog 同款 lazy（bookCount=0 不渲染，chunk 不拉）。
 // 页面只读（目标编辑在设置页）。
 import { lazy, memo, Suspense, useMemo, useState, useTransition } from 'react'
+import type { ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -28,8 +29,8 @@ import {
 } from '@/components/ui/empty'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { YearGoalCard } from '@/profile/year/year-goal-card'
-import { YearTopBooks } from '@/profile/year/year-top-books'
 import { YearBookGrid } from '@/profile/year/year-book-grid'
+import { YearTopBooks } from '@/profile/year/year-top-books'
 import type { YearBookIndexEntry } from '@/profile/year/year-book-index'
 // 年度叙事区按需动态加载（bundle-dynamic-imports / bundle-conditional）：
 // aiEnabled=false 时不渲染 lazy 组件 → chunk 不加载，AI 默认关闭不拉主包。
@@ -175,6 +176,23 @@ export function ProfileYearPage({
   const [shareOpen, setShareOpen] = useState(false)
   const goal = readPreferences().annualGoals[year] ?? null
 
+  // 分享图入口（2026-09-04：从书单标题行移到年度页右上角——「整页导出动作」而非书单局部）：
+  // 非空年才渲染按钮（C7 空年不入口），bundle-conditional 三元非 &&。
+  const shareButton =
+    slice !== null && slice.bookCount > 0 ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        data-slot="share-button"
+        aria-label={t('profile.year.share.button')}
+        title={t('profile.year.share.button')}
+        onClick={() => setShareOpen(true)}
+      >
+        <Share2Icon aria-hidden="true" />
+        {t('profile.year.share.button')}
+      </Button>
+    ) : null
+
   const yearLabel = new Intl.NumberFormat(i18n.language).format(year)
 
   const yearEmptyTitle = t('profile.year.empty.title')
@@ -215,7 +233,7 @@ export function ProfileYearPage({
 
   return (
     <div className="flex flex-col p-6">
-      <YearNav yearLabel={yearLabel} isPending={isPending} onNav={onNav} />
+      <YearNav yearLabel={yearLabel} isPending={isPending} onNav={onNav} action={shareButton} />
 
       {/* 概览窄卡行：年度目标进度卡 + 本年借阅卡（与 /profile 概览行同款窄卡） */}
       <div className="relative mt-4 grid grid-cols-2 gap-3" aria-busy={isPending}>
@@ -250,21 +268,6 @@ export function ProfileYearPage({
           bookIndex={bookIndex}
           emptyTitle={yearEmptyTitle}
           emptyDescription={yearEmptyDesc}
-          headerAction={
-            slice !== null && slice.bookCount > 0 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                data-slot="share-button"
-                aria-label={t('profile.year.share.button')}
-                title={t('profile.year.share.button')}
-                onClick={() => setShareOpen(true)}
-              >
-                <Share2Icon aria-hidden="true" />
-                {t('profile.year.share.button')}
-              </Button>
-            ) : null
-          }
         />
       </ErrorBoundary>
 
@@ -311,16 +314,17 @@ export function ProfileYearPage({
     </div>
   )
 }
-
 /** 顶部工具条行：年份导航（‹/›） + 标题「{year} 年度回顾」（年号随 locale 数字格式）。 */
 const YearNav = memo(function YearNav({
   yearLabel,
   isPending,
   onNav,
+  action = null,
 }: {
   yearLabel: string
   isPending: boolean
   onNav: (delta: number) => void
+  action?: ReactNode
 }) {
   const { t } = useTranslation('pages')
   // 导航已由页面层 startTransition 包装（rerender-transitions）；此处仅做 in-flight 门控。
@@ -351,6 +355,8 @@ const YearNav = memo(function YearNav({
         </Button>
       </span>
       <h1 className="text-2xl font-bold">{t('profile.year.title', { year: yearLabel })}</h1>
+      {/* 右上角动作插槽（SC-6 分享图入口；ml-auto 推到行右缘，标题独占左侧） */}
+      {action ? <div className="ml-auto">{action}</div> : null}
     </div>
   )
 })

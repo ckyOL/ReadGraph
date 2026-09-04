@@ -1,6 +1,6 @@
 // 分享图 canvas 逻辑坐标布局纯函数（annual-share-card-batch SC-2；reading-profile §4.1）。
 // 版式：1080×1440（3:4）恒亮色纸面，上→下四段（标识 ~120 / 主视觉 ~560 / 事实 ~520 / 落款 ~240），
-// 边距 64。每段产出位置化绘制指令（文本块/封面槽/色块条/罫线），由渲染器（SC-3）逐条消费。
+// 边距 64。每段产出位置化绘制指令（文本块/封面槽/图例色块/罫线），由渲染器（SC-3）逐条消费。
 // 纯函数：无 DOM/canvas/时钟/存储；不触 Intl/t()——yearLabel/summaryText/deltaText/brandText
 // 均为调用方 t() 渲染后的字符串（C5），布局只做定位与 clamp 参数携带（字符级截断归渲染器）。
 import type { ShareContent } from './share-content'
@@ -103,16 +103,17 @@ const COVER_SLOTS_MAX = 3 // 槽数上限（slotIndex 0|1|2 枚举宽度）
 
 const LIST_ROW_H = 56 // ③ 榜单行高
 const LIST_FIRST_Y = 740 // ③ 榜单首行基线（段顶 680 + 两行版间距）
-const BAR_Y = 940 // ③ 分类色块条顶 y
-const BAR_LABEL_Y = 996 // ③ 色块条类目名行基线（条底 + 40 版间距）
+const LEGEND_FIRST_Y = 940 // ③ 图例首行基线（榜单 3 行后；3 行时末行 1020，Δ 行 1048 前留 28 间隙）
 const DELTA_Y = 1048 // ③ Δ 对照行基线
 const SUM_MAX_LINES = 2 // ④ 总结句两行 clamp（§4.1 canvas 内文本截断）
 const SUM_LINE_H = 40 // ④ 总结句行高（28px body 宽松行距）
 const EMBLEM_SIZE = 44 // ① 品牌徽标边长（favicon 同构圆弧 + 三书脊）
 const EMBLEM_TITLE_GAP = 20 // ① 徽标右缘与标题左缘间隙
 const TITLE_OPTICAL_HALF = 20 // 56px 明朝 cap 高 ≈ 0.72em → 视觉半高（基线上方）
-const BAR_LABEL_GAP = 16 // ③ 类目名行段间避让间隙（maxWidth 预留）
-const BAR_LABEL_MIN_W = 24 // ③ 类目名最小可读宽（低于此跳过标注，防挤压重叠）
+const LEGEND_SWATCH = 20 // ③ 图例色块边长（与占比数字 20px mono 同高）
+const LEGEND_SWATCH_GAP = 14 // ③ 色块右缘与类目名左缘间隙
+const LEGEND_ROW_H = 40 // ③ 图例行高
+const LEGEND_RATIO_GAP = 16 // ③ 类目名与右对齐占比之间的最小间隙（maxWidth 预留）
 const PERCENT_UNIT = ' %' // 类目名行百分号空隙（EN 数字窄空隙语义）
 
 /**
@@ -233,39 +234,43 @@ export function computeShareLayout(
     })
   })
 
-  // 分类色块条：x=64 通栏横向条，segments 按 topCategories ratio 分段、colorIndex = 产出序
-  // （ratio=0 的段不产出，colorIndex 连续）；类目名行随条产出——「name N%」左起对位各段，
-  // maxWidth = 段宽 - GAP（长类目名段内截断加省略号，绝不挤进下一段），段可用宽低于
-  // MIN_W 时跳过标注（占位比截断残字可读）。§4.1「分类色块条 + 类目名」。
+  // 分类图例行（2026-09-04 定稿：横条逐段标注在窄段被省略号截断或整段跳过 → 改逐行
+  // 图例）：每行 = 20px 色块（SHARE_BAR_COLORS[colorIndex]）+ 类目名 body 整行宽
+  // （maxWidth = 右缘 - 占比预留列 - 间隙，长类目名仍截断加省略号但横宽充裕）+
+  // 占比 mono 右对齐。§4.1「画像图例」。
   const cats = content.topCategories.filter((c) => c.ratio > 0)
-  if (cats.length > 0) {
+  cats.forEach((c, i) => {
+    const y = LEGEND_FIRST_Y + i * LEGEND_ROW_H
     bars.push({
       x: left,
-      y: BAR_Y,
-      width: contentW,
-      height: 16,
-      segments: cats.map((c, i) => ({ ratio: c.ratio, colorIndex: i, label: c.name })),
+      y: y - LEGEND_SWATCH / 2 - 2,
+      width: LEGEND_SWATCH,
+      height: LEGEND_SWATCH,
+      segments: [{ ratio: 1, colorIndex: i, label: c.name }],
     })
-    let lx = left
-    cats.forEach((c, i) => {
-      const segW = c.ratio * contentW
-      const labelW = segW - BAR_LABEL_GAP
-      if (labelW >= BAR_LABEL_MIN_W) {
-        textBlocks.push({
-          kind: 'text',
-          x: lx,
-          y: BAR_LABEL_Y,
-          text: `${c.name} ${Math.round(c.ratio * 100)}${PERCENT_UNIT}`,
-          font: { size: 18, weight: 400, family: 'body' },
-          align: 'left',
-          color: i === 0 ? 'ink' : 'muted',
-          maxWidth: labelW,
-          maxLines: 1,
-        })
-      }
-      lx += segW
+    const ratioColW = 64 // 「100 %」mono 20px 预留宽（右对齐）
+    const nameX = left + LEGEND_SWATCH + LEGEND_SWATCH_GAP
+    textBlocks.push({
+      kind: 'text',
+      x: nameX,
+      y,
+      text: c.name,
+      font: { size: 24, weight: 400, family: 'body' },
+      align: 'left',
+      color: 'ink',
+      maxWidth: right - nameX - ratioColW - LEGEND_RATIO_GAP,
+      maxLines: 1,
     })
-  }
+    textBlocks.push({
+      kind: 'text',
+      x: right,
+      y,
+      text: `${Math.round(c.ratio * 100)}${PERCENT_UNIT}`,
+      font: { size: 20, weight: 400, family: 'mono' },
+      align: 'right',
+      color: 'muted',
+    })
+  })
 
   // R4：历年对照行——有上年数据（delta 非 null）且调用方给出行文案才产出；否则无任何对照行指令
   if (content.delta !== null && opts.deltaText) {

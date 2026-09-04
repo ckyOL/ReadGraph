@@ -277,51 +277,39 @@ describe('③ 事实段榜单行', () => {
     expect(byText(layout, '5').text).toBe('5')
   })
 })
+describe('分类图例行（segments = topCategories ratio，逐行图例）', () => {
 
-describe('分类色块条（segments = topCategories ratio）', () => {
-  const layout = layoutOf(makeContent())
-
-  it('单条横向条：x=64、宽 1080-128、高 16、y=940', () => {
-    expect(layout.bars).toHaveLength(1)
-    const bar = layout.bars[0]
-    expect(bar.x).toBe(M)
-    expect(bar.width).toBe(CW)
-    expect(bar.y).toBe(940)
-    expect(bar.height).toBe(16)
-  })
-
-  it('类目名行随条产出：「name N%」左起对位各段，y=996；maxWidth = 段宽 - 16（长名段内截断不挤下一段）；首段 ink 余段 muted', () => {
+  it('逐行图例：每类目一条指令 = 色块（20px，x=64，y = 基线-12）+ 类目名 + 占比 mono 右对齐，行高 40、自 y=940 起', () => {
+    const layout = layoutOf(makeContent())
     const cats = makeContent().topCategories
-    let lx = M
+    expect(layout.bars).toHaveLength(cats.length)
     cats.forEach((cat, i) => {
-      const label = byText(layout, `${cat.name} ${Math.round(cat.ratio * 100)} %`)
-      expect(label.x).toBe(lx)
-      expect(label.y).toBe(996)
-      expect(label.font).toEqual({ size: 18, weight: 400, family: 'body' })
-      expect(label.color).toBe(i === 0 ? 'ink' : 'muted')
-      expect(label.maxWidth).toBe(cat.ratio * CW - 16)
-      expect(label.maxLines).toBe(1)
-      lx += cat.ratio * CW
+      const y = 940 + i * 40
+      const swatch = layout.bars[i]
+      expect(swatch).toEqual({
+        x: M,
+        y: y - 12,
+        width: 20,
+        height: 20,
+        segments: [{ ratio: 1, colorIndex: i, label: cat.name }],
+      })
+      const name = byText(layout, cat.name)
+      expect(name.x).toBe(M + 34) // 色块 20 + 间隙 14
+      expect(name.y).toBe(y)
+      expect(name.font).toEqual({ size: 24, weight: 400, family: 'body' })
+      expect(name.color).toBe('ink')
+      expect(name.maxWidth).toBe(RIGHT - (M + 34) - 64 - 16)
+      expect(name.maxLines).toBe(1)
+      const ratio = byText(layout, `${Math.round(cat.ratio * 100)} %`)
+      expect(ratio.x).toBe(RIGHT)
+      expect(ratio.y).toBe(y)
+      expect(ratio.align).toBe('right')
+      expect(ratio.color).toBe('muted')
+      expect(ratio.font).toEqual({ size: 20, weight: 400, family: 'mono' })
     })
   })
 
-  it('窄段避让：段可用宽 < 24 时跳过该段标注（不产出文本指令），色块仍在', () => {
-    const layout = layoutOf(
-      makeContent({
-        topCategories: [
-          { name: '文学', ratio: 0.7 },
-          { name: '历史', ratio: 0.02 },
-          { name: '科学', ratio: 0.28 },
-        ],
-      }),
-    )
-    expect(layout.bars[0].segments).toHaveLength(3)
-    expect(layout.textBlocks.some((b) => b.text.startsWith('历史'))).toBe(false)
-    expect(byText(layout, '文学 70 %').maxWidth).toBe(0.7 * CW - 16)
-    expect(byText(layout, '科学 28 %').x).toBe(M + 0.72 * CW)
-  })
-
-  it('ratio=0 的段不产出（条与类目名行一致），colorIndex 按产出序连续', () => {
+  it('ratio=0 的类目不产出（色块与文本行一致），colorIndex 按产出序连续', () => {
     const layout = layoutOf(
       makeContent({
         topCategories: [
@@ -331,16 +319,30 @@ describe('分类色块条（segments = topCategories ratio）', () => {
         ],
       }),
     )
-    expect(layout.bars).toHaveLength(1)
-    const bar = layout.bars[0]
-    expect(bar.segments).toEqual([
-      { ratio: 0.5, colorIndex: 0, label: '文学' },
-      { ratio: 0.25, colorIndex: 1, label: '科学' },
-    ])
+    expect(layout.bars).toHaveLength(2)
+    expect(layout.bars.map((b) => b.segments[0]!.colorIndex)).toEqual([0, 1])
+    expect(layout.textBlocks.some((b) => b.text === '历史')).toBe(false)
     expect(layout.textBlocks.some((b) => b.text === '历史 0 %')).toBe(false)
   })
 
-  it('无分类 → 不产出色块条与类目名行', () => {
+  it('小占比类目照常出图例（窄段跳过标注的旧横条问题不复存在）', () => {
+    const layout = layoutOf(
+      makeContent({
+        topCategories: [
+          { name: '文学', ratio: 0.7 },
+          { name: '历史', ratio: 0.02 },
+          { name: '科学', ratio: 0.28 },
+        ],
+      }),
+    )
+    expect(layout.bars).toHaveLength(3)
+    expect(byText(layout, '历史').text).toBe('历史')
+    expect(byText(layout, '2 %').text).toBe('2 %')
+    expect(byText(layout, '文学').maxWidth).toBe(RIGHT - (M + 34) - 64 - 16)
+  })
+
+
+  it('无分类 → 不产出图例色块与图例行', () => {
     expect(layoutOf(makeContent({ topCategories: [] })).bars).toEqual([])
     expect(layoutOf(makeContent({ topCategories: [] })).textBlocks.some((b) => b.text.includes('%'))).toBe(false)
     expect(layoutOf(makeContent({ topCategories: [{ name: '空', ratio: 0 }] })).bars).toEqual([])

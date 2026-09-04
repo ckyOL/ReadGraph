@@ -296,8 +296,9 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 │    封面三联 + 主数字                  │  大数字次级（R2 甲）
 ├──────────────────────────────────────┤
 │ ③ 事实段（~520）                      │  Top 3 榜单行（序号+题名+次数，tabular）
-│    榜单 + 分类色块条 + 类目名 + Δ行  │  分类色块条（--chart 色分段）+「类目 N%」
-│                                      │  逐段标注（2026-09-03 评审后补：横条不可无标注）
+│    榜单 + 分类图例（色块+名+占比）+ Δ行 │  分类图例逐行（--chart 色块 20px + 类目名
+│                                      │  +「N%」右对齐；2026-09-04 替代横条逐段标注
+│                                      │  ——窄段省略号/跳过不可读）
 │                                      │  R4：历年对照行（2024 ▲ 5 本，有上年数据才显示）
 ├──────────────────────────────────────┤
 │ ④ 落款段（~240）                      │  平实总结句（R3：「共 N 本 · M 类 · 最爱{类目}」
@@ -308,10 +309,10 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 **2026-09-03 修正**（截图反馈：标题无年度语义/千分位、色块条无标注、总结类目错误）：
 
 - 标识段标题 = `profile.year.share.title`（「{year} 年度借阅」/「{year} Year in Books」），
-  年份为纯数字插值——**不得** `Intl.NumberFormat` 分组（2026 → 「2,026」）。
-- 色块条必须随条产出「类目 N%」标注行（首段 ink、余段 muted，y=996；**maxWidth = 段宽 - 16**，
-  长类目名段内字符级截断加省略号、绝不侵占下一段；段可用宽 < 24 时跳过标注——窄段占位
-  比截断残字可读），Δ 对照行下移 y=1048。
+- 分类展示（2026-09-04 修正）：**逐行图例**替代通栏横条——横条逐段标注在窄段（低占比类目）
+  被省略号截断或整段跳过（段宽 < 24 时无标注），信息不可读。图例每行 = 20px 色块
+  （SHARE_BAR_COLORS[colorIndex]，x=64）+ 类目名（body 24px 整行宽，长名仍字符级截断
+  加省略号）+ 占比（mono 20px 右对齐「N %」）；行高 40、首行基线 y=940，Δ 对照行 y=1048 不变。
 - 分类 Top 3 取 **value 降序**（`slice.classification` 是桶插入序，直接 `slice(0,3)` 会截到
   非 Top 桶）；`__unclassified__` 与零值桶不上分享图（对外图片无类目语义，页内 treemap
   的「未分类」i18n 标签不适用于海报）。
@@ -327,11 +328,12 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
 
 **交互设计**（入口与流程）：
 
-```
-/profile/$year 书单区块标题行右侧「分享图」次按钮（GhostButton，Share2 图标）
+/profile/$year 页首工具条右上角「分享图」次按钮（GhostButton，Share2 图标；2026-09-04
+  从书单标题行迁出——分享是整页导出动作，非书单局部）
    ↓ 点击（bookCount>0 才渲染，C7）
 Dialog「年度分享图」（页内预览）
-   ├─ 预览画布（3:4，按容器缩放展示；生成于 Dialog 打开时一次，数据变更不实时重绘）
+   ├─ 预览画布（3:4，高度锚定 min(55vh, 720px) 随视口缩放、宽度自适应不裁切；生成于
+   │   Dialog 打开时一次，数据变更不实时重绘）
    ├─ [下载 PNG]（主按钮：toBlob → a[download]="readgraph-annual-{year}.png"）
    ├─ [系统分享]（可选增强：navigator.share({files}) 支持时显示；File 构造自同一 Blob）
    └─ 隐私注脚：「图片在本机生成，仅包含书名/作者/分类统计」+ t() 双语
@@ -341,6 +343,9 @@ Dialog「年度分享图」（页内预览）
 
 - **为什么是 Dialog 而非独立路由**：分享图是年度视图的「导出动作」不是浏览目的地；不引入新路由（ui-navigation §2 路由树不动）、不破坏 `$year` 参数语义。
 - **预览即导出**（所见即所得硬约束）：预览画布与导出走**同一个渲染函数**（同一布局参数入 → 同一 canvas 产出），预览缩放仅 CSS；杜绝「预览一套导出另一套」漂移（同 ai-send-preview 的防漂移哲学）。
+- **Dialog 视口适配**（2026-09-04）：3:4 画布全宽 540px 显示高 720px，笔记本竖向溢出且
+  按钮不可达。canvas 高度锚定 `min(55vh, 720px)`（aspect-ratio 保形），Dialog 本体
+  `max-h` + `overflow-y-auto` 兜底极矮视口，动作行 sticky 置底——按钮永不因溢出不可达。
 - **封面加载时序**：打开 Dialog → 先渲染无封面版式立即可见 → 封面图逐张 `crossOrigin='anonymous'` 试加载 → 成功者重绘补入。预览不等封面（首屏快）；导出时以当时已载入的封面为准（图上无半加载状态）。
 
 **状态与错误**：
