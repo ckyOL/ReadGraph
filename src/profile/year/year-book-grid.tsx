@@ -15,7 +15,7 @@ import {
 import type { YearBookIndexEntry } from './year-book-index'
 /**
  * 年度书单网格（bookIds 升序全量）。headerAction：标题行右侧动作插槽
- * （SC-6 分享图入口注入；布局保持 h2 独占左侧，不破坏标题行结构断言）。
+ * （分享图入口注入；布局保持 h2 独占左侧，不破坏标题行结构断言）。
  */
 export function YearBookGrid({
   bookIds,

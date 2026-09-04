@@ -1,7 +1,7 @@
 // 年度视图路由（/profile/$year，Phase 2 静态骨架 + AI 叙事区：reading-profile §4/§2.7、
 // ai-features §9.1）。静态骨架（非 AI，本地直出）：年份导航 → 概览窄卡行（年度目标进度卡
 // + 本年借阅卡）→ 最常借 Top 5 → 年度书单封面网格 → AI 年度叙事区
-// （U-2）；分享图入口在页首工具条右上角（2026-09-04 从书单标题行迁出）；数字全部来自单次 computeYearSlice 产物（数字同源，分享图 prevYear 同链路）。
+// （ai-features §9.1）；分享图入口在页首工具条右上角（2026-09-04 从书单标题行迁出）；数字全部来自单次 computeYearSlice 产物（数字同源，分享图 prevYear 同链路）。
 // AI 叙事区按 aiEnabled 门控 + lazy 动态加载（§8 bundle-dynamic-imports：AI 未启用不拉
 // src/ai/ chunk）；分享图 Dialog 同款 lazy（bookCount=0 不渲染，chunk 不拉）。
 // 页面只读（目标编辑在设置页）。
@@ -39,8 +39,8 @@ const YearNarrativeSection = lazy(() =>
     default: m.YearNarrativeSection,
   })),
 )
-// 年度分享图 Dialog 按需动态加载（annual-share-card-batch SC-6，§8 bundle-dynamic-
-// imports / bundle-conditional）：非空年才挂载 → chunk 不进年度视图主包。
+// 年度分享图 Dialog 按需动态加载（§8 bundle-dynamic-imports / bundle-conditional）：
+// 非空年才挂载 → chunk 不进年度视图主包。
 const ShareDialog = lazy(() =>
   import('@/profile/year/share/share-dialog').then((m) => ({
     default: m.ShareDialog,
@@ -135,7 +135,7 @@ export function ProfileYearPage({
     )
   }, [entities, year])
 
-  // 上年对照切片（annual-share-card-batch SC-6/实现指南）：同一实体数据对 year-1
+  // 上年对照切片：同一实体数据对 year-1
   // 复用 computeYearSlice（不新增聚合函数，数字同源）；空年产物 bookCount=0 →
   // ShareContent 内归一为无对照（R4）。
   const prevYearSlice = useMemo(() => {
@@ -171,8 +171,9 @@ export function ProfileYearPage({
   }, [slice, bookById])
 
 
-  // 分享图入口（annual-share-card-batch SC-6；C7 空年不入口）：非空年才渲染按钮，
+  // 分享图入口（C7 空年不入口）：非空年才渲染按钮，
   // bundle-conditional 三元非 &&；Dialog 挂载由 shareOpen 门控（lazy chunk 按需拉）。
+  // 2026-09-04：入口从书单标题行移到年度页右上角——「整页导出动作」而非书单局部。
   const [shareOpen, setShareOpen] = useState(false)
   const goal = readPreferences().annualGoals[year] ?? null
 
@@ -271,7 +272,7 @@ export function ProfileYearPage({
         />
       </ErrorBoundary>
 
-      {/* AI 年度叙事区（ai-features §9.1，U-2）：书单区块之后；AI 默认关闭/空年不渲染
+      {/* AI 年度叙事区（ai-features §9.1）：书单区块之后；AI 默认关闭/空年不渲染
           ——aiEnabled=false 不挂 lazy 组件（chunk 不加载），bookCount=0 空年无叙事痕迹；
           输入与静态骨架同一 slice/entities 产物（数字同源）。 */}
       {aiEnabled === true && slice !== null && slice.bookCount > 0 && entities !== undefined ? (
@@ -291,7 +292,7 @@ export function ProfileYearPage({
         </Suspense>
       ) : null}
 
-      {/* 年度分享图 Dialog（SC-5/SC-6）：shareOpen 门控 lazy 挂载（关闭即卸，无持久化）；
+      {/* 年度分享图 Dialog：shareOpen 门控 lazy 挂载（关闭即卸，无持久化）；
           输入与静态骨架同一 slice/bookIndex/prevYearSlice 产物（数字同源）。 */}
       {shareOpen && slice !== null ? (
         <Suspense fallback={null}>
@@ -355,7 +356,7 @@ const YearNav = memo(function YearNav({
         </Button>
       </span>
       <h1 className="text-2xl font-bold">{t('profile.year.title', { year: yearLabel })}</h1>
-      {/* 右上角动作插槽（SC-6 分享图入口；ml-auto 推到行右缘，标题独占左侧） */}
+      {/* 右上角动作插槽（分享图入口；ml-auto 推到行右缘，标题独占左侧） */}
       {action ? <div className="ml-auto">{action}</div> : null}
     </div>
   )

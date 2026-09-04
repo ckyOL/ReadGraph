@@ -1,8 +1,7 @@
 # 年度分享图调研记录（阅读报告分享图 · 阶段 0 调研）
 
-> 本文是「阅读报告分享图（纯前端 Canvas）」的**调研记录**，承接 [bookology-benchmark §5.3](./bookology-benchmark.md#53-年度回顾方向对应-bookology-annual-book-showcase-2026-finished-书架) 与
-> [profile-annual-view-batch §E 后置阶段](../tasks/profile-annual-view-batch.md#e-后置阶段不在本批次)。
-> 结论已裁定（2026-09-03）：**UI/UX 规格落 [reading-profile §4.1](../specs/reading-profile.md#41-年度分享图profileyear-新增)**；实现任务见 [annual-share-card-batch.md](../tasks/annual-share-card-batch.md)。
+> 本文是「阅读报告分享图（纯前端 Canvas）」的**调研记录**，承接 [bookology-benchmark §5.3](./bookology-benchmark.md#53-年度回顾方向对应-bookology-annual-book-showcase-2026-finished-书架)。
+> 结论已裁定（2026-09-03）：**UI/UX 规格落 [reading-profile §4.1](../specs/reading-profile.md#41-年度分享图profileyear-新增)**（v2 三扩展落 §4.2，2026-09-04 定稿落地）。
 > 调研对象：音乐（Spotify Wrapped）、运动（Strava Year in Sport）、金融（Monzo Year in Monzo）、阅读垂类（Bookology 年度书架、微信读书/豆瓣年度报告）、纯前端图片生成技术（Canvas/html-to-image/html2canvas）。
 
 ## 1. 调研结论摘要

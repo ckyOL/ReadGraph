@@ -154,7 +154,7 @@ GET https://www.szlib.org.cn/api/opacservice/getBookDetail?metaTable=bibliosm&me
 
 ## 4. 范围与依赖
 
-**范围**：定义 provider 抽象与注册表（`OpacProvider`/`OpacDetail`）、来源无关的映射/预填纯函数契约（`mapOpacDetail` / `prefillFromChanges`）、szlib 首个 provider 的响应解析纯函数、抓取编排契约、建议改动模型（fill/conflict）、schema 增量（`CatalogRecord.opacEnrichment`）、UI 触发与降级。本里程碑**只交付纯函数与单测**；网络执行（provider `fetchDetail` / `enrich-service`）与 UI 归统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md)），本节先锁契约。
+**范围**：定义 provider 抽象与注册表（`OpacProvider`/`OpacDetail`）、来源无关的映射/预填纯函数契约（`mapOpacDetail` / `prefillFromChanges`）、szlib 首个 provider 的响应解析纯函数、抓取编排契约、建议改动模型（fill/conflict）、schema 增量（`CatalogRecord.opacEnrichment`）、UI 触发与降级。网络执行（provider `fetchDetail` / `enrich-service`）与 UI 已随统一 UI 里程碑及 §7.3 详情页工作流落地。
 
 **依赖**：**不新增运行时依赖**（原生 `fetch` + `AbortController`），无新包 → 不走 [npm-supply-chain-security](../npm-supply-chain-security.md) 审查门。
 
@@ -366,7 +366,7 @@ opacEnrichment: {
 - 不持久化接口原始响应：抓取结果只以会话内建议改动存在，落库的只有**用户确认后**的实体字段与补全状态。
 - 补全为用户显式触发（详情页单条按钮），不做静默后台洪水请求（单请求超时/重试 §7）；抓取仅产出建议，不静默改库。
 
-## 10. UI 设计说明（统一 UI 里程碑；依赖 book-editing 编辑表单）
+## 10. UI 设计说明（已落地；依赖 book-editing 编辑表单）
 
 - **书目详情页（补全唯一入口）**：含有效 `lookupKey` 的 CatalogRecord 显示「从 {provider.displayName} 补全」Button（**已 fetched 记录文案为「重新抓取」**，§6）；点击 → 按钮 loading →
   - 成功：context 存入详情页组件态（§7.3）并自动打开编辑 Dialog（`search.edit=true`）；

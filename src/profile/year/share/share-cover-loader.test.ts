@@ -1,4 +1,4 @@
-// SC-4（annual-share-card-batch W2）：封面渐进加载纯编排测试。
+// 封面渐进加载纯编排测试（reading-profile §4.1「封面加载时序」）。
 // node 环境无 Image：vi.stubGlobal 注入记录型 MockImage 构造器，onload/onerror
 // 手动触发；超时用 vi.useFakeTimers 推进（cheap stand-ins 模式，同 locale.test.ts）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -44,7 +44,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('loadShareCovers（SC-4 封面渐进加载）', () => {
+describe('loadShareCovers（封面渐进加载）', () => {
   it('成功回调逐张触发：bookId 与实例对应，顺序 = topBookIds 顺序', async () => {
     const onEach = vi.fn()
     const promise = loadShareCovers(

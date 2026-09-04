@@ -1,5 +1,5 @@
-// 分享图内容收敛纯函数测试（annual-share-card-batch SC-1；reading-profile §4.1）。
-// 白名单双层断言（C2 隐私护栏，W1 门禁）：输入类型层面编译期排除 + 输出序列化
+// 分享图内容收敛纯函数测试（reading-profile §4.1，v2 §4.2 扩展）。
+// 白名单双层断言（C2 隐私护栏，门禁）：输入类型层面编译期排除 + 输出序列化
 // 文本黑名单逐值穷举（同 ai-features §3.3 形态）；Top 3 截取/占比归一/delta 降级/
 // 空数据降级/纯函数性。纯函数：无 DOM/时钟/存储，同输入两次调用深等价。
 import { describe, expect, it } from 'vitest'
@@ -57,7 +57,7 @@ function cleanInput(): ShareContentInput {
 
 /**
  * 黑名单穷举夹具：covers 每个条目挂一个脏值（类型层面 @ts-expect-error 断言编译期
- * 排除 = W1 门禁；运行时再由序列化断言兜底）。covers 值目标类型为
+ * 排除 = 门禁；运行时再由序列化断言兜底）。covers 值目标类型为
  * YearBookIndexEntry——超属性（libraryName/barcode/price/isbn13）必报 TS2353。
  */
 function blacklistedInput(): ShareContentInput {
@@ -114,7 +114,7 @@ function blacklistedInput(): ShareContentInput {
 }
 
 describe('buildShareContent', () => {
-  it('红黑榜：黑名单值不出现于序列化产物，白名单字段俱全（C2 穷举断言，W1 门禁）', () => {
+  it('红黑榜：黑名单值不出现于序列化产物，白名单字段俱全（C2 穷举断言门禁）', () => {
     const content = buildShareContent(blacklistedInput())
     const serialized = JSON.stringify(content)
     for (const value of BLACKLIST_VALUES) {
@@ -274,7 +274,7 @@ describe('buildShareContent', () => {
   })
 })
 
-describe('badge 派生（v2 V-1b，reading-profile §4.2.1）', () => {
+describe('badge 派生（v2，reading-profile §4.2.1）', () => {
   it('复借型：topItems[0].count ≥ 3 → reborrow badge（title/count 参数）', () => {
     const input = cleanInput()
     input.topBooks = [{ bookId: 'b1', count: 3 }]
@@ -363,7 +363,7 @@ describe('badge 派生（v2 V-1b，reading-profile §4.2.1）', () => {
   })
 })
 
-describe('collageBookIds（v2 V-3b 前置，reading-profile §4.2.3 拼贴候选）', () => {
+describe('collageBookIds（v2 前置，reading-profile §4.2.3 拼贴候选）', () => {
   it('Top 命中优先（输入序），bookIds 升序补足至 8', () => {
     const input: ShareContentInput = {
       year: 2025,

@@ -1,4 +1,4 @@
-// 年度视图路由与静态骨架测试（reading-profile §4/§7 测试清单，U-1）。
+// 年度视图路由与静态骨架测试（reading-profile §4/§7 测试清单）。
 // $year loader 参数校验（4 位数字年；非法 → 路由不匹配 404 路径）与骨架渲染
 // （年份导航/目标卡/Top 5/书单网格按 computeYearSlice 产物渲染、空年 Empty 变体、
 // 全库空整页 Empty、加载态 Skeleton）。渲染断言走 t() 取值路径（i18n-conventions §8：
@@ -39,7 +39,7 @@ vi.mock('@tanstack/react-router', () => ({
       children,
     ),
 }))
-// 偏好：2026 目标 12；AI 默认关闭（年度视图无叙事痕迹——本波无叙事区，U-2 起断言）。
+// 偏好：2026 目标 12；AI 默认关闭（年度视图无叙事痕迹断言见下方用例）。
 vi.mock('@/lib/preferences', () => ({
   readPreferences: () => ({
     locale: 'zh-CN',
@@ -237,7 +237,7 @@ describe('ProfileYearPage — 空年/全库空/加载态', () => {
     expect(html).toContain(i18n.t('pages:profile.year.goal.remaining', { count: 12 }))
   })
 
-  it('AI 未启用（U-2）：数据年渲染无叙事痕迹（无 year-narrative/AI 挂载点）', () => {
+  it('AI 未启用：数据年渲染无叙事痕迹（无 year-narrative/AI 挂载点）', () => {
     // 偏好 mock ai.enabled=false（本文件 43-51 行）：叙事区 lazy 组件不渲染。
     const f = fixtures()
     useLiveQueryMock.mockReturnValue(entitiesOf(f))
@@ -263,7 +263,7 @@ describe('ProfileYearPage — 空年/全库空/加载态', () => {
   })
 })
 
-describe('ProfileYearPage — 分享图入口（SC-6，annual-share-card-batch）', () => {
+describe('ProfileYearPage — 分享图入口（reading-profile §4.1 C7/§8）', () => {
   it('数据年 → 页首工具条右上角渲染分享图按钮（aria/title 走 t() 取值路径）', () => {
     const f = fixtures()
     useLiveQueryMock.mockReturnValue(entitiesOf(f))

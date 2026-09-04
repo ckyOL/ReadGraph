@@ -1,4 +1,4 @@
-// SC-5（annual-share-card-batch W3）：分享图 Dialog 预览组件测试。
+// 分享图 Dialog 预览组件测试（reading-profile §4.1，v2 §4.2 扩展）。
 // renderToStaticMarkup + mock（SSR 静态标记确定性断言，参照 profile.$year.test.tsx
 // 模式）：Dialog 打开渲染 canvas 与 aria-label；i18n key 消费走 t() 取值路径断言
 // （i18n-conventions §8，不断言字面量）；canShare false → 系统分享按钮不渲染。
@@ -64,7 +64,7 @@ function renderDialog(over: Partial<Parameters<typeof ShareDialog>[0]> = {}): st
   )
 }
 
-describe('ShareDialog（SC-5 预览组件）', () => {
+describe('ShareDialog（预览组件）', () => {
   it('打开渲染 canvas 预览：role=img + aria-label 走 t() 取值路径', () => {
     const html = renderDialog()
     expect(html).toContain('data-slot="share-preview-canvas"')
@@ -132,7 +132,7 @@ describe('ShareDialog v2 扩展（reading-profile §4.2）', () => {
     expect(sharePngFilename(2024, '9:16')).toBe('readgraph-annual-2024-story.png')
   })
 
-  it('Dialog 打开快照含 collageOrder（拼贴候选顺序，V-3c 数据面）', () => {
+  it('Dialog 打开快照含 collageOrder（拼贴候选顺序，§4.2.3 数据面）', () => {
     // 快照语义经 inputRef 固化——这里通过渲染不抛错 + collageOrder 类型存在性断言：
     // slice.bookIds 透传由 buildShareContent.collageBookIds 消费（share-content.test.ts 已覆盖）。
     const html = renderDialog()

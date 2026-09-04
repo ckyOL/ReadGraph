@@ -231,21 +231,19 @@ pnpm install --ignore-scripts
 |---|------|------|------|---------|
 | 1 | 数据层规格 | ✅ 已补 | [specs/data-layer.md](./specs/data-layer.md) | Dexie schema、Repository 接口、迁移策略、索引定义 — 已 TDD 落地 |
 | 2 | 导入管线规格 | ✅ 已补 | [specs/import-pipeline.md](./specs/import-pipeline.md) | Parser 注册表、纯函数 pipeline、去重算法、时区转换、错误/警告模型、书目标题结构化解析 — 已 TDD 落地 |
-| 3 | UI 导航规格 | ✅ 已补 | [specs/ui-navigation.md](./specs/ui-navigation.md) | 路由树、各页布局与空状态、主题/i18n 骨架、用户故事、数据契约、测试清单、React 性能规则引用 — i18n 骨架已落地，UI 装配归入统一 UI 里程碑 |
-| 4 | 阅读画像与图表规格 | ✅ 已补 | [specs/reading-profile.md](./specs/reading-profile.md) | 统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单 — §2 聚合与 §3 buildTheme 已 TDD 落地（20 suites/196 tests 绿）；§2.5 价值统计（`money`，消费 `Book.price`）契约已补、待 TDD；UI 组件归入统一 UI 里程碑 |
-| 5 | 设置与系统重置规格 | ✅ 已补 | [specs/settings.md](./specs/settings.md) | 偏好持久化、重置的原子性与确认流程、备份导出与重建模式对照；备份序列化纯函数 `src/db/backup.ts` 已 TDD 落地 — UI 装配归入统一 UI 里程碑 |
+| 3 | UI 导航规格 | ✅ 已补 | [specs/ui-navigation.md](./specs/ui-navigation.md) | 路由树、各页布局与空状态、主题/i18n 骨架、用户故事、数据契约、测试清单、React 性能规则引用 — i18n 骨架与全页 UI 装配已落地 |
+| 4 | 阅读画像与图表规格 | ✅ 已落地 | [specs/reading-profile.md](./specs/reading-profile.md) | 统计维度、纯函数聚合契约、ECharts 薄适配主题、空数据/大文件退化策略、用户故事、测试清单 — §2 聚合（含 §2.5 价值统计、§2.7 年度切片）与 §3 buildTheme、§3.5 借阅日历、§4 年度视图与分享图（§4.1/§4.2）均已 TDD 落地 |
+| 5 | 设置与系统重置规格 | ✅ 已落地 | [specs/settings.md](./specs/settings.md) | 偏好持久化、重置的原子性与确认流程、备份导出与重建模式对照；备份序列化纯函数 `src/db/backup.ts` 与设置页 UI 装配已 TDD 落地 |
 | 6 | OPAC 编目补全规格 | ✅ 已补 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) | 多来源 Provider 架构（`OpacProvider` 注册表 + 统一 `OpacDetail`，szlib 为首个参考实现）、字段映射与建议改动模型（fill/conflict，字段级新旧对照 + 恢复）、表单预填应用（复用 book-editing 编辑表单）、`CatalogRecord.opacEnrichment` schema 增量（含 providerId）、CORS 部署与降级、两阶段执行模型（抓取/应用）— 纯函数 `mapOpacDetail`/`prefillFromChanges`/`parseSzlibDetail` 已 TDD 落地；**2026-08 交互重构（详情页逐本工作流，§7.3/§10/§10.1）已落地**：放弃列表批量（批量编排/面板/会话 store 删除），补全收敛详情页单条 + 翻页（`library-view.ts` 共享派生 + 视图参数 search + e2e pager 用例）、组件态上下文、目标编目高亮与 provider 溯源（`OpacProvider.shortName`）|
 | 7 | 统一编辑规格 | ✅ 已落地 | [specs/book-editing.md](./specs/book-editing.md) | 删除 /review 页，编辑统一收口到 /library/$bookId 详情页 Dialog（Book 全字段 + 编目 volume/barcodes/classifications，保存即解除待审）；书库列表承载占位/套装徽标与类型筛选；待审类型语义（选书帮占位 + 同 ISBN 套装候选的判定/卷号解析/操作语义）并入 §10；`CatalogRecord.volume`、dedupe 置标、`src/lib/volume.ts`、合并/拆书 — 已 TDD 落地（见 ui-navigation §8） |
-| 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 待 TDD 落地 |
+| 8 | 调试模式规格 | ✅ 已补 | [specs/debug-mode.md](./specs/debug-mode.md) | 两级调试开关（`?debug=1` / localStorage）、DevTools 主通道（`[readgraph:import]` 结构化日志 + `console.table` + performance + 全局钩子）、导入决策 Trace 纯函数数据契约（新增/跳过/合并逐行明细）、报告区折叠面板 — 规格已定稿，实现未启动（M1 纯函数 + M2 UI 均待排期） |
 | 9 | 设备借阅区分规格 | ✅ 已落地 | [specs/device-borrows.md](./specs/device-borrows.md) | 非书设备借阅（电子书阅读器，szlib `cirtype="电子设备外借"`）识别与材料类型存储（`Book.materialType`，schema default 'book' 零迁移）、去重材料类型守卫、阅读画像统计全维度排除、存量回填（`src/db/backfill-device-kind.ts` 启动幂等）— 已 TDD 落地（560 tests 全绿，含设备行导入集成用例） |
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
-| 11 | AI 功能规格 | ✅ 已补 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（Markdown 文本流 + 流式逐字渲染：`chatStream`/`createSseParser`/`stream-json`/`onPartial` 链路）、发送预览、结果缓存、设置页 AI 区 — Phase 1 已 TDD 落地（2026-08-25 收尾，含画像流式先行）；Phase 2 年度叙事（§9.1）输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约，执行清单见 [tasks/profile-annual-view-batch.md](./tasks/profile-annual-view-batch.md)（普通静态骨架 + AI 年度叙事区，2026-08-26 规格补齐完成：reading-profile §4 年度视图 UI 章节、data-layer §8 annualGoals 增量） |
+| 11 | AI 功能规格 | ✅ 已落地 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（Markdown 文本流 + 流式逐字渲染：`chatStream`/`createSseParser`/`stream-json`/`onPartial` 链路）、发送预览、结果缓存、设置页 AI 区 — Phase 1 已 TDD 落地（2026-08-25 收尾，含画像流式先行）；Phase 2 年度叙事（§9.1）与年度视图同批落地（2026-08-28，reading-profile §4）；Phase 3 本地服务后端（§9.2）已落地（2026-08-30） |
 
-> UI 统一里程碑任务见 [tasks/ui-unified-batch.md](./tasks/ui-unified-batch.md)。
-> AI 功能里程碑任务见 [tasks/ai-features-batch.md](./tasks/ai-features-batch.md)（Phase 1 落地清单：脱敏管道 → 端点客户端 → prompt → 设置页 AI 区 → /profile AI 解读区）。
-> Profile 年度视图（Phase 2）任务见 [tasks/profile-annual-view-batch.md](./tasks/profile-annual-view-batch.md)（普通静态骨架：年度书单/最常借 Top N/年度目标进度卡 + AI 年度叙事区；输入承接 [reading-profile §2.7](./specs/reading-profile.md) 年度切片契约）。
-> 年度分享图任务见 [tasks/annual-share-card-batch.md](./tasks/annual-share-card-batch.md)（Canvas 分享图：内容收敛/布局/渲染器/封面渐进加载/Dialog 预览；规格承接 [reading-profile §4.1](./specs/reading-profile.md#41-年度分享图profileyear-新增)）。
-> 年度分享图 v2 任务见 [tasks/annual-share-card-v2-batch.md](./tasks/annual-share-card-v2-batch.md)（人格化称号 / 9:16 Stories 变体 / 封面拼贴乙版式——R2/R3/R5 显式延后项；v1 已落地见 [tasks/annual-share-card-batch.md](./tasks/annual-share-card-batch.md)）。
+> 已完成的里程碑批次任务分解（统一 UI、AI 功能 Phase 1/3、Profile 年度视图、年度分享图 v1/v2）
+> 已归档删除——执行记录见 git 历史，规格与裁定增量均已并入对应 specs（reading-profile §4、
+> ai-features §9、settings §7）。进行中的任务分解见 [tasks/quality-hardening.md](./tasks/quality-hardening.md)。
 
 每个功能阶段开始前，对应规格文件需包含：
 

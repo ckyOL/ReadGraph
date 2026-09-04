@@ -5,9 +5,9 @@
 
 ## 1. 范围与依赖
 
-**范围**：定义设置页（`/settings`）的偏好持久化、导出备份与导入重建、系统重置的原子性与二次确认。底层逻辑已由 [数据层规格](data-layer.md) 落地：`resetDatabase`（[§6](data-layer.md#6-系统重置) 原子事务）、`exportDatabase`/`importDatabase`（[§7](data-layer.md#7-数据导出与重建) snapshot 模式）、`readPreferences`/`writePreferences`（[§8](data-layer.md#8-用户偏好) Zod 校验）。本里程碑补齐**备份文件序列化与文件名**纯函数（落 `src/db/backup.ts`）与测试；**UI 装配（S-2/S-3）** 归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4），不在本里程碑单独引入运行时依赖。
+**范围**：定义设置页（`/settings`）的偏好持久化、导出备份与导入重建、系统重置的原子性与二次确认。底层逻辑已由 [数据层规格](data-layer.md) 落地：`resetDatabase`（[§6](data-layer.md#6-系统重置) 原子事务）、`exportDatabase`/`importDatabase`（[§7](data-layer.md#7-数据导出与重建) snapshot 模式）、`readPreferences`/`writePreferences`（[§8](data-layer.md#8-用户偏好) Zod 校验）。本里程碑补齐**备份文件序列化与文件名**纯函数（落 `src/db/backup.ts`）与测试；**UI 装配（S-2/S-3）已随统一 UI 里程碑落地**，不在本里程碑单独引入运行时依赖。
 
-**依赖**：本里程碑**不新增运行时依赖**。备份序列化复用已落地的 `zod`（`exportDataSchema`，[data-layer §7](data-layer.md#7-数据导出与重建)）与 `exportDatabase`。UI 阶段（S-2）的响应式查询与下载/上传交互所需 `dexie-react-hooks` 等由统一 UI 里程碑 D-1 供应链审查门统一引入。
+**依赖**：本里程碑**不新增运行时依赖**。备份序列化复用已落地的 `zod`（`exportDataSchema`，[data-layer §7](data-layer.md#7-数据导出与重建)）与 `exportDatabase`。UI 阶段（S-2）的响应式查询与下载/上传交互所需 `dexie-react-hooks` 已随统一 UI 里程碑供应链审查门引入。
 
 **代码落点**：
 
@@ -17,13 +17,13 @@ src/
 │  ├─ backup.ts              # 备份文件名 + 序列化/反序列化纯函数（本里程碑新增）
 │  └─ backup.test.ts         # Vitest（本里程碑 Red→Green）
 └─ routes/
-   └─ settings.tsx          # 设置页 UI（S-2，统一 UI 里程碑）
+   └─ settings.tsx          # 设置页 UI（S-2，已随统一 UI 里程碑落地）
 ```
 
 ## 2. 偏好持久化
 
 - 读写沿用 [data-layer §8](data-layer.md#8-用户偏好)：`readPreferences()` / `writePreferences(patch)`，走 `localStorage` key `readgraph:preferences`，`userPreferencesSchema` 校验（`locale: 'zh-CN'|'en'`、`theme: 'light'|'dark'|'auto'`、`displayTimezone: string`）。
-- 主题应用由 `use-theme`（P0-1，统一 UI 里程碑）把 `theme` 套用到根 `<html class="dark">`；`auto` 监听 `prefers-color-scheme`。本规格不重定义 theme Provider 协议（见 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架)）。
+- 主题应用由 `use-theme`（P0-1，已落地）把 `theme` 套用到根 `<html class="dark">`；`auto` 监听 `prefers-color-scheme`。本规格不重定义 theme Provider 协议（见 [ui-navigation §4](ui-navigation.md#4-主题与暗色模式骨架)）。
 - `locale` 沿用 `src/lib/locale.ts` + `use-locale`（已落地，[ui-navigation §5](ui-navigation.md#5-国际化与本地化骨架)），设置页语言切换已就位。
 - `displayTimezone` 选择项：候选取 `@vvo/tzdb`（随 IANA tzdata 发版维护，含国家/主要城市/别名元数据），运行时经 Intl 计算各时区**当前**偏移（夏令时正确），本地化名称/偏移/国家名按当前 locale 由 Intl 生成；主城市标签（macOS 式「城市 · 国家」）zh 下取 CLDR `exemplarCity` 映射（`src/lib/tz-cities.json`，`pnpm generate:cities` 可再生成，与 macOS 同源），未覆盖回退 tzdb 英文主要城市；选择写入 `writePreferences({ displayTimezone })`；校验非空字符串，非法值降级默认（[data-layer §8](data-layer.md#8-用户偏好)）。
 - AI 配置扩展（`ai.enabled`/`ai.baseUrl`/`ai.model` + 独立存储的 API Key）与设置页 AI 区契约见 [AI 功能规格](ai-features.md)（§4.2/§5.1），本规格不重复定义；AI 区 UI 装配随 AI Phase 1 落地。
@@ -65,7 +65,7 @@ src/
 
 ## 7. UI 设计说明
 
-> UI 装配（S-2）归入统一 UI 里程碑（[tasks/ui-unified-batch](../tasks/ui-unified-batch.md) 阶段 4）；本节约定设计方向，不实现代码。
+> UI 装配（S-2）已随统一 UI 里程碑落地；本节约定设计方向，实现与规格如有出入以实现为准。
 
 - **布局**：设置页分三区——偏好区（主题/locale/displayTimezone）、AI 区（默认关闭：开关/端点（含连接测试按钮）/Key/模型/发送预览开关，隐私承诺文案在发送预览弹窗展示、「清除 AI 缓存」在 /profile AI 解读区，见 [AI 功能规格](ai-features.md) §4.2）、数据区（导出备份 / 导入备份 / 系统重置）。各区以 `border-t` 分隔，不用嵌套卡片。
 - **交互**：主题/locale 切换即时生效（走 `writePreferences`）；时区选择用 `Combobox`（Popover + Command：搜索框 + 按国家分组列表，macOS 式**城市 · 国家**主标签 + 当前偏移次要信息，DST 随季节变化，搜索城市或时区名）；导出为一次性 `onClick` 触发下载；导入备份走文件选择 + 模式选择（snapshot/replay）；系统重置入口先弹 `AlertDialog` 二次确认 + `Checkbox` 备份门槛。
@@ -100,7 +100,7 @@ src/
 - 偏好读写/降级（对齐 `preferences.test.ts`）；重置原子性 + 二次确认不可单步撤销（对齐 `reset.test.ts`，补 UI 勾选门槛门）；导出后重置库为空。
 - `replay` 重建：同 `(sources, rawRecords)` 两次重放深等价（UI 阶段实现 replay 后补）。
 
-**Playwright（E2E，统一 UI 里程碑）**
+**Playwright（E2E）**
 - 切暗色 → reload 保留；切 locale → `html[lang]` 更新（对齐 [ui-navigation §8](ui-navigation.md#8-测试清单)）。
 - 导出后清空系统：导出备份 → 重置确认流程完成 → 库为空（各页 `Empty`）。
 - 导入备份文件 → 书库/时间线恢复可见。

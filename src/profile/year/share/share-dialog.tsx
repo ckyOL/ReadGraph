@@ -1,4 +1,4 @@
-// 年度分享图 Dialog 预览组件（annual-share-card-batch SC-5；reading-profile §4.1
+// 年度分享图 Dialog 预览组件（reading-profile §4.1
 // 「交互设计」+ v2 §4.2 扩展）。打开时一次构建：buildShareContent → i18n summary/
 // delta/badge/collageMore 文案渲染（t()）→ computeShareLayout（variant 选项）→
 // renderShareCard 到预览 canvas（role="img" + aria-label）；封面由 loadShareCovers
@@ -31,7 +31,7 @@ import { computeShareLayout } from './share-layout'
 import { exportSharePng, renderShareCard, sharePngFilename } from './share-canvas'
 import { loadShareCovers } from './share-cover-loader'
 
-/** Dialog props：页（SC-6）传入切片产物与书目索引；打开时刻快照（数据变更不重绘）。 */
+/** Dialog props：页传入切片产物与书目索引；打开时刻快照（数据变更不重绘）。 */
 export interface ShareDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void

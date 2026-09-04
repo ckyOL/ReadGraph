@@ -170,7 +170,7 @@ src/
 - `ai-cache.ts`：缓存键含 scene/locale/key；写读回环；清除只删 `ai:` 前缀键；不随 `exportDatabase` 导出。
 - 偏好扩展：`ai` 非法值（如 `baseUrl` 非字符串）降级默认；`readgraph:ai-api-key` 独立读写、不进 `userPreferencesSchema`。
 
-**Playwright（E2E，统一 UI 里程碑接入）**
+**Playwright（E2E，已随统一 UI 里程碑接入）**
 
 - 流式（`chatStream`）：chat 请求 body `stream:true`（无 `response_format`）；SSE 分片响应（`text/event-stream` data 行 + `[DONE]`）→ 最终 markdown 渲染成功。逐字流式时序断言归 Vitest（onPartial 字符串透传 + Hook 单测），E2E 不依赖时序。
 
@@ -205,8 +205,8 @@ src/
 - **连接测试即验证**：本地路径无新增 UI——设置页既有「测试并获取模型」即 Phase 3 验证入口；连接失败 toast 按上述分级给文案。
 - CORS 前提：Ollama 默认回环放行（`OLLAMA_ORIGINS` 可扩展，[调研参考](../research/ai-integration-research.md#参考来源)）；LM Studio 同契约。
 
-## 10. 待办关联
+## 10. 落地关联
 
-- 任务分解与 Phase 1 落地清单见 [tasks/ai-features-batch.md](../tasks/ai-features-batch.md)（汇集调研 §8 路线图与本规格 §9 阶段边界）；规格索引状态见 [app-spec §6](../app-spec.md#6-功能规格索引) #11。
-- 落地前须完成：`vite.config.ts` CSP 注释记录（§5.2）；`userPreferencesSchema` 扩展（§5.1，随 [data-layer](./data-layer.md) 迁移/升级流程走 [internal-schema 版本化](../metadata/internal-schema.md)）。
-- 调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。
+- Phase 1 / Phase 3 已 TDD 落地（2026-08-25 / 2026-08-30）；Phase 2 年度叙事随年度视图同批落地（2026-08-28，见 [reading-profile §4](./reading-profile.md#4-年度视图profileyear)）。原里程碑批次任务分解（ai-features-batch / profile-annual-view-batch）已归档删除，执行记录见 git 历史，规格与裁定增量均并入本规格与 [reading-profile §4](./reading-profile.md#4-年度视图profileyear)。规格索引状态见 [app-spec §6](../app-spec.md#6-功能规格索引) #11。
+- 落地前置（均已完成）：`vite.config.ts` CSP 注释记录（§5.2）；`userPreferencesSchema` 扩展（§5.1，随 [data-layer](./data-layer.md) 迁移/升级流程走 [internal-schema 版本化](../metadata/internal-schema.md)）。
+- 调研文档遗留：design-decisions 技术选型表「本地 AI 预留位」与本规格同步修订（已修订，见 [design-decisions](../design-decisions.md)）。

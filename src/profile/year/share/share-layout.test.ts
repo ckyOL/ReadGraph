@@ -1,5 +1,4 @@
-// SC-2（annual-share-card-batch W1）：canvas 逻辑坐标布局纯函数测试。
-// 规格：reading-profile §4.1（四段 120/560/520/240、边距 64、恒亮色、R4 Δ 对照行）。
+// canvas 逻辑坐标布局纯函数测试（reading-profile §4.1 四段 120/560/520/240、边距 64、恒亮色、R4 Δ 对照行；v2 §4.2 扩展）。
 // 断言纯数据结构，不触 DOM/canvas/Intl/t()（vitest 环境 = node）。
 import { describe, it, expect } from 'vitest'
 
@@ -25,7 +24,7 @@ const COVER_GAP = 24
 const COVER_W = (CW - 2 * COVER_GAP) / 3
 const COVER_H = (COVER_W * 4) / 3 // 封面 3:4
 
-/** ShareContent.summary 键名串由 SC-1 定稿（可微调），宽化类型透传避免测试与键名串耦合 */
+/** ShareContent.summary 键名串由内容层定稿（可微调），宽化类型透传避免测试与键名串耦合 */
 function summaryOf(key: string): ShareContent['summary'] {
   return {
     key,
@@ -81,7 +80,7 @@ function byText(layout: ShareLayout, text: string): ShareTextInstruction {
   return found as ShareTextInstruction
 }
 
-describe('SC-2 版式常量（§4.1 逻辑坐标 / R6 恒亮色）', () => {
+describe('版式常量（§4.1 逻辑坐标 / R6 恒亮色）', () => {
   it('画布 1080×1440、dpr ×2、边距 64', () => {
     expect(SHARE_CANVAS).toEqual({ width: 1080, height: 1440, dpr: 2, margin: 64 })
   })
@@ -455,7 +454,7 @@ describe('纯函数性与降级结构', () => {
   })
 })
 
-describe('v2 V-2b：variant 9:16 Stories 变体（reading-profile §4.2.2）', () => {
+describe('v2：variant 9:16 Stories 变体（reading-profile §4.2.2）', () => {
   it("缺省（不传 variant）与显式 '3:4' 产出深等价，且与 v1 断言同构（回归门）", () => {
     const content = makeContent()
     const implicit = computeShareLayout(content, { ...OPTS })
@@ -523,7 +522,7 @@ describe('v2 V-2b：variant 9:16 Stories 变体（reading-profile §4.2.2）', (
   })
 })
 
-describe('v2 V-3b：封面拼贴乙版式指令（reading-profile §4.2.3）', () => {
+describe('v2：封面拼贴乙版式指令（reading-profile §4.2.3）', () => {
   function collageContent(over: Partial<ShareContent> = {}): ShareContent {
     return makeContent({
       bookCount: 14,

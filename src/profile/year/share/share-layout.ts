@@ -1,6 +1,6 @@
-// 分享图 canvas 逻辑坐标布局纯函数（annual-share-card-batch SC-2；reading-profile §4.1）。
+// 分享图 canvas 逻辑坐标布局纯函数（reading-profile §4.1，v2 扩展 §4.2）。
 // 版式：1080×1440（3:4）恒亮色纸面，上→下四段（标识 ~120 / 主视觉 ~560 / 事实 ~520 / 落款 ~240），
-// 边距 64。每段产出位置化绘制指令（文本块/封面槽/图例色块/罫线），由渲染器（SC-3）逐条消费。
+// 边距 64。每段产出位置化绘制指令（文本块/封面槽/图例色块/罫线），由渲染器逐条消费。
 // 纯函数：无 DOM/canvas/时钟/存储；不触 Intl/t()——yearLabel/summaryText/deltaText/brandText
 // 均为调用方 t() 渲染后的字符串（C5），布局只做定位与 clamp 参数携带（字符级截断归渲染器）。
 import type { ShareContent } from './share-content'
@@ -81,7 +81,7 @@ export interface ShareCoverSlotInstruction {
 }
 
 /**
- * 拼贴 +K 角标指令（v2 §4.2.3，V-3b）：纸面色小方盒（直角、罫线弱化语义）+ 居中
+ * 拼贴 +K 角标指令（§4.2.3）：纸面色小方盒（直角、罫线弱化语义）+ 居中
  * mono ink 文本；盒贴末槽右下角。文本由调用方 t() 渲染后经 opts.collageMoreText 传入。
  */
 export interface ShareCollageBadgeInstruction {
@@ -109,7 +109,7 @@ export interface ShareRuleInstruction {
   width: number
 }
 
-/** 布局产物：渲染器（SC-3）唯一输入，预览与导出共用（预览即导出） */
+/** 布局产物：渲染器唯一输入，预览与导出共用（预览即导出） */
 export interface ShareLayout {
   width: number
   height: number

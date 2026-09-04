@@ -263,4 +263,4 @@ export interface ImportWorkerApi {
 | M1 纯函数 + 通道 | `debug.ts`、`parsers/trace.ts`、pipeline 第 6 参、worker 回传、`trace-log.ts`、`main.tsx` 钩子 | §9 测试全绿；`pnpm build` 通过；`?debug=1` 手工导入可见 Console 分组 |
 | M2 报告区面板 | 折叠区 + 决策表 + 复制按钮 + i18n 文案 + 行↔警告联动 | US1/US6 手工验收；无 debug 标志时零 UI 变化 |
 
-> M2 UI 归入统一 UI 里程碑（见 [tasks/ui-unified-batch.md](../tasks/ui-unified-batch.md)），M1 为纯函数与单测，先行。
+> 实现状态：M1/M2 均未启动（规格已定稿，待排期）。

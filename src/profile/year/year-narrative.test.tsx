@@ -1,4 +1,4 @@
-// 年度叙事编排测试（ai-features §9.1 / §5.3 / §3.3，Phase 2 U-2）。
+// 年度叙事编排测试（ai-features §9.1 / §5.3 / §3.3）。
 // 三层覆盖：
 // 1) 管线编排（insight-pipeline 泛化 + 年度场景注入）：真实 serializeYearPayload /
 //    validateYearNarrative 注入——预览 payload 过 yearPayloadSchema、上送产物与直接装配

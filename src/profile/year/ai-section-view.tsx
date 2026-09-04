@@ -1,4 +1,4 @@
-// AI 场景共享展示层（ai-features §4.1 / §9.1，Phase 2 U-2）：画像「AI 解读区」与年度
+// AI 场景共享展示层（ai-features §4.1 / §9.1）：画像「AI 解读区」与年度
 // 「年度叙事区」的同构形态——标题行按钮组（生成/复制/重新生成/清除缓存）、loading 三态
 // （thinking 折叠块 / 流式 markdown + 打字光标 / 停止生成条）、定稿态（markdown + AI 生成
 // 标注）、错误分级 toast。渲染标记（data-slot/aria/className）与抽取前逐字节一致。

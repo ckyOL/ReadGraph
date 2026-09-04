@@ -1,4 +1,4 @@
-// 年度叙事编排 Hook（ai-features §9.1 / §5.3，Phase 2 U-2）：/profile/$year「年度叙事」
+// 年度叙事编排 Hook（ai-features §9.1 / §5.3）：/profile/$year「年度叙事」
 // AI 区的数据接入层。复用共享引擎 use-ai-engine（与画像 use-ai.ts 同构）：年度场景注入
 // scene 'year-narrative' / key String(year) / serializeYearPayload 装配 /
 // buildYearNarrativePrompt / validateYearNarrative。

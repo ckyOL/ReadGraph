@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { buildCollageFixture, buildDesensitizedFixture } from './fixtures'
 
 /**
- * 年度视图 E2E（profile-annual-view-batch W4 T-2；reading-profile §4/§7、
+ * 年度视图 E2E（reading-profile §4/§7、
  * ai-features §9.1/§3.3）。静态骨架：入口跳转、数字同源、空年、年份切换、
  * 非法 $year 404。AI 叙事：预览与请求深等价、目标值排除、流式渲染、
  * 重新生成覆盖、断网失败、缓存按 year+locale 隔离、未启用无痕迹。
@@ -375,13 +375,13 @@ test.describe('年度叙事 AI 区（ai-features §9.1/§3.3）', () => {
 })
 
 /**
- * 年度分享图 E2E（annual-share-card-batch SC-8；reading-profile §4.1/§7）：
+ * 年度分享图 E2E（reading-profile §4.1/§7）：
  * 入口（C7 空年无按钮）→ Dialog 预览渲染（canvas + aria-label 走 t()）→ 下载
  * （download 事件 + 文件名 readgraph-annual-{year}.png）→ 暗色模式恒亮色纸面（R6，
  * 像素采样）→ 多 locale 文案切换 → 关闭无持久化残留 → 占位版式出图不报错（夹具
  * 本身无封面，兼测占位降级路径）。
  */
-test.describe('年度分享图（annual-share-card-batch SC-8）', () => {
+test.describe('年度分享图（reading-profile §4.1）', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
     await injectPrefs(page, { enabled: false, baseUrl: '', model: '', sendPreview: true })
@@ -499,12 +499,12 @@ test.describe('年度分享图（annual-share-card-batch SC-8）', () => {
 })
 
 /**
- * 年度分享图 v2 E2E（annual-share-card-v2-batch V-4b；reading-profile §4.2）：
+ * 年度分享图 v2 E2E（reading-profile §4.2）：
  * 称号 badge 命中年（复借 count≥3）→ 预览出图不报错 + badge=null 年版式与 v1 一致
  * （回归）；9:16 切换 → canvas 高宽比 1920/1080 + 下载文件名 -story.png；
  * 拼贴（bookCount=14 ≥ 12）→ 拼贴带出图不报错（pageerror 监听先例 + 占位色采样）。
  */
-test.describe('年度分享图 v2（annual-share-card-v2-batch V-4b）', () => {
+test.describe('年度分享图 v2（reading-profile §4.2）', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
     await injectPrefs(page, { enabled: false, baseUrl: '', model: '', sendPreview: true })

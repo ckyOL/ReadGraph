@@ -1,6 +1,6 @@
-// 分享图封面渐进加载纯编排（annual-share-card-batch SC-4；reading-profile §4.1
-// 「封面加载时序」）：逐张 Image + crossOrigin='anonymous' 试加载，成功回调触发
-// 局部重绘，失败/超时不重试不阻断（失败永降级占位）。纯编排：不触 Dialog/React
+// 分享图封面渐进加载纯编排（reading-profile §4.1「封面加载时序」）：
+// 逐张 Image + crossOrigin='anonymous' 试加载，成功回调触发局部重绘，
+// 失败/超时不重试不阻断（失败永降级占位）。纯编排：不触 Dialog/React
 // 状态（回调注入，UI 层接线）；Promise 恒 resolve，永不 reject。
 import type { YearBookIndexEntry } from '@/profile/year/year-book-index'
 

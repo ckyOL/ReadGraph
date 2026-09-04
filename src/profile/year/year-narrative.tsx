@@ -1,4 +1,4 @@
-// 年度叙事 AI 区（ai-features §9.1 / reading-profile §4 年度视图，Phase 2 U-2）：
+// 年度叙事 AI 区（ai-features §9.1 / reading-profile §4 年度视图）：
 // /profile/$year 年度书单区块之后，与 /profile「AI 解读区」同构（ai-section-view
 // 共享展示层）——是年度视图内的区块而非独立孤岛。
 // 形态复用：Markdown 文本流 + 流式逐字渲染（chatStream/onPartial 链路）+ 停止生成/

@@ -1,5 +1,5 @@
-// 分享图 canvas 渲染器（annual-share-card-batch SC-3；reading-profile §4.1）。
-// 消费 SC-2 的 ShareLayout 指令逐条绘制（fillText/drawImage/fillRect/1px 罫线）；
+// 分享图 canvas 渲染器（reading-profile §4.1，v2 扩展 §4.2）。
+// 消费 ShareLayout 指令逐条绘制（fillText/drawImage/fillRect/1px 罫线）；
 // 恒亮色纸面（R6：#F9F7F2 底 + #2A2A2A 字，不读当前主题）；数字半角 + 等宽栈；
 // 无封面槽绘占位块 + 题名首字。devicePixelRatio ×2 定标（1080×1440 逻辑 →
 // 2160×2880 物理）保证锐度；预览与导出共用本渲染函数（「预览即导出」硬约束）。
@@ -204,7 +204,7 @@ export function renderShareCard(
   }
 }
 
-/** 导出 PNG 文件名（E2E 断言与 SC-5 复用同源）：'3:4' 保持原名（E2E 兼容）；'9:16' 带 -story 后缀（§4.2.2） */
+/** 导出 PNG 文件名（E2E 断言与 Dialog 复用同源）：'3:4' 保持原名（E2E 兼容）；'9:16' 带 -story 后缀（§4.2.2） */
 export function sharePngFilename(year: number, variant: '3:4' | '9:16' = '3:4'): string {
   return variant === '9:16' ? `readgraph-annual-${year}-story.png` : `readgraph-annual-${year}.png`
 }

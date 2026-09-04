@@ -1,4 +1,4 @@
-// AI 场景共享编排引擎 Hook（ai-features §3.1 ①–⑦ / §4.1 / §5.3 / §5.4，Phase 2 U-2）。
+// AI 场景共享编排引擎 Hook（ai-features §3.1 ①–⑦ / §4.1 / §5.3 / §5.4）。
 // 从 use-ai.ts（画像场景）原样抽取的引擎层：状态管理（markdown/loading/error/
 // pendingPreview/streamingMarkdown/streamingReasoning）、并发闸、主动停止、流式增量
 // 落位与缓存/上送接线；场景差异（scene/key/装配/prompt/温度/弱校验）全部由 opts 注入。

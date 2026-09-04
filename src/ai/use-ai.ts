@@ -1,5 +1,5 @@
 // AI 阅读画像编排 Hook（ai-features §3.1 管道流程 ①–⑦ / §4.1 / §5.3 / §5.4）。
-// 职责边界（Phase 2 U-2 抽取后）：响应式聚合（与 use-profile-stats 同源实体，
+// 职责边界（Phase 2 抽取后）：响应式聚合（与 use-profile-stats 同源实体，
 // range 固定 null = 全量口径）+ 画像场景注入（scene/key/装配/prompt/温度/弱校验）；
 // 状态管理与上送编排在共享引擎 use-ai-engine.ts（年度叙事 use-year-narrative.ts
 // 同构复用），编排核心纯函数在 insight-pipeline.ts。

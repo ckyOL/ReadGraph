@@ -1,4 +1,4 @@
-// 分享图内容收敛纯函数（annual-share-card-batch SC-1；reading-profile §4.1）。
+// 分享图内容收敛纯函数（reading-profile §4.1，v2 扩展 §4.2）。
 // 白名单硬约束面：输入仅含 year/bookCount/topBooks/classification/covers/prevYear，
 // 类型层面排除 annualGoals/price/barcode/isbn13/馆名（规格 C2 隐私护栏）。
 // 纯函数：无 DOM/时钟/存储；同输入两次调用深等价。
@@ -22,7 +22,7 @@ export interface ShareContentInput {
   /** 上一年对照（R4；同一切片函数对 year-1 的产物，无上年数据 → null） */
   prevYear: { year: number; bookCount: number } | null
   /**
-   * 拼贴候选顺序（v2 §4.2.3，V-3b）：调用方传 `slice.bookIds` 升序（既有公开字段透传，
+   * 拼贴候选顺序（§4.2.3）：调用方传 `slice.bookIds` 升序（既有公开字段透传，
    * 非隐私白名单扩张）；缺省按 covers 键序兜底。仅被 collageBookIds 消费，不进产物。
    */
   collageOrder?: string[]
@@ -30,7 +30,7 @@ export interface ShareContentInput {
   covers: Record<string, YearBookIndexEntry | undefined>
 }
 
-/** 分享图内容（ShareContentInput 收敛产物，SC-2 布局唯一输入）。 */
+/** 分享图内容（ShareContentInput 收敛产物，布局唯一输入）。 */
 export interface ShareContent {
   year: number
   bookCount: number
@@ -46,12 +46,12 @@ export interface ShareContent {
   /** R4 历年对照（无上年数据 → null，布局不产出对照行指令） */
   delta: { prevBookCount: number } | null
   /**
-   * 人格化称号（v2 §4.2.1，V-1b）：i18n 描述符（与 summary 同构，t() 渲染归 UI 层）；
+   * 人格化称号（§4.2.1）：i18n 描述符（与 summary 同构，t() 渲染归 UI 层）；
    * 无规则命中 → null（不虚构称号，布局不产指令）。
    */
   badge: { key: string; params: Record<string, string | number> } | null
   /**
-   * 封面拼贴（v2 §4.2.3，V-3b）：bookCount ≥ SHARE_COLLAGE_THRESHOLD 时非 null；
+   * 封面拼贴（§4.2.3）：bookCount ≥ SHARE_COLLAGE_THRESHOLD 时非 null；
    * items ≤ 8（题名/作者/封面，不含 bookId——内部 id 不进图片内容）、overflow = +K。
    */
   collage: { items: { title: string; authors: string[]; coverUrl: string | null }[]; overflow: number } | null
@@ -59,7 +59,7 @@ export interface ShareContent {
 
 /**
  * 分享图内容收敛：YearSlice 产物 + 书目索引 → ShareContent。
- * 纯函数（SC-1 实现）：Top 3 截取、占比归一、summary 描述符组装、delta 透传。
+ * 纯函数：Top 3 截取、占比归一、summary 描述符组装、delta 透传。
  *
  * 隐私护栏（C2）：仅消费白名单字段——题名/作者/封面/分类名/计数；
  * covers 无对应书 → 跳过该 Top 项（不占位），黑名单字段自始不进产物。
@@ -112,7 +112,7 @@ export function buildShareContent(input: ShareContentInput): ShareContent {
   const delta: ShareContent['delta'] =
     prevYear !== null && prevYear.bookCount > 0 ? { prevBookCount: prevYear.bookCount } : null
 
-  // 人格化称号（v2 §4.2.1，V-1b）：规则从上到下至多命中一条（一张卡一个事实）。
+  // 人格化称号（§4.2.1）：规则从上到下至多命中一条（一张卡一个事实）。
   // 复借型优先；增速型 `bookCount ≥ 2×prev`（同比增长 ≥ 100%，恰好 2× 命中）；
   // 兜底 null（不虚构称号——复用 R3 总结句语义）。仅消费既有白名单产物。
   const badge: ShareContent['badge'] = (() => {
@@ -128,7 +128,7 @@ export function buildShareContent(input: ShareContentInput): ShareContent {
     return null
   })()
 
-  // 封面拼贴（v2 §4.2.3，V-3b）：bookCount ≥ 阈值（§4.2.3 裁定 12，书少拼贴带空洞）
+  // 封面拼贴（§4.2.3）：bookCount ≥ 阈值（§4.2.3 裁定 12，书少拼贴带空洞）
   // → 乙版式候选 ≤ 8 张 + overflow = +K；未触发 → null（甲版式三联，v1 路径逐字节一致）。
   const collage: ShareContent['collage'] = (() => {
     if (bookCount < SHARE_COLLAGE_THRESHOLD) return null

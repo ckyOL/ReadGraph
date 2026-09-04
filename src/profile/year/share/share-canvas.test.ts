@@ -1,4 +1,4 @@
-// SC-3（annual-share-card-batch W2）：canvas 渲染器测试。
+// canvas 渲染器测试（reading-profile §4.1）。
 // node 环境无真实 canvas：注入记录型 2D context stub（cheap stand-ins 模式，
 // 同 locale.test.ts），断言指令序列（scale/底色/drawImage 顺序/占位 fillRect 色值/
 // fillText 参数/罫线调用数）；toBlob 失败路径 stub 抛错 → exportSharePng reject。
@@ -118,7 +118,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('renderShareCard（SC-3 渲染器指令序列）', () => {
+describe('renderShareCard（渲染器指令序列）', () => {
   it('dpr ×2 定标：canvas 2160×2880 物理 + scale(2,2)', () => {
     const ctx = makeRecordingCtx()
     const canvas = makeRecordingCanvas(ctx)
@@ -270,7 +270,7 @@ describe('renderShareCard（SC-3 渲染器指令序列）', () => {
   })
 })
 
-describe('exportSharePng（SC-3 导出）', () => {
+describe('exportSharePng（导出）', () => {
   it('文件名 readgraph-annual-{year}.png + anchor click + revoke', async () => {
     const appendChild = document.body.appendChild as ReturnType<typeof vi.fn>
     const anchor: Record<string, unknown> = { click: vi.fn(), remove: vi.fn() }

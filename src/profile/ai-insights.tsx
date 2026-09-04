@@ -4,7 +4,7 @@
 // 尾部「生成中」占位；定稿后块尾标注「AI 生成，基于本地数据」；整体可重新生成。
 // 条件渲染（§2.1/§8）：ai.enabled !== true 时返回 null——未启用时全站无 AI 痕迹
 // （含 loading 态也不渲染）；配合路由侧 lazy + 开关门控，AI 默认关闭不拉主包。
-// Phase 2 U-2：渲染形态抽取为 ai-section-view.tsx 共享展示层（年度叙事区同构复用），
+// Phase 2：渲染形态抽取为 ai-section-view.tsx 共享展示层（年度叙事区同构复用），
 // 本组件只保留画像场景数据接线（useAiInsights）与 labels/回调注入。
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
