@@ -206,9 +206,16 @@ function endpointUrl(baseUrl: string, path: string): string {
   return `${base}${versionSegment}/${path}`
 }
 
-/** Authorization 仅在 apiKey 非空时携带（本地无鉴权端点支持）。 */
+/**
+ * Authorization 仅在 apiKey 非空时携带（本地无鉴权端点支持）。
+ * X-Title 固定携带（OpenRouter 等聚合端点应用归因；其官方接受 X-Title 与
+ * X-OpenRouter-Title，取跨 provider 通用名；归因域名由浏览器自动 Referer 提供）。
+ */
 function buildHeaders(apiKey?: string): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Title': 'ReadGraph',
+  }
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`
   }
