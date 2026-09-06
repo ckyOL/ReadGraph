@@ -135,6 +135,14 @@ describe('chat', () => {
     expect(init.headers).toMatchObject({ Authorization: 'Bearer sk-test' })
   })
 
+
+  it('请求携带 X-Title: ReadGraph（OpenRouter 等聚合端点应用归因；X-Title 与 X-OpenRouter-Title 等价接受，取通用名）', async () => {
+    const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
+    vi.stubGlobal('fetch', fetchMock)
+    await chat({ ...BASE_OPTS })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.headers).toMatchObject({ 'X-Title': 'ReadGraph' })
+  })
   it.each(['', '   ', '\t'])('空/空白 baseUrl → 直接抛错且不发起请求', async (baseUrl) => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -235,7 +243,7 @@ describe('testConnection', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://127.0.0.1:11434/v1/models')
     expect(init.method).toBe('GET')
-    expect(init.headers).toMatchObject({ Authorization: 'Bearer k' })
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer k', 'X-Title': 'ReadGraph' })
   })
 
   it('baseUrl 已含 /v1 后缀 → GET {base}/v1/models 不重复拼接', async () => {
@@ -440,6 +448,7 @@ describe('chatStream', () => {
     expect(init.headers).toMatchObject({
       'Content-Type': 'application/json',
       Authorization: 'Bearer sk-test',
+      'X-Title': 'ReadGraph',
     })
     expect(JSON.parse(init.body as string)).toEqual({
       model: 'gpt-4o-mini',
