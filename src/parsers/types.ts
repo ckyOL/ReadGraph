@@ -33,7 +33,7 @@ export interface SourceParser {
 }
 
 /**
- * 瞬态字段契约（H-3）：以下字段**不是类型化字段**，由 parser 经
+ * 瞬态字段契约（详见 contributing-parser.md §2.1）：以下字段**不是类型化字段**，由 parser 经
  * `as Record<string, unknown>` 附加在产出 partial 上，供 pipeline 装配对齐用；
  * 它们**不入库、不持久化、不进入最终实体**（szlib 为唯一生产方，见其
  * pushCycle / book/catalogRecord 装配处）。第三方 parser 必须照此约定设置，

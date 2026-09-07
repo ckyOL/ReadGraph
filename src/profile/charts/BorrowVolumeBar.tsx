@@ -82,7 +82,7 @@ function BorrowVolumeBarImpl({
     )
   }
 
-  // A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。
+  // 容器带 role="img" + aria-label（WCAG 1.1.1）。
   return <div ref={ref} className="h-[360px] w-full" lang={language} role="img" aria-label={t('profile.chart.volume.ariaLabel')} />
 }
 

@@ -198,7 +198,7 @@ function computeProfileStats(input: ProfileStatsInput, opts: ProfileStatsOptions
   - 每次仅激活一个图谱块，独占全幅宽度与视口高度，互不挤压（书多时甘特 lane 不再被压扁）；
   - 分类法 treemap（视口 ≥ 480px）→ 借阅甘特带（高度按 lane 数自适应：lane 可视高 24px，视口 `[280, 624]px`；lane 数超过可视上限（26，= 624/24）时启用 y 轴缩放（右侧 slider，默认窗口显示最新 26 lane），lane 保持可读高度不压扁）→ 借阅量柱图（≥ 360px）→ 借阅时长分布（≥ 360px）→ 价格分布（≥ 360px，BarChart，仅主导币种分桶，见 §2.5）→ 借阅日历（年视图 ~280px / 月视图 ~380px，heatmap 网格）。
   - **借阅日历 tab 内部**：内容区顶部一行薄工具条（不抢图）：左「借阅天数」口径显示（当前可见月/年 `days` 内的去重天数，如「2026 年 · 借阅 45 天」）+ 视图切换 `SegmentedControl`（年视图 / 月视图，默认月视图，键 `profile.calendar.view.*`）+ 上一/下一导航按钮（`‹`/`›`，aria-label 随视图：上一年/下一年/上一月/下一月）；默认锚定 `maxDate` 所在月/年，导航不越界钳制（无数据期间渲染全弱底网格，不空态）。
-  - **热力图**：年视图 x 轴 = 周列（含月名标签，仅月初列标 `Intl` 月名）、y 轴 = 7 行星期短名（`Intl`，UTC）；月视图 x 轴 = 星期短名，y 轴无标签（月内周行）。格色 = `--chart-2` 松叶色按 count 分 alpha 阶（1–4+ 步进），count=0 弱底格（border 色低 alpha）；tooltip 为日期 + 在借本数 + 题名列表（封面缩略图 ≤8 本 + 「另有 N 本」），HTML 转义书名/URL（防注入）。容器 `role="img"` + aria-label（A-1）。
+  - **热力图**：年视图 x 轴 = 周列（含月名标签，仅月初列标 `Intl` 月名）、y 轴 = 7 行星期短名（`Intl`，UTC）；月视图 x 轴 = 星期短名，y 轴无标签（月内周行）。格色 = `--chart-2` 松叶色按 count 分 alpha 阶（1–4+ 步进），count=0 弱底格（border 色低 alpha）；tooltip 为日期 + 在借本数 + 题名列表（封面缩略图 ≤8 本 + 「另有 N 本」），HTML 转义书名/URL（防注入）。容器 `role="img"` + aria-label（WCAG 1.1.1）。
 - 图表是主角、全幅；无外层装饰卡片包裹图谱块（[ui-navigation §3](ui-navigation.md#3-各功能页布局与空状态) 禁卡片套卡片）；TabsList 即区块标题，内容区不重复标题。
 
 **交互**：

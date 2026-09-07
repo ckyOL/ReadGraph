@@ -37,7 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - *Cover collage* — at bookCount ≥ 12 (threshold constant) the hero segment
     becomes a 4×2 grid of up to 8 covers with a "+K more" corner badge and the
     count sinks into the facts segment; placeholder and CORS-failure fallbacks
-    match the trio layout, and cover loading stays a single progressive pass.
+  match the trio layout, and cover loading stays a single progressive pass.
+- **Import debug trace (dev builds only)** — gated by the build-time
+  `__DEBUG_MODE__` constant (`pnpm dev` on; build/preview/vitest off, branch
+  stripped from the bundle — zero string residue in production, see
+  `docs/specs/debug-mode.md`): a deterministic per-row decision trace from the
+  import pipeline (new/merged/skipped/filtered/error with entity IDs) printed
+  to DevTools as a `[readgraph:import]` console group with `console.table`,
+  `performance.mark/measure` timings, `filteredRowIndexes` assembly for
+  rows cut by `filterRows`, and `window.__readgraphDebug` hooks to inspect,
+  export or copy the last trace as JSON. A `localStorage['readgraph:debug'] =
+  'verbose'` flag (no restart) adds entity deltas and ID-derivation strings.
+  No in-app debug UI; DevTools is the only observation channel.
 
 ### Changed
 
@@ -91,10 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Full PWA support: installable app manifest and offline-first data layer (service
-  worker) so the archive works fully offline.
 - Versioned data migrations with a documented upgrade path between releases.
-- Further CWV budget enforcement (LCP/INP/CLS) and performance regression gates in CI.
+- Performance budget gates in CI (CWV measured green in real deployment
+  scenarios; mobile-hosting budgets documented in the performance notes).
+- Low-friction trace view beyond DevTools if ever needed (independent
+  milestone; the import debug trace itself is dev-build-only).
 
 ## [1.0.0] - 2026-08-18
 

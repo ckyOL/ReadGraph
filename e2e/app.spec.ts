@@ -15,7 +15,7 @@ import type { Source } from '@/types/entities'
 const SEED_KEY = 'readgraph:e2e-seed'
 
 /**
- * H-6 数据耦合：从样本夹具实时推导导入产出的期望统计（books/borrowCycles），
+ * 期望统计解耦：从样本夹具实时推导导入产出的期望统计（books/borrowCycles），
  * 样本行数/书目变动无需改断言。与导入共用同一 szlibParser（空库导入时
  * newBooks/newBorrowCycles 即 parse 产物，已由 run-import 单测验证）。
  * 注意：import critical path 测试未调用 seed()（全新上下文空库导入），
@@ -223,7 +223,7 @@ test.describe('import critical path (G-5)', () => {
     await expect(page.getByRole('link', { name: '合成书目001' })).toBeVisible()
     await expect(page.getByText('深圳图书馆').first()).toBeVisible()
 
-    // Dashboard 统计卡片：期望值从样本夹具实时派生（H-6），样本行数变动不碎。
+    // Dashboard 统计卡片：期望值从样本夹具实时派生，样本行数变动不碎。
     await page.goto('/')
     const expected = sampleImportStats(buffer)
     await expect(page.locator('[data-stat="books"]')).toContainText(String(expected.books))

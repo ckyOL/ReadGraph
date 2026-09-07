@@ -83,7 +83,6 @@ ReadGraph/
 │  │  ├─ debug-mode.md       # 调试模式规格
 │  │  ├─ settings.md         # 设置与系统重置规格
 │  │  └─ ai-features.md      # AI 功能规格（阅读画像分析）
-│  ├─ tasks/                 # 里程碑任务分解
 │  ├─ metadata/              # 实体 schema、parser 设计
 │  ├─ design-decisions.md
 │  ├─ npm-supply-chain-security.md
@@ -241,9 +240,9 @@ pnpm install --ignore-scripts
 | 10 | 编目条码归属馆解析 | ✅ 已落地 | [specs/branch-library.md](./specs/branch-library.md) | 来源无关契约：按 parserId 注册「条码前缀 → 归属馆」表（`src/lib/branch-prefix.ts` 注册表，szlib 为参考实现，11 前缀含 `F44010` 大学城，规则权威来源 [szlib-parser §6](./metadata/parsers/szlib-parser.md)）；条码后归属馆小框 `src/components/branch-badge.tsx`（编目卡/时间线两落点，按 `Source.parserId` 路由）；未命中/未知来源不渲染 — 已 TDD 落地 |
 | 11 | AI 功能规格 | ✅ 已落地 | [specs/ai-features.md](./specs/ai-features.md) | 默认关闭开关、脱敏管道（场景白名单装配 + 黑名单穷举断言）、OpenAI 兼容端点薄客户端（SSE 解析/Abort/端点校验）、阅读画像分析（Markdown 文本流 + 流式逐字渲染：`chatStream`/`createSseParser`/`stream-json`/`onPartial` 链路）、发送预览、结果缓存、设置页 AI 区 — Phase 1 已 TDD 落地（2026-08-25 收尾，含画像流式先行）；Phase 2 年度叙事（§9.1）与年度视图同批落地（2026-08-28，reading-profile §4）；Phase 3 本地服务后端（§9.2）已落地（2026-08-30） |
 
-> 已完成的里程碑批次任务分解（统一 UI、AI 功能 Phase 1/3、Profile 年度视图、年度分享图 v1/v2）
-> 已归档删除——执行记录见 git 历史，规格与裁定增量均已并入对应 specs（reading-profile §4、
-> ai-features §9、settings §7）。进行中的任务分解见 [tasks/quality-hardening.md](./tasks/quality-hardening.md)。
+> 已完成的里程碑批次与任务分解（统一 UI、AI 功能 Phase 1/3、Profile 年度视图、年度分享图
+> v1/v2、quality-hardening 路线图、debug-mode 批次）已归档删除——执行记录见 git 历史，
+> 规格与裁定增量均已并入对应 specs 与 [design-decisions.md](./design-decisions.md)。
 
 每个功能阶段开始前，对应规格文件需包含：
 

@@ -25,7 +25,7 @@ import {
   type UseProfileStatsOptions,
 } from './use-profile-stats'
 
-// dexie-react-hooks 在 node 测试环境无法跑真实 Dexie 订阅，按 H-3 契约 mock
+// dexie-react-hooks 在 node 测试环境无法跑真实 Dexie 订阅，按瞬态字段契约 mock
 // `useLiveQuery` 为受控返回值；`db` 单例亦以空对象桩避免触发 IndexedDB。
 vi.mock('dexie-react-hooks', () => ({ useLiveQuery: vi.fn() }))
 vi.mock('@/db/db-instance', () => ({ db: {} }))

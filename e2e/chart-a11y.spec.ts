@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 import { buildDesensitizedFixture, buildClassificationFixture } from './fixtures'
 
 /**
- * 图表无障碍 E2E（quality-hardening 阶段 2，A-1）：
+ * 图表无障碍 E2E（WCAG 1.1.1 非文本内容 / 2.1.1 键盘可操作）：
  * - WCAG 1.1.1：5 个图表容器 role="img" + aria-label 非空。
  * - WCAG 2.1.1：分类 treemap 键盘等价路径——视图 Toggle（aria-pressed）、
  *   列表视图按钮 Tab 可聚焦、Enter 下钻、面包屑 root 回退，与 canvas 同一 state。

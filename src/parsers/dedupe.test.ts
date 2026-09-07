@@ -504,7 +504,7 @@ describe('dedupeBorrowCycles', () => {
     expect(r.warnings.filter((w) => w.type === 'duplicate')).toHaveLength(1)
   })
 
-  it('批次内重复：同秒空条码不同 bookId 的两条候选均保留（Q-1 身份分量）', () => {
+  it('批次内重复：同秒空条码不同 bookId 的两条候选均保留（bookId 身份分量）', () => {
     // 空条码 + 同一秒借出：精确键必须含 bookId 身份分量，
     // 否则第二本书被误判为批次内重复跳过（数据丢失）。
     const base = {
@@ -530,7 +530,7 @@ describe('dedupeBorrowCycles', () => {
     expect(r.warnings.filter((w) => w.type === 'duplicate')).toHaveLength(0)
   })
 
-  it('既有周期同键（sourceId+barcode+borrowedAt）不同 bookId → 新候选不跳过（Q-1 身份分量）', () => {
+  it('既有周期同键（sourceId+barcode+borrowedAt）不同 bookId → 新候选不跳过（bookId 身份分量）', () => {
     // 既有周期为 bk-A 的空条码同秒周期；候选归属 bk-B（不同书）。
     // 精确键必须含 bookId，否则 bk-B 候选被既有周期误杀。
     const existing = [{ id: 'cy-1', bookId: 'bk-A', catalogRecordId: 'cr', sourceId: 'szlib', barcode: null, borrowedAt: t, returnedAt: t2, status: 'returned' as const, borrowLocation: null, returnLocation: null, rawRecordIds: ['r1'], createdAt: t, updatedAt: t }]

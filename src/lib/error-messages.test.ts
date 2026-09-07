@@ -9,7 +9,7 @@ import { classifyError, type ErrorMessage } from '@/lib/error-messages'
 const zh = zhPages as Record<string, string>
 const en = enPages as Record<string, string>
 
-/** 断言分类结果的 messageKey/suggestionKey 在 zh-CN 与 en 两个 bundle 中都存在（A-4 验收）。 */
+/** 断言分类结果的 messageKey/suggestionKey 在 zh-CN 与 en 两个 bundle 中都存在。 */
 function expectKeysInBundles(result: ErrorMessage): void {
   for (const key of [result.messageKey, result.suggestionKey]) {
     expect(zh[key], `zh-CN bundle 缺少 key: ${key}`).toBeTypeOf('string')

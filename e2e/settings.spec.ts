@@ -278,7 +278,7 @@ test.describe('restore modes (settings 规格 §4 重建模式对照)', () => {
     })
     writeFileSync('test-results/settings-backup-conflict.json', JSON.stringify(backup))
 
-    // 清库后导入 → 完整性校验拒绝，冲突报告展示（role="alert"，A-4 本地化文案）。
+    // 清库后导入 → 完整性校验拒绝，冲突报告展示（role="alert" 本地化文案）。
     await resetLibrary(page)
     await page
       .locator('input[type="file"]')

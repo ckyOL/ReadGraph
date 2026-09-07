@@ -1,4 +1,4 @@
-// Q-6 zod 默认值读路径兜底（M1 classCodes 同类）：
+// zod 默认值读路径兜底（写路径 default 只覆盖 Repository validate，读侧自愈）：
 // zod `.default()` 只覆盖写路径（Repository validate）；useLiveQuery 直读旧记录
 // 缺新字段（如 parallelTitles）时渲染直接崩溃（undefined 上渲染）。本模块提供
 // 读取侧 parseOrDefault：从 schema 提取各字段默认值构造缺省对象，与记录浅合并。

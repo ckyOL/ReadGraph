@@ -230,7 +230,7 @@ test.describe('book editing (book-editing §7.6)', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
-  test('mobile 375px: card grid shows fields, table hidden (Q-2)', async ({ page }) => {
+  test('mobile 375px: card grid shows fields, table hidden', async ({ page }) => {
     // 双视图同挂 DOM（CSS 断点切换）：375px 视口下表格隐藏、卡片网格可见。
     // 断言锁定 [data-slot="library-cards"]，锁定 card grid 视图不被后续重构破坏。
     await page.setViewportSize({ width: 375, height: 812 })

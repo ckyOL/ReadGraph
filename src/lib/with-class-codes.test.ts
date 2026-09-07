@@ -1,4 +1,4 @@
-// H-5 分类索引读路径自愈：backfillClassCodes 失败后存量记录缺 classCodes 索引字段，
+// 分类索引读路径自愈：backfillClassCodes 失败后存量记录缺 classCodes 索引字段，
 // 已物化到内存的记录（toArray → map）读取侧一次派生补回——缺字段派生、已有字段
 // 原样保留、全有字段零分配。派生逻辑与写路径共用 deriveClassCodes（单一事实来源）。
 import { beforeEach, afterEach, describe, it, expect } from 'vitest'

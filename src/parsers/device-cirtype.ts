@@ -3,7 +3,7 @@
 // 独立模块：`isDeviceCirtype` 被 szlib parser（parse 期标记）与存量回填
 // （backfill-device-kind，应用启动期）共用。独立成模块使 szlib parser 的
 // 完整解析逻辑（parse/validate/filterRows，仅导入流程使用）不随启动路径
-// 进入首屏入口链——回填只依赖本判定函数（性能硬化 P-1）。
+// 进入首屏入口链——回填只依赖本判定函数（首屏性能预算，见 docs/design-decisions.md 性能预算节）。
 const DEVICE_CIRTYPES: Record<string, true> = { 电子设备外借: true }
 
 /**

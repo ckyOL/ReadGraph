@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { buildDesensitizedFixture } from './fixtures'
 
 /**
- * 阶段 3 E2E（quality-hardening T-1）：导入负路径。
+ * 导入负路径 E2E（错误分级契约见 src/lib/error-messages.ts；WCAG 3.3.1/3.3.3）。
  * 覆盖 4 个负路径：不支持文件类型拒绝、坏 JSON 失败报告、取消（预览后不执行）
  * 无落库、二次导入同文件去重合并（期望从样本派生，不硬编码绝对数字）。
  * 默认上下文 locale 为 en-US（无存储偏好 → browserLocale 'en'），断言用英文
@@ -32,7 +32,7 @@ async function gotoImportWithAutoSource(page: Page): Promise<void> {
 
 const SAMPLE_PATH = 'src/tests/fixtures/szlib-sample.json'
 
-test.describe('import negative paths (T-1)', () => {
+test.describe('import negative paths', () => {
   test('rejects an unsupported file type with a localized error', async ({ page }) => {
     await gotoImportWithAutoSource(page)
 

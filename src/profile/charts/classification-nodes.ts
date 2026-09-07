@@ -1,4 +1,4 @@
-// 分类 treemap 数据选择与下钻判定纯逻辑（A-1 键盘等价路径与 canvas 共用，单测覆盖）。
+// 分类 treemap 数据选择与下钻判定纯逻辑（键盘等价路径与 canvas 共用，单测覆盖）。
 // 列表视图与 canvas option 同源：同一选择函数保证两视图当前层级数据一致。
 
 export interface ClassificationNode {

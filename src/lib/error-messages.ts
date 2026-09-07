@@ -1,5 +1,4 @@
-// 错误分类与本地化（quality-hardening 阶段 2 A-4：WCAG 3.3.1 错误识别 /
-// 3.3.3 建议 / 3.1.2 语言）。
+// 错误分类与本地化（WCAG 3.3.1 错误识别 / 3.3.3 错误建议 / 3.1.2 局部语言）。
 // 把 unknown 错误分类为有限 ErrorKind，映射到 i18n messageKey + 可行动
 // suggestionKey；原始 detail 仅供 console.error 保留诊断，不直接展示给用户。
 // 纯函数、无 UI 依赖、零新增依赖（复用 zod / dexie 现有依赖）。

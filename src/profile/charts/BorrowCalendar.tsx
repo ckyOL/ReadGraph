@@ -255,7 +255,7 @@ function BorrowCalendarImpl({ data, bookIndex, emptyTitle, emptyDescription }: P
           </Button>
         </span>
       </div>
-      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
+      {/* 容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
       <div
         ref={ref}
         className={view === 'year' ? 'h-[280px] w-full' : 'h-[380px] w-full'}

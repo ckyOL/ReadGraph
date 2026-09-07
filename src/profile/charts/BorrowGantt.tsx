@@ -273,7 +273,7 @@ function BorrowGanttImpl({ data, displayTimezone, emptyTitle, emptyDescription }
           {t('profile.chart.density')} · {collapsed}
         </span>
       )}
-      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
+      {/* 容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
       <div
         ref={ref}
         className="w-full overflow-x-auto"

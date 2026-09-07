@@ -1,4 +1,4 @@
-// H-5 分类索引读路径自愈（与 Q-6 parseOrDefault 同源思路）：
+// 分类索引读路径自愈（与 parseOrDefault 读侧兜底同源思路）：
 // classCodes 为 multiEntry 索引派生字段，写路径（repository/schema transform）恒补写；
 // 但启动回填（backfillClassCodes）失败时存量记录仍缺该字段。索引查询
 // （where('classCodes')，如 treemap 下钻 / findClassCodes）无法在渲染路径自愈——

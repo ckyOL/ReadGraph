@@ -49,7 +49,7 @@ export interface PipelineResult {
   rawRecords: RawRecord[]
   warnings: ParseWarning[]
   /**
-   * 导入决策 trace（debug-mode spec §5.2，DBG-1 落收集）。
+   * 导入决策 trace（debug-mode spec §5.2：收集点全为旁路记录）。
    * traceOptions 缺省 → 不收集，恒为 null（D5：零分配）。
    */
   trace?: ImportTrace | null
@@ -301,7 +301,7 @@ export function importPipeline(
     const rowIndexes = (cyc as Record<string, unknown>)._rowIndexes as
       | number[]
       | undefined
-    // H-3：parser 未按瞬态契约标注 _rowIndexes 时显式警告（旧版静默产出
+    // parser 未按瞬态契约标注 _rowIndexes 时显式警告（旧版静默产出
     // rawRecordIds=[] 的空壳周期，溯源与 metaid 消歧静默失效）。
     if (rowIndexes == null) {
       warnings.push({
@@ -347,9 +347,9 @@ export function importPipeline(
   )
   // 候选周期预解析归属书目——解析顺序与下方 finalCycles 新周期分支一致
   // （barcode 本批次唯一命中 → 该编目；否则按 metaIdKey 消歧；再否则空）：
-  // 精确去重键（Q-1）含 bookId 身份分量，两侧（候选 vs 存库周期）bookId
+  // 精确去重键含 bookId 身份分量（同秒空条码不同书不误判重复），两侧（候选 vs 存库周期）bookId
   // 必须同源可比，否则 metaid=0 但 barcode 唯一命中的候选重导时身份分量
-  // 不匹配，破坏重导幂等（Q-1 回归防线）。
+  // 不匹配会破坏重导幂等——此断言即其回归防线。
   for (const cand of candidateCycles) {
     const bc = cand.barcode ?? ''
     const bcCrs = crIdsByBarcode.get(bc) ?? []
@@ -700,7 +700,7 @@ function findBookForCatalog(
     const hit = books.find((b) => (b as Record<string, unknown>)._bookKey === key)
     if (hit) return hit
   } else {
-    // H-3：parser 未按瞬态契约标注 _bookKey 时显式警告（旧版静默回退
+    // parser 未按瞬态契约标注 _bookKey 时显式警告（旧版静默回退
     // bookPartial={}，占位判定/书目对齐静默失效）。
     warnings.push({
       type: 'missing_field',

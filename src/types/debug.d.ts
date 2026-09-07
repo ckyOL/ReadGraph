@@ -2,7 +2,7 @@ declare const __DEBUG_MODE__: boolean
 
 import type { ImportTrace } from '@/parsers/trace'
 
-/** window.__readgraphDebug 全局钩子（spec §3.2，DBG-2 安装/消费）。 */
+/** window.__readgraphDebug 全局钩子（spec §3.2）。 */
 export interface ReadgraphDebug {
   /** 最近一次导入的 trace（会话内；未导入/未开启收集为 null）。 */
   lastImport: ImportTrace | null

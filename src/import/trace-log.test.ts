@@ -1,5 +1,5 @@
 // trace-log（src/import/trace-log.ts）单测：DevTools Console 输出通道 + 全局钩子
-// （debug-mode spec §3.2/§4.1，DBG-2）。vitest define 固定 __DEBUG_MODE__=false
+// （debug-mode spec §3.2/§4.1）。vitest define 固定 __DEBUG_MODE__=false
 // （直连语义）；debug 行为 vi.stubGlobal('__DEBUG_MODE__', true) 切换（先例
 // src/lib/debug.test.ts）。node 环境无 window/document/URL/navigator/localStorage：
 // defineGlobal stub + afterEach 恢复（先例 src/hooks/use-theme.test.tsx:99-151）。
@@ -14,7 +14,7 @@ import type { ReadgraphDebug } from '@/types/debug'
 
 const GROUP_TITLE = '[readgraph:import] 导入决策 trace'
 
-/** 会话级 trace 夹具（spec §5.1 扁平契约；warnings 为 DBG-1 落的顶层字段）。 */
+/** 会话级 trace 夹具（spec §5.1 扁平契约；warnings 为顶层字段）。 */
 function makeTrace(): ImportTrace {
   return {
     importLogId: 'log-1',
@@ -47,7 +47,7 @@ function makeTrace(): ImportTrace {
         catalogRecordId: 'cr-1',
         borrowCycleId: 'cy-1',
         warningType: null,
-        // verbose 收集才填（DBG-1）；非 verbose 恒缺省——供 verbose 门控用例使用。
+        // verbose 收集才填；非 verbose 恒缺省——供 verbose 门控用例使用。
         idDerivation: 'cr-{fnv1a32(src-szlib|metaId-1)}',
       },
       {

@@ -71,7 +71,7 @@ function LibraryPage() {
     () =>
       Promise.all([
         db.books.toArray(),
-        // H-5 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
+        // 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
         // 一次派生补回（缺字段才补、全有零分配），分类列/后续 classCodes 读取不丢书。
         db.catalogRecords.toArray().then(withClassCodesAll),
         db.borrowCycles.toArray(),

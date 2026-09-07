@@ -1,4 +1,4 @@
-// import-worker api 直测（debug-mode spec §5.4，DBG-3）：不经真实 Worker，直接
+// import-worker api 直测（debug-mode spec §5.4）：不经真实 Worker，直接
 // 调用导出的 api。jsdom 依赖未装（零新增依赖约束，任务书备选路径），以
 // vi.mock('comlink') 空替身让模块在 node 环境可导入（expose 不执行）。
 // vitest define 固定 __DEBUG_MODE__=false；Worker 内不读该常量（透传语义），
@@ -54,7 +54,7 @@ function makeInput(traceOptions?: { verbose?: boolean }) {
   return { rows, source: SOURCE, existing, meta: META, traceOptions }
 }
 
-describe('import-worker api.run — trace 回传契约（DBG-3）', () => {
+describe('import-worker api.run — trace 回传契约', () => {
   it('不传 traceOptions：返回 { result, trace: null }（缺省零收集）', async () => {
     const { trace, result } = await api.run(makeInput())
     expect(trace).toBeNull()

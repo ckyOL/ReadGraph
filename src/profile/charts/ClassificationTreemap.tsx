@@ -65,7 +65,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
   const drill =
     deferredDrillPath.length > 0 ? deferredDrillPath[deferredDrillPath.length - 1] : null
 
-  // 视图切换（A-1 键盘等价路径）：canvas 交互仅鼠标可用，列表视图提供
+  // 视图切换（键盘等价路径）：canvas 交互仅鼠标可用，列表视图提供
   // 键盘可导航的当前层级节点按钮；仅 clc 体系可下钻，故切换器仅 clc 显示。
   const [view, setView] = useState<'canvas' | 'list'>('canvas')
   const showList = system === 'clc' && view === 'list'
@@ -90,7 +90,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
 
   // 下钻数据链（UI 层）：按当前下钻 code 前缀直查 DB（classCodes multiEntry 索引），
   // 每本书取首条 clc 命中码（与 computeProfileStats 的 first-record 语义一致）。
-  // 局限（H-5）：索引查询只能命中已写 classCodes 字段的记录——启动回填失败时存量
+  // 局限：索引查询只能命中已写 classCodes 字段的记录——启动回填失败时存量
   // 缺该字段，此处会漏书；自愈需全表扫描，渲染路径禁扫（roadmap 性能规则），故
   // 不可自愈。内存物化路径由 withClassCodes 读侧归一兜底，诊断由启动回填的
   // console.error 兜底（见 src/db/startup-backfills.ts）。
@@ -143,7 +143,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
     [data, t],
   )
 
-  // 当前层级节点（canvas option 与列表视图同源，A-1）。
+  // 当前层级节点（canvas option 与列表视图同源）。
   const listNodes = useMemo<ClassificationNode[]>(
     () => selectClassificationNodes({ drill, drillChildren, topNodes }),
     [drill, drillChildren, topNodes],
@@ -180,7 +180,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
   }, [hasData, listNodes])
 
   // 点击：clc 节点下钻一层（buildClassificationChildren 在查询侧完成分组）。
-  // 列表视图按钮与 canvas 点击共用同一判定（A-1 键盘等价路径）。
+  // 列表视图按钮与 canvas 点击共用同一判定（键盘等价路径）。
   const drillNode = (node: ClassificationNode) => {
     if (!canDrillClassification(node.code, { system, treeLoaded: !!treeData })) return
     setDrillPath((prev) => [
@@ -271,7 +271,7 @@ function ClassificationTreemapImpl({ data, system, emptyTitle, emptyDescription 
           ))}
         </nav>
       )}
-      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）；列表视图时隐藏而非
+      {/* 容器带 role="img" + aria-label（WCAG 1.1.1）；列表视图时隐藏而非
           卸载，避免 echarts re-init 闪烁（profile.spec 每 tab 恰 1 canvas 断言不变）。 */}
       <div
         ref={ref}

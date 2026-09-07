@@ -109,7 +109,7 @@ function BookDetailPage() {
       Promise.all([
         // 翻页需全量书库视图派生（library-view 内存管线，与列表页同查询面，§13）。
         db.books.toArray(),
-        // H-5 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
+        // 读路径自愈：回填失败时存量记录缺 classCodes 索引字段，内存物化后
         // 一次派生补回（缺字段才补、全有零分配），分类芯片等读取不丢分类。
         db.catalogRecords.toArray().then(withClassCodesAll),
         db.borrowCycles.toArray(),
@@ -128,7 +128,7 @@ function BookDetailPage() {
     [],
     [],
   ]
-  // 读路径归一（Q-6）：旧导出记录缺 schema 默认字段（parallelTitles/materialType/volume 等），
+  // 读路径归一：旧导出记录缺 schema 默认字段（parallelTitles/materialType/volume 等），
   // 直读渲染前按 schema 默认值补齐，防 undefined 字段渲染崩溃（M1 classCodes 同类）。
   const books = rawBooks.map((b) => parseOrDefault(bookSchema, b))
   const allCatalogRecords = rawCatalogRecords.map((cr) => parseOrDefault(catalogRecordSchema, cr))

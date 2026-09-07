@@ -27,7 +27,7 @@ Import borrow/return exports from your public library or e-book platform, and tu
 - **OPAC enrichment** — auto-fill missing book metadata (translators, ISBN-10, description, cover…) from library catalogs, with field-level old/new compare before applying.
 - **Classification** — Chinese Library Classification (CLC) hierarchy with breadcrumb drill-down; classification data is supplied by you as a JSON file, nothing bundled in the repo.
 - **Reading profile** — stats and ECharts visualizations: reading rhythm, timeline, treemap, money spent & price distribution. Device borrows (e-readers) are tracked but excluded from stats.
-- **Settings** — timezone-aware city picker (tzdb), zh-CN / English UI, backup & restore, full reset, debug mode (`?debug=1`).
+- **Settings** — timezone-aware city picker (tzdb), zh-CN / English UI, backup & restore, full reset.
 
 ## Getting Started
 

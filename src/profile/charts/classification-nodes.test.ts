@@ -1,4 +1,4 @@
-// 分类 treemap 数据选择/下钻判定纯逻辑测试（A-1 键盘等价路径）。
+// 分类 treemap 数据选择/下钻判定纯逻辑测试（键盘等价路径）。
 // 列表视图与 canvas option 同源：selectClassificationNodes 保证两视图层级数据一致。
 import { describe, it, expect } from 'vitest'
 

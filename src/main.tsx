@@ -19,7 +19,7 @@ if (__DEBUG_MODE__) installDebugHooks()
 // 存量回填（幂等，缺失才写）：classCodes 派生字段 + 借阅周期状态归一 +
 // 设备材料类型（device-borrows 规格 §6）。
 // 顺序执行：先完成 E2E seed 的清库/灌库，避免回填把 seed 清掉的旧记录写回。
-// 失败不阻断启动（H-5）：runStartupBackfills 内逐项 console.error 保留诊断；
+// 失败不阻断启动：runStartupBackfills 内逐项 console.error 保留诊断；
 // classCodes 回填失败的缺口由读取侧 withClassCodes 自愈（内存物化路径）。
 void maybeSeedFromE2E().then(() => runStartupBackfills(db))
 

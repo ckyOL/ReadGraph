@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { buildDesensitizedFixture } from './fixtures'
 
 /**
- * 阶段 2 WCAG 4.1.3（状态消息 AA）+ 2.5.8（目标尺寸 AA）E2E（quality-hardening 阶段 2 A-6）。
+ * WCAG 4.1.3（状态消息 AA）+ 2.5.8（目标尺寸 AA）E2E：
  * - 4.1.3：/profile 概览卡片（SummaryCards / MoneyCards）外层容器在重算期间
  *   aria-busy="true"，计算结束移除；结果区 aria-live="polite" 常驻（状态消息可播报）。
  * - 2.5.8：375px 移动视口下抽查代表性交互目标（卡片链接、图标按钮）boundingBox

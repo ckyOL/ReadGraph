@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { buildDesensitizedFixture } from './fixtures'
 
 /**
- * 阶段 2 A-2（WCAG 2.5.3 标签在名称中 / 3.3.2 标签或说明 / 4.1.2 名称角色值 /
+ * 表单可访问名 E2E（WCAG 2.5.3 标签在名称中 / 3.3.2 标签或说明 / 4.1.2 名称角色值 /
  * 2.4.6 标题和标签 / 3.3.1 错误标识）E2E：
  * - profile 自定义日期范围：label 经 htmlFor 关联，点击 label 聚焦输入框；
  *   倒置输入（from > to）两输入 aria-invalid + role="alert" 可行动提示，修正即清除。
@@ -31,7 +31,7 @@ async function openCustomRange(page: Page): Promise<void> {
   await page.getByRole('option', { name: /Custom|自定义/ }).click()
 }
 
-test.describe('profile — custom date range inputs (A-2)', () => {
+test.describe('profile — custom date range inputs', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
   })
@@ -100,7 +100,7 @@ test.describe('profile — custom date range inputs (A-2)', () => {
   })
 })
 
-test.describe('library — filter selects accessible names (A-2)', () => {
+test.describe('library — filter selects accessible names', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
   })
@@ -121,7 +121,7 @@ test.describe('library — filter selects accessible names (A-2)', () => {
   })
 })
 
-test.describe('timeline — filter selects accessible names (A-2)', () => {
+test.describe('timeline — filter selects accessible names', () => {
   test.beforeEach(async ({ page }) => {
     await seed(page)
   })

@@ -434,7 +434,7 @@ describe('executeImport — L3 回归', () => {
   })
 })
 
-describe('executeImport — debug 装配（debug-mode spec §5.3/§4.2，DBG-3）', () => {
+describe('executeImport — debug 装配（debug-mode spec §5.3/§4.2）', () => {
   it('debug 开启：trace 收集装配、durationMs 主线程填写、performance 打点', async () => {
     vi.stubGlobal('__DEBUG_MODE__', true)
     const marks: string[] = []

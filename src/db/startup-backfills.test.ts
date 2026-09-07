@@ -1,4 +1,4 @@
-// H-5 启动回填失败可见性：runStartupBackfills 并行执行三回填，任一失败不阻断其余、
+// 启动回填失败可见性：runStartupBackfills 并行执行三回填，任一失败不阻断其余、
 // 不抛出；失败原因 console.error 保留诊断（此前 main.tsx 的 .catch(() => {}) 静默吞错，
 // classCodes 回填失败时分类视图静默不完整且无任何日志）。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

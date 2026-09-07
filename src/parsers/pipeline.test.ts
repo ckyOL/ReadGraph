@@ -555,10 +555,10 @@ describe('importPipeline — L8/L9 回归', () => {
   })
 })
 
-describe('importPipeline — 瞬态字段缺失警告（H-3）', () => {
+describe('importPipeline — 瞬态字段缺失警告', () => {
   // 模拟「按指南实现、但未设置瞬态字段」的第三方 parser：复用 szlib 的真实
   // 解析产出，仅剥掉 _rowIndexes/_bookKey（raw partials 绕过 szlib 装配路径）。
-  // 展开 szlibParser 以携带接口全字段，合并后 H-1 移除 supportedFormats/stats
+  // 展开 szlibParser 以携带接口全字段（不含已废弃的 supportedFormats/stats
   // 时本字面量仍类型自洽（不显式声明被删字段）。
   const rawParser: SourceParser = {
     ...szlibParser,

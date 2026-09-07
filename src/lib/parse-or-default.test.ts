@@ -1,4 +1,4 @@
-// Q-6 zod 默认值读路径兜底（M1 classCodes 同类）：parseOrDefault 从 schema 提取默认值，
+// zod 默认值读路径兜底：parseOrDefault 从 schema 提取默认值，
 // 直读旧记录时只补缺字段——不覆盖已有字段、不校验、不剥离未知字段、不执行派生 transform。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
@@ -177,7 +177,7 @@ describe('详情页直读路径（fake-indexeddb 旧记录）', () => {
   })
 })
 
-describe('列表页读路径评估（Q-6 接入判断）', () => {
+describe('列表页读路径评估（接入判断）', () => {
   it('行派生不读任何带默认值的字段 → 缺 parallelTitles/materialType 不崩（无需接入）', () => {
     const { parallelTitles: _pt, materialType: _mt, ...legacy } = makeBook(
       'bk-l',

@@ -104,7 +104,7 @@ function DurationDistributionImpl({
           {fmtDays(summary.medianDurationDays)}
         </span>
       </div>
-      {/* A-1：容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
+      {/* 容器带 role="img" + aria-label（WCAG 1.1.1）。 */}
       <div
         ref={ref}
         className="h-[320px] w-full"

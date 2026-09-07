@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 /**
- * 阶段 5 E2E（SEC-1，docs/tasks/quality-hardening.md §阶段5）：
+ * 安全基线 E2E（CSP，设计裁定见 docs/design-decisions.md 安全与隐私）：
  * (a) 生产构建响应 HTML 携带 CSP meta（default-src/script-src 'self' 等）；
  * (b) 主流程无 CSP violation——「主流程代理」：大数据导入 Worker 路径不在 e2e 覆盖，
  *     但 Worker（import-worker/stats-worker）经 Vite 产出独立同源文件，由
@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test'
  * 只面向 webServer 的生产 preview（端口 4173）。
  */
 
-test.describe('CSP (SEC-1)', () => {
+test.describe('CSP', () => {
   /** Vite 序列化会把属性值中的 ' 转义为 &#39;（浏览器解析时还原）；断言前先解码。 */
   const decodeHtmlEntities = (s: string) =>
     s.replace(/&(amp|quot|#39);/g, (m) => (m === '&amp;' ? '&' : m === '&quot;' ? '"' : "'"))

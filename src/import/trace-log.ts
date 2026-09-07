@@ -1,5 +1,5 @@
-// DevTools 输出通道与全局钩子（debug-mode spec §3.2/§4.1，DBG-2）。
-// logImportTrace 仅由 dev 装配层在导入成功后调用（DBG-3 接线）；内部
+// DevTools 输出通道与全局钩子（debug-mode spec §3.2/§4.1）。
+// logImportTrace 仅由 dev 装配层在导入成功后调用；内部
 // isDebugMode() 自门控——生产构建（__DEBUG_MODE__=false）下整个函数体被
 // minifier 剔除，零输出零分配（D5）。lastImport 为模块态单例：logImportTrace
 // 与 window.__readgraphDebug 始终指向同一 state（钩子未安装时更新不丢，
@@ -37,7 +37,7 @@ export function logImportTrace(trace: ImportTrace | null): void {
   if (isDebugVerbose()) {
     console.debug(`${PREFIX} entityDelta`, trace.entityDelta)
     for (const row of trace.rows) {
-      // 仅 verbose 且命中派生 ID 的行有该字段（DBG-1 收集契约）；未填行跳过。
+      // 仅 verbose 且命中派生 ID 的行有该字段（收集契约）；未填行跳过。
       if (row.idDerivation !== undefined) {
         console.debug(`${PREFIX} idDerivation`, { rowIndex: row.rowIndex, idDerivation: row.idDerivation })
       }
@@ -76,7 +76,7 @@ async function copyImportTrace(): Promise<void> {
 }
 
 /**
- * 挂载 window.__readgraphDebug（spec §3.2；DBG-3 装配层调用 logImportTrace 前安装）。
+ * 挂载 window.__readgraphDebug（spec §3.2；装配层调用 logImportTrace 前安装）。
  * isDebugMode() false（生产构建）不挂载直接返回；幂等——重复安装整体覆盖，
  * 无事件监听器累积。main.tsx 顶层装配区调用（dev-only，不渲染）。
  */

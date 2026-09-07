@@ -120,7 +120,7 @@ function ProfilePage() {
   const [activeTab, setActiveTab] = useState('classification')
   const [isPending, startTransition] = useTransition()
 
-  // 日期范围倒置校验（A-2，WCAG 3.3.1）：纯派生，随输入即时更新（validate-on-change），
+  // 日期范围倒置校验（WCAG 3.3.1）：纯派生，随输入即时更新（validate-on-change），
   // 不改动下方 range 的数据逻辑。
   const rangeInvalid = isDateRangeInverted(customFrom, customTo)
 

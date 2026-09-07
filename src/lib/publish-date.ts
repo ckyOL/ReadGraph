@@ -1,4 +1,4 @@
-// 归一 publishDate 展示值（H-2 下沉）：旧导出/夹具中 publishDate 可能被 JSON
+// 归一 publishDate 展示值（详情页与编辑框共用单一事实来源）：旧导出/夹具中 publishDate 可能被 JSON
 // reviver 还原为 Date（e2e-seed DATE_KEYS）；统一转为 UTC 日期串 "YYYY-MM-DD"，
 // 字符串与空值原样透传。详情页（$bookId.tsx）与编辑对话框（-edit-dialog.tsx）共用。
 import { formatDateInTz } from '@/lib/display-time'

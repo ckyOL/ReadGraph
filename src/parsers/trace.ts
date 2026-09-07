@@ -1,5 +1,5 @@
 // 导入决策 trace 数据契约（debug-mode spec §5.1）。
-// DBG-0 落类型；DBG-1 落 collector（collectCatalogDecision + 行/周期记录）。
+// 本文件落类型契约与 collector（collectCatalogDecision + 行/周期记录）。
 // ImportTrace 是会话态结构，不承诺跨版本向后兼容（spec §7 版本边界）；
 // 不进 ExportData、不落库（D4）。warnings 为扁平字段：spec §4.1 步骤 5 写
 // trace.importLog.warnings，按 §5 契约（无 importLog 成员）扁平化裁定（主会话）。
@@ -9,8 +9,8 @@ import type {
   ParseWarningType,
 } from '@/types/entities'
 /**
- * 逐行决策判定优先级（spec §8 验收用例为准，DBG-1 实现时遵守）：
- * `row-filtered`（装配层，DBG-3）> `row-error` > `cycle-skipped-duplicate` >
+ * 逐行决策判定优先级（spec §8 验收用例为准）：
+ * `row-filtered`（装配层补充）> `row-error` > `cycle-skipped-duplicate` >
  * `cycle-unpaired` > 候选分支（placeholder-isolated / merged-catalog /
  * merged-book-isbn / merged-book-fuzzy / new-book）> `cycle-created`。
  * 候选分支内部：占位判定**先于**编目级判定（dedupe.ts 占位候选命中既有编目
@@ -26,7 +26,7 @@ export type ImportDecision =
   | 'cycle-skipped-duplicate' // 周期精确重复（sourceId+barcode+borrowedAt）→ parseStatus='skipped'
   | 'cycle-unpaired' // 借还不成对/时间重叠 → 记 unpaired_record 警告
   | 'row-error' // format_error 等致命解析错误，行未产出实体
-  | 'row-filtered' // 被 parser.filterRows 预剔除（装配层补充，spec §5.3，DBG-3）
+  | 'row-filtered' // 被 parser.filterRows 预剔除（装配层补充，spec §5.3）
 
 /** 单行决策明细（与 RawRecord.rowIndex 对齐，1-based）。 */
 export interface ImportTraceRow {
@@ -46,7 +46,7 @@ export interface ImportTraceRow {
   /**
    * 派生 ID 推导串（会话态细化，spec §7 允许字段演进）：
    * 如 `cr-{fnv1a32(sourceId|metaIdKey)}`、`bk-{fnv1a32(sourceId|barcode)}`，
-   * stableHash 口径；仅 verbose 且命中派生 ID 时填写（DBG-1），非 verbose 不分配。
+   * stableHash 口径；仅 verbose 且命中派生 ID 时填写，非 verbose 不分配。
    */
   idDerivation?: string
 }
@@ -74,12 +74,12 @@ export interface ImportTrace {
   }
   /** 警告明细（= importLog.warnings 同内容；spec §4.1 步骤 5 输出源）。 */
   warnings: ParseWarning[]
-  /** 主线程/Worker 计时；纯函数测试环境为 null（DBG-3 装配层填写）。 */
+  /** 主线程/Worker 计时；纯函数测试环境为 null（装配层填写）。 */
   durationMs: number | null
 }
 
 // ---------------------------------------------------------------------------
-// collector（DBG-1）：由 dedupe 回传字段推导 trace，不改任何决策逻辑。
+// collector：由 dedupe 回传字段推导 trace，不改任何决策逻辑。
 // ---------------------------------------------------------------------------
 
 /** 候选编目行 decision（候选分支五值，collectCatalogDecision 产出）。 */
