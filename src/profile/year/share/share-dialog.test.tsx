@@ -1,5 +1,5 @@
 // 分享图 Dialog 预览组件测试（reading-profile §4.1，v2 §4.2 扩展）。
-// renderToStaticMarkup + mock（SSR 静态标记确定性断言，参照 profile.$year.test.tsx
+// renderToStaticMarkup + mock（SSR 静态标记确定性断言，参照 -profile.$year.test.tsx
 // 模式）：Dialog 打开渲染 canvas 与 aria-label；i18n key 消费走 t() 取值路径断言
 // （i18n-conventions §8，不断言字面量）；canShare false → 系统分享按钮不渲染。
 // Radix Dialog 走 Portal，SSR 静态标记不产出内容：以直通 stub 替换（同文件
