@@ -16,7 +16,11 @@ import {
   type TraceOptions,
 } from '@/parsers/pipeline'
 import type { ImportTraceRow } from '@/parsers/trace'
-import { isDebugMode, isDebugVerbose } from '@/lib/debug'
+// __DEBUG_MODE__ 直引（define 构建期静态替换，同 ai-client.ts
+// __AI_DEV_PROXY__ 先例）：生产构建 debug 装配分支折叠剔除（US4 产物
+// 零残留）；测试环境 vi.stubGlobal 可切换（debug.test.ts 同语义）。
+declare const __DEBUG_MODE__: boolean
+import { isDebugVerbose } from '@/lib/debug'
 import type { ImportLogStats, RawRecord, Source } from '@/types/entities'
 import { uuid } from '@/db/uuid'
 import { IMPORT_MAX_FILE_SIZE } from '@/lib/encoding'
@@ -136,8 +140,9 @@ export async function executeImport(
   }
 
   // debug-mode spec §5.2/§4.2：traceOptions 仅由 debug 装配层决定（D3/D5）——
-  // 生产构建 isDebugMode() 恒 false → undefined → 管线零收集、mark 被剔除。
-  const debugOn = isDebugMode()
+  // 门控直引 __DEBUG_MODE__：生产构建 false 折叠、mark/measure 分支剔除
+  // （US4 零残留）；测试环境 vi.stubGlobal('__DEBUG_MODE__') 可切换。
+  const debugOn = __DEBUG_MODE__
   const startedAt = performance.now()
   if (debugOn) performance.mark('readgraph:import:start')
   const traceOptions: TraceOptions | undefined = debugOn

@@ -26,13 +26,12 @@
 - **非目标**（spec §2/§7 已定案，不因实现回潮）：不做应用内调试 UI（D2）；不新增 Object Store、不改 `db.ts`/schema 版本；`ExportData` 不加 trace 字段、`importDatabase` 不感知（重建等价不受影响）；不改任何去重/解析决策逻辑（收集点全部旁路）；零新增 npm 依赖；不触碰 `e2e/`（零 UI 变化，`main.tsx` 钩子安装 dev-only 不渲染）。
 - **D5 硬约束**：`traceOptions` 缺省路径零分配——每个收集点先判 `trace == null` 短路；生产构建 `__DEBUG_MODE__` 静态替换 `false`，debug 分支被 minifier 剔除。
 
-## 任务 DAG 与并行批次
-
 ```
-批次 0（串行）:  DBG-0 契约与门控
-批次 1（并行）:  DBG-1 管线 trace 收集  ∥  DBG-2 DevTools 输出通道与全局钩子
-批次 2（串行）:  DBG-3 装配层与 Worker 回传（依赖 DBG-1 收集语义 + DBG-2 trace-log 模块）
-批次 3（单人）:  收尾 — 集成验收与规格回写
+批次 0（串行）:  DBG-0 契约与门控                ✅ 2026-09-07（b566d9a）
+批次 1（并行）:  DBG-1 管线 trace 收集           ✅ 2026-09-07（936d2a5）
+           ∥     DBG-2 DevTools 输出通道与全局钩子 ✅ 2026-09-07（936d2a5）
+批次 2（串行）:  DBG-3 装配层与 Worker 回传       ✅ 2026-09-07（16ec1eb，依赖 DBG-1 收集语义 + DBG-2 trace-log 模块）
+批次 3（单人）:  收尾 — 集成验收与规格回写        ✅ 2026-09-07
 ```
 
 - DBG-1 ∥ DBG-2 文件集完全不相交，可独立分支/worktree 并行。
@@ -52,8 +51,7 @@
 
 ---
 
-## DBG-0 契约与门控（批次 0，串行，其余任务的公共前置）
-
+## DBG-0 契约与门控（批次 0，串行，其余任务的公共前置）✅ 2026-09-07
 - **改动**：
   1. `src/types/debug.d.ts`（新建）：`declare const __DEBUG_MODE__: boolean`（`import type` 引入 `ImportTrace`）+ `ReadgraphDebug` 接口（`lastImport` / `getImportTrace()` / `exportImportTrace()` / `copyImportTrace()`，spec §3.2）+ `interface Window { __readgraphDebug?: ReadgraphDebug }`。
   2. `src/lib/debug.ts`（新建）：`isDebugMode()`（直读 `__DEBUG_MODE__`）、`isDebugVerbose()`（`isDebugMode() && localStorage['readgraph:debug']==='verbose'`，**容错**：localStorage 缺失/损坏（node 测试环境、Safari 隐私模式）回退关）、`writeVerboseFlag(verbose)`（写/清，同样容错）。不并入 `readgraph:preferences`（spec §3.1）。
@@ -64,8 +62,7 @@
 - **测试（Red 先行）**：`src/lib/debug.test.ts`——vitest define 下 `isDebugMode()===false`；`vi.stubGlobal('__DEBUG_MODE__', true)` 切换后为 true（先例 ai-client.test.ts）；verbose 读写一致；`localStorage` 缺失/抛错时 `isDebugVerbose()` 回退 false 不抛。
 - **验收**：`pnpm test` 全绿（含既有 651+ 用例不回归）、`pnpm build` 绿。
 
-## DBG-1 管线 trace 收集（批次 1A）
-
+## DBG-1 管线 trace 收集（批次 1A）✅ 2026-09-07
   1. `src/parsers/trace.ts` 落 collector：`initTrace(meta, source, parser)` + 逐行记录助手；`pipeline.ts` 在既有分支上挂收集点（**不改任何决策逻辑**，spec §5.2 表）：
      - 候选装配循环（步骤 4）：`isPlaceholder` → `placeholder-isolated`（**先于**编目级判定——dedupe.ts:124-133 占位候选命中既有编目也置 `existingCrIds[i]`，后查会把重导占位行误判为 merged-catalog）；`existingCrIds[i] !== ''` → `merged-catalog`；`bookIds[i]` 以 `new:` 开头 → `new-book`；非 `new:` 且候选 isbn13 非空 → `merged-book-isbn`；非 `new:` 且 isbn13 空 → `merged-book-fuzzy`。判定为纯函数 `collectCatalogDecision(...)`，置于 trace.ts（dedupe 回传字段足以推导，不回传新增字段）。
      - 周期去重：`skippedFlags[i]` + `cyWarnings` 按候选下标/`recordRef: raw:{id}` 对齐 → `cycle-skipped-duplicate`（含批次内重复 dedupe.ts:415-421 与跨文件闭合 alreadyClosed——后者无 duplicate 警告，reason 注明「并入既有周期（跨文件闭合）」）；`unpaired_record` 警告行 → `cycle-unpaired`；其余接受候选 → `cycle-created`。
@@ -78,20 +75,17 @@
 - **测试（Red 先行）**：`src/parsers/trace.test.ts`——spec §8 前 7 项决策正确性（首次导入 new-book 与实体 ID 一致；增量重复周期 skipped；增量同 ISBN 不同条码 merged-book-isbn 且 bookId 复用；无 ISBN 同题名作者 merged-book-fuzzy + `warningType='duplicate'`；选书帮占位各 barcode 独立；非法日期/缺字段行 status/error；unpaired_record）＋**确定性**（同输入两次深等价，排除 `durationMs`）＋**默认关闭**（不传第 6 参 `result.trace === null`；`{verbose:false}` 有 trace 且 rows 与 rawRecords 按 rowIndex 对齐）。
 - **验收**：`pnpm test` 绿（pipeline/dedupe/run-import 既有用例零回归——重建等价回归由全量 suite 兜底）；代码审查确认 `trace == null` 路径零新增分配。
 
-## DBG-2 DevTools 输出通道与全局钩子（批次 1B）
+## DBG-2 DevTools 输出通道与全局钩子（批次 1B）✅ 2026-09-07
 
 - **改动**：
   1. `src/import/trace-log.ts`（新建）：`logImportTrace(trace: ImportTrace | null)`——null 安全 no-op；内部 `isDebugMode()` 门控（spec §4.1/§8：false 时零输出）。输出序列按 spec §4.1 五步：`console.groupCollapsed('[readgraph:import] 导入决策 trace', importLogId)` → `console.table(rows, ['rowIndex','barcode','title','decision','reason'])`（列裁剪）→ `console.debug rows` → `console.debug summary + durationMs` → `console.debug warnings`。verbose 级（`isDebugVerbose()`）追加 `entityDelta` 逐条与行 `idDerivation` 推导串。**并更新 `window.__readgraphDebug.lastImport`**（可选链防御，钩子未安装时静默）。
   2. 同文件：`installDebugHooks()`——`isDebugMode()` false 时不挂载；true 时挂 `window.__readgraphDebug = { lastImport: null, getImportTrace, exportImportTrace, copyImportTrace }`。导出 = `JSON.stringify(trace, null, 2)`（Date 走 `toISOString`，同 backup.ts 序列化风格）+ Blob + `a[download]`；复制 = `navigator.clipboard.writeText`。
   3. `src/main.tsx`：导入后顶层调用 `installDebugHooks()`（dev-only，不渲染、不影响 SSR/测试路径）。
-- **测试（Red 先行）**：`src/import/trace-log.test.ts`——`/** @vitest-environment jsdom */`（`window`/`self` 可用；或 `vi.stubGlobal`）：`__DEBUG_MODE__=false`（vitest define）时 spy `console.*` 零调用；stubGlobal true 后五步输出与前缀 `[readgraph:import]` 断言；`localStorage` stub verbose 开/关差异；`trace=null` no-op；`exportImportTrace` 触发 `URL.createObjectURL`+download、`copyImportTrace` 写剪贴板（均 stub 断言）；`lastImport` 在 `logImportTrace` 后更新。
 - **验收**：`pnpm test` 绿；`pnpm build` 绿。
 
-## DBG-3 装配层与 Worker 回传（批次 2，依赖 DBG-1 + DBG-2 合入）
-
+## DBG-3 装配层与 Worker 回传（批次 2，依赖 DBG-1 + DBG-2 合入）✅ 2026-09-07
 - **改动**：
   1. `src/import/import-worker.ts`：`ImportWorkerInput` 增可选 `traceOptions?: TraceOptions`；`ImportWorkerApi.run` 返回 `Promise<{ result: PipelineResult; trace: ImportTrace | null }>`（spec §5.4）；run 内透传 traceOptions，并在 `traceOptions` 存在时以 `performance.now()` 差值填 `trace.durationMs`（Worker 内同源可用，跨线程不合并 mark，spec §4.2）。
-  2. `src/import/run-import.ts`：
      - `ImportRequest` 增可选 `filteredRowIndexes?: number[]`（1-based，原数组下标，spec §5.3）；
      - `executeImport` 在 `isDebugMode()` 时装配 `traceOptions = { verbose: isDebugVerbose() }`（否则 undefined → 管线零收集）；主线程同步路径用 `performance.now()` 差值填 `durationMs`；`isDebugMode()` 时打 `performance.mark('readgraph:import:start'|'end')` + `measure('readgraph:import')`；
      - 拿到 `PipelineResult` 后，**仅当 trace 收集开启**且传入 `filteredRowIndexes` 时补 `decision='row-filtered'`、`status='filtered-out'`、`rawRecordId=null` 的行（reason 取 parser 过滤语义「自助查询」等；barcode/title 尽力从原始行字段填充，缺失为 null），`rows` 按 rowIndex 升序合并；**不触碰 `stats`**（`totalRawRecords` 语义保持「进入管线的行数」，spec §5.3）；
@@ -102,7 +96,7 @@
 - **测试（Red 先行）**：`src/import/run-import.test.ts` 增量（用 `vi.stubGlobal('__DEBUG_MODE__', true)` 开启装配，先例 ai-client.test.ts:371）：`filteredRowIndexes` → 对应行 `row-filtered`/`filtered-out`/rowIndex 正确且 `stats` 不变；不传时无 filtered 行；dev 装配下 `result.trace !== null`。Worker 回传：`/** @vitest-environment jsdom */` 直测 `import-worker` 导出的 `api.run(input)`（jsdom 提供 `self` 使 Comlink `expose` 可导入；或 `vi.mock('comlink')`），断言返回 `{ result, trace }` 且透传 `traceOptions` 后 trace 非空、`durationMs` 为 number。
 - **验收**：`pnpm test` 绿（既有 run-import 集成用例零回归）；`pnpm build` 绿。
 
-## 收尾：集成验收与规格回写（批次 3，单人，全任务合入后）
+## 收尾：集成验收与规格回写（批次 3，单人，全任务合入后）✅ 2026-09-07
 
 - **门禁**（在合并 main 上跑全量）：`pnpm test` + `pnpm build`（CI 六门禁中 e2e/audit 与本变更无关，不红即可）。
 - **产物检查（US4）**：`pnpm build` 后 `grep -c "readgraph:import\|readgraph:debug\|__DEBUG_MODE__" dist/assets/*.js` 须为 0——debug 分支与字符串零残留。

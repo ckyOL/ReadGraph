@@ -7,11 +7,14 @@ import { router } from './router'
 import { db } from './db/db-instance'
 import { runStartupBackfills } from './db/startup-backfills'
 import { maybeSeedFromE2E } from './db/e2e-seed'
-// dev-only 调试钩子（debug-mode spec §3.2）：函数内部 isDebugMode() 自门控，
-// 生产构建不挂载、不渲染任何内容；import 决策 console 输出在 trace-log 内自门控。
+// dev-only 调试钩子（debug-mode spec §3.2）：直引 __DEBUG_MODE__（define 构建
+// 期静态替换，同 ai-client.ts __AI_DEV_PROXY__ 先例）——生产构建 if(false) 被
+// minifier 剔除，trace-log 模块整体摇树（US4 产物零残留）；测试环境
+// vi.stubGlobal('__DEBUG_MODE__') 可切换（debug.test.ts 同语义）。
+declare const __DEBUG_MODE__: boolean
 import { installDebugHooks } from './import/trace-log'
 
-installDebugHooks()
+if (__DEBUG_MODE__) installDebugHooks()
 
 // 存量回填（幂等，缺失才写）：classCodes 派生字段 + 借阅周期状态归一 +
 // 设备材料类型（device-borrows 规格 §6）。

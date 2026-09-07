@@ -238,5 +238,4 @@ export interface ImportWorkerApi {
 | 里程碑 | 内容 | 验收 |
 |--------|------|------|
 | M1 纯函数 + 通道 | `debug.ts`、`parsers/trace.ts`、pipeline 第 6 参、worker 回传、`trace-log.ts`、`main.tsx` 钩子、vite/vitest define | §8 测试全绿；`pnpm build` 通过；`pnpm dev` 手工导入可见 Console 分组，build 产物无 `[readgraph:import]` |
-
-> 实现状态：未启动（规格已定稿，待排期）。
+> 实现状态：✅ **已落地（2026-09-07，M1）**。DBG-0 契约与门控（`src/types/debug.d.ts`、`src/lib/debug.ts`、vite/vitest define）、DBG-1 管线 trace 收集（`src/parsers/trace.ts` collector + pipeline 第 6 参，纯函数确定性）、DBG-2 DevTools 通道（`src/import/trace-log.ts` 五步输出 + `window.__readgraphDebug` 钩子，`main.tsx` 安装）、DBG-3 装配层（`run-import.ts` filteredRowIndexes 补充与 durationMs、`import-worker.ts` `{ result, trace }` 回传、`import.tsx` 接线）。收尾验收：1157 单测全绿；生产包 `readgraph:import`/`readgraph:debug`/`__DEBUG_MODE__` 零残留（含字符串）——门控点直引 `__DEBUG_MODE__` 常量（`isDebugMode()` 封装调用不被 minifier 内联，跨模块封装会残留字符串常量；同 `__AI_DEV_PROXY__` 先例）；`pnpm dev` 冒烟 US1–US6 全过（重复周期/ISBN 合并/过滤行/verbose 热切换/导出剪贴板）。

@@ -12,7 +12,10 @@ import { getParser } from '@/parsers/registry'
 import { executeImport } from '@/import/run-import'
 import { groupWarnings } from '@/import/warning-groups'
 import { logImportTrace } from '@/import/trace-log'
-import { isDebugMode } from '@/lib/debug'
+// __DEBUG_MODE__ 直引（define 构建期静态替换，同 ai-client.ts
+// __AI_DEV_PROXY__ 先例）：生产构建两处 debug 分支折叠剔除、trace-log
+// 模块摇树（US4 产物零残留）；测试 vi.stubGlobal 可切换（debug.test.ts 语义）。
+declare const __DEBUG_MODE__: boolean
 import type { PipelineResult } from '@/parsers/pipeline'
 import type { Source } from '@/types/entities'
 import { Button } from '@/components/ui/button'
@@ -119,11 +122,11 @@ function ImportPage() {
       return
     }
     // debug 构建下用引用差集计算被剔除行下标（Array.filter 保引用，任务书
-    // 基线表已证）；生产路径不计算、不存（零分配，D5）。
+    // 基线表已证）。门控直引 __DEBUG_MODE__（生产折叠为零分配，D5）。
     const parsedAll = JSON.parse(text) as Record<string, unknown>[]
     const previewRows = parser.filterRows(parsedAll)
     let filteredRowIndexes: number[] | undefined
-    if (isDebugMode()) {
+    if (__DEBUG_MODE__) {
       const kept = new Set<Record<string, unknown>>(previewRows)
       filteredRowIndexes = parsedAll
         .filter((row) => !kept.has(row))
@@ -155,9 +158,10 @@ function ImportPage() {
         filteredRowIndexes: fileInfo.filteredRowIndexes,
       })
       setResult(res)
-      // DevTools Console 输出（debug-mode spec §4.1/D6：主线程统一打印；
-      // trace=null 与生产构建内部自门控，no-op）。
-      logImportTrace(res.trace ?? null)
+      // DevTools Console 输出（debug-mode spec §4.1/D6：主线程统一打印）。
+      // 门控直引 __DEBUG_MODE__：生产构建调用剔除、trace-log 模块摇树
+      // （US4 产物零残留）；debug 构建内 trace=null 仍自门控 no-op。
+      if (__DEBUG_MODE__) logImportTrace(res.trace ?? null)
     } catch (e) {
       // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
       console.error('[import] executeImport failed:', e)
