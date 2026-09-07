@@ -1,8 +1,8 @@
 # 调试模式（Debug Mode）规格
 
 > 本文件从 `docs/app-spec.md` §6 功能规格索引拆出，遵循 SDD + TDD。规格落地于代码前先写本节，再进 Tests(Red) → Code → Tests(Green)。
-> 目标：为开发者提供**导入管线的逐行决策明细**（新增/跳过/合并/警告），主通道复用浏览器 Web 开发者工具（DevTools），默认零用户可见性。
-> 依赖的规范化对象（`ImportLog`/`ParseWarning`/`RawRecord.parseStatus`、`importPipeline` 纯函数契约、去重决策）以 [import-pipeline](./import-pipeline.md)、[import-workflow](../metadata/import-workflow.md)、[entities](../../src/types/entities.ts) 为主唯一来源；本节只定义「调试开关、DevTools 通道、决策 Trace 数据契约、报告区增量、测试」。
+> 目标：为开发者提供**导入管线的逐行决策明细**（新增/跳过/合并/警告），主通道复用浏览器 Web 开发者工具（DevTools）。调试模式**仅开发环境启用**（构建期常量门控，见 D3）：`pnpm dev` 自动开启，生产构建静态关闭且 debug 分支被剔除；默认零用户可见性。
+> 依赖的规范化对象（`ImportLog`/`ParseWarning`/`RawRecord.parseStatus`、`importPipeline` 纯函数契约、去重决策）以 [import-pipeline](./import-pipeline.md)、[import-workflow](../metadata/import-workflow.md)、[entities](../../src/types/entities.ts) 为主唯一来源；本节只定义「调试开关、DevTools 通道、决策 Trace 数据契约、测试」。应用内**不做**调试 UI（见 D2）；如需低门槛视图，后续以独立里程碑扩展。
 > 返回 [app-spec.md](../app-spec.md)。
 
 ## 1. 背景与问题
@@ -21,10 +21,10 @@
 | # | 决策 | 结论 | 理由 |
 |---|------|------|------|
 | D1 | 主通道是否复用浏览器 DevTools | **是**：Console 结构化日志 + `console.table` + `performance` + 全局钩子 + 原生 IndexedDB 面板 | 纯前端无后端可挂日志服务；DevTools 原生支持对象树展开、前缀过滤、断点、控制台导出；零 UI 成本；数据不出浏览器，符合隐私基线（design-decisions §安全与隐私）。**不**引第三方日志库（npm-supply-chain-security 依赖最小化） |
-| D2 | 辅助通道 | 导入报告侧栏在 debug 模式下出现「调试详情」折叠区：逐行决策表 + 复制 Trace JSON | Worker 内日志顺序需回传统一打印；折叠区给不熟悉 Console 的协作者一个低门槛视图。**不**做独立「开发者后台页」 |
-| D3 | 开启方式 | 两级开关：`?debug=1`（会话级，URL 优先）+ `localStorage['readgraph:debug']='1'`（持久）；独立 key，**不**并入 `readgraph:preferences` | 开发者开关非用户偏好，语义独立；URL 参数无需写存储即可用，适合一次性会话 |
+| D2 | 辅助 UI 通道 | **不做**：不建应用内调试面板/折叠区，DevTools 为唯一观察通道；若后续需要低门槛视图，再以独立里程碑补充 | 折叠面板引入 i18n、样式、行↔警告联动等持续维护成本，而信息 Console trace 已全覆盖；去掉 UI 后 M1 即闭环，后续扩展不受 UI 契约约束 |
+| D3 | 开启方式 | **仅 dev**：构建期常量 `__DEBUG_MODE__`（vite.config.ts `define: __DEBUG_MODE__: mode === 'development'`），`pnpm dev` 即开；build/preview/vitest 注入 `false`。**不用** URL 参数、**不用** `VITE_*` 环境变量。verbose 细分度保留运行时位：`localStorage['readgraph:debug']='verbose'`（改详细度不必重启 dev server） | debug 是开发用通道，语义绑定 dev 构建而非用户会话；define 静态替换使生产包 debug 分支为死代码，minifier 剔除，零运行时判断成本；`VITE_*` 需手工携带易忘，且给已部署产物开 debug 的场景被显式放弃（debug 不出 dev）。先例同 `__AI_DEV_PROXY__`（ai-features §5.4）：vite define + vitest define 固定 false + 测试 `vi.stubGlobal` 切换 |
 | D4 | 决策数据形态 | 管线新增可选产出 `ImportTrace`（纯函数、确定性），**不进** `ExportData`、**不落库** | 保持「管线纯函数 + 重建等价」契约不受 trace 影响（import-workflow 导入纯度要求）；trace 是调试观察物，随会话消亡 |
-| D5 | 收集开销 | `importPipeline` 新增可选参数控制收集，默认关闭 → **零分配** | 生产路径不承担 trace 的内存/CPU 成本；打开仅 debug 会话 |
+| D5 | 收集开销 | `importPipeline` 新增可选参数控制收集，默认关闭 → **零分配** | 生产路径不承担 trace 的内存/CPU 成本；trace 收集仅由 dev 构建装配层开启 |
 | D6 | Worker 路径 | `runInWorker` 返回 `{ result, trace }`，主线程统一打印 | Comlink 结构化克隆支持普通对象；统一打印保证 console 分组顺序（开发者在主线程 Console 即可看全） |
 | D7 | 隐私边界 | trace 仅含派生字段与决策原因，**不含** `RawRecord.data` 全文；导出 JSON 由开发者显式触发 | 借阅数据敏感；trace 不放大暴露面 |
 
@@ -33,19 +33,15 @@
 ### 3.1 模块契约
 
 ```ts
-// 读开关：URL > localStorage > 默认关
-function isDebugMode(): boolean
-function isDebugVerbose(): boolean      // 控制 console.debug 详情量（URL 'debug=verbose' 或 storage 'verbose'）
-function readDebugFlag(): DebugFlag     // { mode: boolean; verbose: boolean }
-function writeDebugFlag(flag: Partial<DebugFlag>): void   // 仅写 localStorage
-function clearDebugFlag(): void
+// 读开关：构建期常量 __DEBUG_MODE__（dev 构建为 true，其余 false）+ localStorage verbose 位
+function isDebugMode(): boolean        // __DEBUG_MODE__
+function isDebugVerbose(): boolean     // isDebugMode() && localStorage 'readgraph:debug' === 'verbose'（容错，损坏回退关）
+function writeVerboseFlag(verbose: boolean): void   // 写/清 localStorage 'readgraph:debug'
 ```
 
-- URL 形态：`?debug=1`、`?debug=verbose`。从 `window.location.search` 读取（不经路由状态，保持零依赖、任意页面可开）。
-- localStorage 形态：`readgraph:debug` = `'1'` 或 `'{"verbose":true}'`（容错解析，损坏回退关）。
-- 优先级：URL 显式出现即覆盖 storage；URL 无参数时读 storage；两者皆无 → 关。
-- 不随 `readgraph:preferences` 导出/重建（见 D3），`clearDebugFlag` 供「设置 → 重置」之外的开发者手动清理（Console 执行即可）。
-- 生产构建**不剔除**该模块：本应用纯前端、无遥测，debug 通道不改变业务输出，保留便于静态部署后现场排查。
+- `__DEBUG_MODE__` 声明于 `src/types/debug.d.ts`（`declare const __DEBUG_MODE__: boolean`），与 `__AI_DEV_PROXY__` 同模式：vite.config.ts define（dev→true，build/preview→false）、vitest.config.ts define 固定 `false`（测试直连语义，需测 debug 行为时 `vi.stubGlobal('__DEBUG_MODE__', true)` 切换）。
+- **无 URL 参数、无 localStorage 持久开关**：会话级开关是给「已部署产物」用的（原设计），现 debug 明确不出 dev，运行时开关失去存在意义；verbose 是开发者在本机调详细度的快捷位，非持久偏好，不并入 `readgraph:preferences`、不导出。
+- 生产构建 debug 分支为死代码：`__DEBUG_MODE__` 在 define 阶段替换为字面量 `false`，`isDebugMode()` 恒 false，minifier 剔除 logImportTrace 调用与钩子安装，产物零残留。
 
 ### 3.2 全局钩子（安装于 `main.tsx`）
 
@@ -60,7 +56,8 @@ window.__readgraphDebug = {
 }
 ```
 
-非 debug 模式不挂载；`__readgraphDebug` 类型声明放 `src/types/debug.d.ts`。
+- 非 debug 模式不挂载；`__readgraphDebug` 类型声明放 `src/types/debug.d.ts`。
+- 导出 JSON = `JSON.stringify(trace, null, 2)`，Date 经 `toISOString` 序列化（同 `backup.ts` 序列化风格）。
 
 ## 4. DevTools 通道设计（主通道）
 
@@ -125,7 +122,7 @@ interface ImportTraceRow {
   bookId: string | null
   catalogRecordId: string | null
   borrowCycleId: string | null
-  warningType: ParseWarningType | null   // 关联警告类型，用于报告区联动
+  warningType: ParseWarningType | null   // 关联警告类型，便于与 warnings 交叉检索
 }
 
 interface ImportTrace {
@@ -198,36 +195,16 @@ export interface ImportWorkerApi {
 // run-import.ts runInWorker 解包后把 trace 并入 executeImport 返回值；主线程统一打印
 ```
 
-## 6. 报告区「调试详情」折叠面板（辅助通道）
+## 6. 用户故事与验收用例
 
-### 6.1 UI 设计说明
-
-- **触发**：`isDebugMode() === true` 且本次 `result` 存在时，报告侧栏统计卡下方渲染折叠区（`<Collapsible>`，shadcn 组件；默认收起）。
-- **结构**：
-  1. 头部：「调试详情」+ 复制 Trace JSON 按钮（`copyImportTrace`/内联 `navigator.clipboard` 副本，失败提示）；
-  2. 逐行决策表（紧凑表，等宽列）：`rowIndex`（等宽 mono）→ 状态徽章（imported/skipped/warning/error/filtered-out 四色）→ `decision`（i18n 标签）→ `reason` → `bookId/catalogRecordId/borrowCycleId`（等宽、截断 + title 提示全文）；
-  3. 表行点击高亮：若行带 `warningType`，滚动联动到下方警告列表对应条目（`recordRef` 匹配）。
-- **状态**：`result` 置空（换来源/重选文件）时折叠区消失；`running` 时保持上一结果但禁用复制按钮。
-- **样式**：沿用主壳「编目终端」语言——直角、边框、等宽；不加图表色板（debug 面板不属于阅读图谱页）。
-- **i18n**：全部文案走 `t('pages:import.debug.*')`（`import.debug.heading` / `import.debug.copy` / `import.debug.copied` / `import.debug.empty` / decision 标签 `import.debug.decision.*` / 状态徽章复用 `import.warning.*` 风格）；**JSX 中不得出现字面量字符串**（i18n-conventions）。
-- 该面板**不做**分页/虚拟滚动（报告是会话态小数据）；行数超 500 时表头提示「仅显示前 500 行，完整数据见 Console trace」（`console.table` 原生支持全量）。
-
-### 6.2 数据契约与边界
-
-- 数据源仅 `PipelineResult.trace`（内存态），**不读库**；
-- 导出 JSON = `JSON.stringify(trace, null, 2)`，Date 经 `toISOString` 序列化（复用 `backup.ts` 的序列化风格）；
-- 面板与 `logImportTrace` 使用同一份 trace，保证 Console 与 UI 一致。
-
-## 7. 用户故事与验收用例
-
-- **US1（逐行明细）**：开发者 `?debug=1` 导入含重复周期的文件 → Console 出现 `[readgraph:import]` 分组，`console.table` 显示每行 `rowIndex/barcode/title/decision/reason`；重复行 `decision='cycle-skipped-duplicate'`、`status='skipped'`；报告侧栏折叠区同内容可见。
+- **US1（逐行明细）**：`pnpm dev` 导入含重复周期的文件 → Console 出现 `[readgraph:import]` 分组，`console.table` 显示每行 `rowIndex/barcode/title/decision/reason`；重复行 `decision='cycle-skipped-duplicate'`、`status='skipped'`。
 - **US2（合并溯源）**：增量导入同 ISBN 文件 → 新批次行 `decision='merged-book-isbn'`，`bookId` 与既有 Book 相同；`entityDelta.mergedBooks` 列出该书 id；DevTools IndexedDB 面板可按 id 复核。
 - **US3（被过滤行可见）**：导入含「自助查询」行的 szlib 文件 → trace 含 `decision='row-filtered'`、`status='filtered-out'` 的行；`stats.skippedRecords` 不变（不把过滤行计入管线统计）。
-- **US4（默认零开销）**：无 `?debug` 参数、无 storage 标志时导入 → `result.trace === null`，Console 无 `[readgraph:import]` 输出，管线行为与改动前逐字节等价（重建等价测试仍绿）。
-- **US5（持久开关）**：Console 执行 `localStorage.setItem('readgraph:debug','1')` 后刷新 → 无需 URL 参数即进入 debug 模式；`clearDebugFlag()` 可关闭。
-- **US6（导出）**：debug 会话内 `window.__readgraphDebug.exportImportTrace()` → 下载含完整 trace 的 JSON 文件，可发回仓库附于 bug 报告（脱敏样本政策同 parser 贡献指南）。
+- **US4（默认零开销）**：`pnpm build` 产物导入 → `result.trace === null`，Console 无 `[readgraph:import]` 输出，管线行为与改动前逐字节等价（重建等价测试仍绿）。
+- **US5（verbose 细分）**：Console 执行 `localStorage.setItem('readgraph:debug','verbose')` → 实体增量逐条与派生 ID 推导可见（无需重启 dev server）；`localStorage.removeItem('readgraph:debug')` 回默认级。
+- **US6（导出）**：dev 会话内 `window.__readgraphDebug.exportImportTrace()` → 下载含完整 trace 的 JSON 文件，可发回仓库附于 bug 报告（脱敏样本政策同 parser 贡献指南）。
 
-## 8. 数据契约与边界
+## 7. 数据契约与边界
 
 - **不进 ExportData**：`ExportData` 的 Zod schema（`src/db/export-import.ts`）**不新增** `trace` 字段；`importDatabase` 重放装配不消费 trace——保证「清空重建等价」不受调试通道影响（internal-schema 重建要求）。
 - **不落库**：不新增 Object Store、不改 `db.ts` stores/版本号。
@@ -236,7 +213,7 @@ export interface ImportWorkerApi {
 - **性能**：trace 开启时行级对象为 O(n) 常量分配（每行一个 `ImportTraceRow`），50MB 上限文件（IMPORT_MAX_FILE_SIZE）下量级可控；console 输出由 DevTools 自身截断策略兜底。
 - **版本边界**：`ImportTrace` 是会话态结构，不承诺跨版本向后兼容（不同于 ExportData）；版本演进直接改字段，不迁移。
 
-## 9. 测试清单（Vitest，TDD）
+## 8. 测试清单（Vitest，TDD）
 
 位于 `src/parsers/trace.test.ts`、`src/lib/debug.test.ts`、`src/import/run-import.test.ts` 增量；夹具复用 `src/tests/fixtures/`。
 
@@ -253,14 +230,13 @@ export interface ImportWorkerApi {
 - **被过滤行补充**：`executeImport` 传 `filteredRowIndexes` → 对应行 `decision='row-filtered'`、`status='filtered-out'`、`rowIndex` 正确、`stats` 不变化。
 - **Worker 回传**：`runInWorker` 返回值含 `{ result, trace }`（mock Comlink 或真实 Worker 测试）。
 - **重建等价回归**：现有多批次重放测试保持绿（ExportData 无 trace 字段，`importDatabase` 不感知）。
-- **debug.ts**：URL `?debug=1` / `?debug=verbose` 优先级高于 storage；storage 损坏回退关；`writeDebugFlag`/`clearDebugFlag` 读写一致。
+- **debug.ts**：`isDebugMode()` 直读 `__DEBUG_MODE__`；`isDebugVerbose()` 非 dev 恒 false；storage 损坏回退关；`writeVerboseFlag` 读写一致。测试以 `vi.stubGlobal('__DEBUG_MODE__', …)` 切换门控。
 - **trace-log**：`isDebugMode()=false` 时 `logImportTrace` 不输出（spy `console.*`）。
 
-## 10. 里程碑拆分
+## 9. 里程碑拆分
 
 | 里程碑 | 内容 | 验收 |
 |--------|------|------|
-| M1 纯函数 + 通道 | `debug.ts`、`parsers/trace.ts`、pipeline 第 6 参、worker 回传、`trace-log.ts`、`main.tsx` 钩子 | §9 测试全绿；`pnpm build` 通过；`?debug=1` 手工导入可见 Console 分组 |
-| M2 报告区面板 | 折叠区 + 决策表 + 复制按钮 + i18n 文案 + 行↔警告联动 | US1/US6 手工验收；无 debug 标志时零 UI 变化 |
+| M1 纯函数 + 通道 | `debug.ts`、`parsers/trace.ts`、pipeline 第 6 参、worker 回传、`trace-log.ts`、`main.tsx` 钩子、vite/vitest define | §8 测试全绿；`pnpm build` 通过；`pnpm dev` 手工导入可见 Console 分组，build 产物无 `[readgraph:import]` |
 
-> 实现状态：M1/M2 均未启动（规格已定稿，待排期）。
+> 实现状态：未启动（规格已定稿，待排期）。
