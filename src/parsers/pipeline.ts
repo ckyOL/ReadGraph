@@ -13,7 +13,9 @@ import type {
 } from '@/types/entities'
 import { stableHash } from '@/lib/hash'
 import type { SourceParser } from './types'
+import type { ParseWarningType } from '@/types/entities'
 import type { ImportTrace } from './trace'
+import { collectCatalogDecision, initTrace } from './trace'
 import {
   dedupeBorrowCycles,
   dedupeCatalogsAndBooks,
@@ -77,12 +79,17 @@ export function importPipeline(
   parser: SourceParser,
   existing: ExistingState,
   meta: ImportMeta,
-  // trace 收集开关（debug-mode spec §5.2）：缺省零收集（D5）。
-  _traceOptions?: TraceOptions,
+  // trace 收集开关（debug-mode spec §5.2）：缺省零收集（D5：先判空短路，
+  // 生产路径零分配）。
+  traceOptions?: TraceOptions,
 ): PipelineResult {
   const warnings: ParseWarning[] = []
   const now = meta.importedAt
-
+  // D5：traceOptions 缺省 → collector 全程短路（所有收集点判 trace == null）。
+  const trace = traceOptions
+    ? initTrace(meta, source, traceOptions.verbose === true)
+    : null
+  const verbose = traceOptions?.verbose === true
   // L9 回归：纯函数不变式——入参 rows 不得被原地变异（调用方可能复用）。
   // 浅克隆后处理（只改顶层字段，data 引用共享）；返回的 rawRecords 为克隆。
   const workingRows = rows.map((r) => ({ ...r }))
@@ -156,7 +163,8 @@ export function importPipeline(
   // dedupe 的 `new:` 派生 token → 本批已建 Book id：同 ISBN/同题同著者的
   // 多副本候选（一书多册）复用同一书目，避免重复 Book 违反 &isbn13 唯一索引。
   const newBookIdByToken = new Map<string, string>()
-
+  // verbose 实体 id → 派生推导串（spec §7 会话态细化；仅 verbose 填充，D5）。
+  const idDerivations = new Map<string, string>()
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i]!
     const barcode = candidateBarcodes[i]!
@@ -225,6 +233,10 @@ export function importPipeline(
         newBookIdByToken.set(token, newBookId)
         bookId = newBookId
         const bookPartial = cand.bookPartial
+        // verbose 推导串（stableHash 口径；D5：仅 verbose 构建此映射）。
+        if (verbose) {
+          idDerivations.set(newBookId, `bk-{fnv1a32(${crDerivedInput})}`)
+        }
         newBooks.push({
           id: newBookId,
           isbn13: (bookPartial.isbn13 ?? null) as string | null,
@@ -270,6 +282,13 @@ export function importPipeline(
     newCatalogRecords.push(newCr)
     newCrById.set(cId, newCr)
     if (metaIdKey) crByMetaKey.set(`${sourceId}|${metaIdKey}`, newCr)
+    // verbose 推导串：cr 派生输入（占位/无 metaid 用 barcode，否则 metaIdKey）。
+    if (verbose) {
+      idDerivations.set(
+        cId,
+        `cr-{fnv1a32(${cand.isPlaceholder || !metaIdKey ? `${sourceId}|${barcode}` : `${sourceId}|${metaIdKey}`})}`,
+      )
+    }
   }
 
   // 5. 装配候选 BorrowCycle：rawRecordIds 直接取自 Parser 在周期上标注的
@@ -346,6 +365,69 @@ export function importPipeline(
     existing.borrowCycles,
   )
   warnings.push(...cyWarnings)
+
+  // trace 收集点（周期侧，spec §5.2 收集点 2）：skippedFlags + cyWarnings
+  // 按候选下标对齐；新建周期行在 finalCycles 回填 id 后由 cycleRow 补记。
+  if (trace) {
+    // unpaired_record 警告按 raw:{id} 反查候选（skipped 无警告的跨文件闭合
+    // alreadyClosed 单独标注 reason）。
+    const unpairedByCand = new Map<number, ParseWarning>()
+    for (const w of cyWarnings) {
+      if (w.type !== 'unpaired_record') continue
+      const firstRaw = w.recordRef?.match(/raw:([^,]+)/)?.[1]
+      const idx = candidateCycles.findIndex((c) => c.rawRecordIds.includes(firstRaw ?? ''))
+      if (idx >= 0) unpairedByCand.set(idx, w)
+    }
+    for (let i = 0; i < candidateCycles.length; i++) {
+      const cand = candidateCycles[i]!
+      const rowIndexes = cand.rawRecordIds
+        .map((rid) => workingRows.find((r) => r.id === rid)?.rowIndex ?? -1)
+        .filter((n) => n > 0)
+      if (rowIndexes.length === 0) continue
+      const cr = crByMetaKeyFull.get(
+        `${cand.sourceId}|${cand.metaIdKey ?? ''}`,
+      )
+      if (skippedFlags[i]) {
+        const dup = cyWarnings.some(
+          (w) =>
+            w.type === 'duplicate' &&
+            (w.recordRef ?? '').includes(`raw:${cand.rawRecordIds[0] ?? ''}`),
+        )
+        trace.collector.cycleRow({
+          rowIndexes,
+          decision: 'cycle-skipped-duplicate',
+          reason: dup
+            ? '周期精确重复（sourceId+barcode+借出时间+书目），跳过'
+            : '并入既有周期（跨文件闭合）',
+          barcode: cand.barcode,
+          bookId: cand.bookId || null,
+          catalogRecordId: null,
+          borrowCycleId: null,
+        })
+      } else if (unpairedByCand.has(i)) {
+        trace.collector.cycleRow({
+          rowIndexes,
+          decision: 'cycle-unpaired',
+          reason: unpairedByCand.get(i)!.message,
+          barcode: cand.barcode,
+          bookId: cand.bookId || null,
+          catalogRecordId: null,
+          borrowCycleId: null,
+        })
+      } else {
+        // cycle-created：id 在 finalCycles 内派生，先记空、finalize 前补。
+        trace.collector.cycleRow({
+          rowIndexes,
+          decision: 'cycle-created',
+          reason: '新建借阅周期',
+          barcode: cand.barcode,
+          bookId: cand.bookId || null,
+          catalogRecordId: cr?.id ?? null,
+          borrowCycleId: null,
+        })
+      }
+    }
+  }
 
   // 周期 → 编目/书目 关联索引：
   // - 全量编目（既有 + 本批次）按 sourceId+barcode：修复既有周期错挂。
@@ -442,6 +524,45 @@ export function importPipeline(
     if (r.parseStatus === 'success' || r.parseStatus === undefined) {
       r.parseStatus = 'success'
     }
+    // trace 收集点（候选行，spec §5.2 收集点 1）：行反查候选（barcode +
+    // metaIdKey 口径）推导 decision；不改决策逻辑，仅旁路记录。
+    // catalogRecordId 按行 metaid 消歧解析（full 索引含既有+新批次）。
+    if (trace) {
+      const rowMeta = r.data as { metaid?: unknown }
+      const mk =
+        rowMeta.metaid != null && rowMeta.metaid !== 0
+          ? String(rowMeta.metaid)
+          : null
+      const ci = candidates.findIndex(
+        (c) =>
+          ((c.partial.barcodes?.[0] ?? '') as string) === bc &&
+          ((c.partial.metaIdKey ?? null) as string | null) === mk,
+      )
+      const rowCr =
+        mk != null
+          ? crByMetaKeyFull.get(`${r.sourceId}|${mk}`)
+          : bc !== ''
+            ? crByBarcodeFull.get(`${r.sourceId}|${bc}`)
+            : undefined
+      if (ci >= 0) {
+        const cand = candidates[ci]!
+        trace.collector.catalogRow({
+          rowIndex: r.rowIndex,
+          rawRecordId: r.id,
+          barcode: bc || null,
+          title: rowTitle(r),
+          decision: collectCatalogDecision({
+            bookIdRaw: bookIds[ci],
+            existingCrId: existingCrIds[ci] ?? '',
+            isPlaceholder: cand.isPlaceholder,
+            isbn13: (cand.bookPartial.isbn13 ?? null) as string | null,
+          }),
+          bookId: r.bookId,
+          catalogRecordId: rowCr?.id ?? null,
+          warningType: null,
+        })
+      }
+    }
   }
 
   // L8 回归：行级警告（invalid_date 等，recordRef 形如 row:N）→ 对应行
@@ -455,6 +576,29 @@ export function importPipeline(
     if (rr && rr.parseStatus !== 'skipped') {
       rr.parseStatus = w.type === 'format_error' ? 'error' : 'warning'
     }
+  }
+
+  // trace 收集点（行级警告，spec §5.2 收集点 3）：row:{N} / barcode:{X} →
+  // warningType。duplicate 类警告 recordRef 为 barcode:{X}（dedupe 输出）。
+  if (trace) {
+    const rowWarningMap = new Map<number, ParseWarningType>()
+    for (const w of warnings) {
+      const m = w.recordRef?.match(/^row:(\d+)$/)
+      if (m) {
+        rowWarningMap.set(Number(m[1]), w.type)
+        continue
+      }
+      const bm = w.recordRef?.match(/^barcode:(.+)$/)
+      if (bm) {
+        for (const r of workingRows) {
+          if (rowBarcode(r) === bm[1]) {
+            rowWarningMap.set(r.rowIndex, w.type)
+            break
+          }
+        }
+      }
+    }
+    trace.collector.rowWarnings(rowWarningMap)
   }
 
   // 8. 统计 ImportLog（§10.3）。
@@ -481,6 +625,42 @@ export function importPipeline(
     warnings,
   }
 
+  if (trace) {
+    // mergedBooks：dedupe 权威推导——候选未命中编目（existingCrId=''）但
+    // 解析到既有 Book id（非 new: token）= ISBN/模糊合并；占位命中既有编目
+    // 走 existingCrId 分支不在此列（US2 口径）。
+    const mergedBookIds: string[] = []
+    for (let i = 0; i < candidates.length; i++) {
+      const bid = bookIds[i]
+      if (
+        (existingCrIds[i] ?? '') === '' &&
+        bid != null &&
+        !bid.startsWith('new:') &&
+        !mergedBookIds.includes(bid)
+      ) {
+        mergedBookIds.push(bid)
+      }
+    }
+    trace.collector.finalize({
+      books: newBooks.map((b) => ({ id: b.id, isbn13: b.isbn13, title: b.title })),
+      mergedBookIds,
+      newCatalogRecordIds: newCatalogRecords.map((c) => c.id),
+      rawRecords: workingRows.map((r) => ({
+        id: r.id,
+        rowIndex: r.rowIndex,
+        barcode: rowBarcode(r),
+        title: rowTitle(r),
+        bookId: r.bookId,
+        borrowCycleId: r.borrowCycleId,
+        catalogRecordId: null,
+        parseStatus: r.parseStatus,
+      })),
+      idDerivations,
+      stats,
+      warnings,
+    })
+  }
+
   return {
     // 既有 Book 可能被去重置标（套装候选），用去重后的 state.books 而非 existing.books。
     books: [...dedupeState.books, ...newBooks],
@@ -492,9 +672,20 @@ export function importPipeline(
     importLog,
     rawRecords: workingRows,
     warnings,
-    // DBG-0 签名增量：恒缺省（不收集）；收集实现归 DBG-1（spec §5.2）。
-    trace: null,
+    trace: trace ? trace.collector.trace : null,
   }
+}
+
+/** 行条码（trace 展示用；空串归一为 null）。 */
+function rowBarcode(r: RawRecord): string | null {
+  const bc = r.data['barcode']
+  return typeof bc === 'string' && bc !== '' ? bc : null
+}
+
+/** 行题名（trace 展示用；缺失为 null）。 */
+function rowTitle(r: RawRecord): string | null {
+  const t = r.data['title']
+  return typeof t === 'string' && t !== '' ? t : null
 }
 
 /** 在 parseRes.books 中为某 catalogRecord 找对应 bookPartial。 */
