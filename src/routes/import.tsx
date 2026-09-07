@@ -11,6 +11,8 @@ import { SOURCE_TEMPLATES, ensureSourceFromTemplate } from '@/lib/source-templat
 import { getParser } from '@/parsers/registry'
 import { executeImport } from '@/import/run-import'
 import { groupWarnings } from '@/import/warning-groups'
+import { logImportTrace } from '@/import/trace-log'
+import { isDebugMode } from '@/lib/debug'
 import type { PipelineResult } from '@/parsers/pipeline'
 import type { Source } from '@/types/entities'
 import { Button } from '@/components/ui/button'
@@ -43,6 +45,12 @@ interface FileInfo {
   size: number
   encoding: string
   text: string
+  /**
+   * 被 parser.filterRows 预剔除的行在原数组中的下标（1-based，debug-mode
+   * spec §5.3）。仅 debug 构建计算（isDebugMode 门控，D5：生产路径零分配），
+   * 经 ImportRequest 传给 executeImport 补 trace 的 row-filtered 行。
+   */
+  filteredRowIndexes?: number[]
 }
 
 /**
@@ -110,9 +118,26 @@ function ImportPage() {
       setFileError(t('import.file.invalid'))
       return
     }
-    setFileInfo({ name: file.name, size: file.size, encoding: detectedEncoding, text })
+    // debug 构建下用引用差集计算被剔除行下标（Array.filter 保引用，任务书
+    // 基线表已证）；生产路径不计算、不存（零分配，D5）。
+    const parsedAll = JSON.parse(text) as Record<string, unknown>[]
+    const previewRows = parser.filterRows(parsedAll)
+    let filteredRowIndexes: number[] | undefined
+    if (isDebugMode()) {
+      const kept = new Set<Record<string, unknown>>(previewRows)
+      filteredRowIndexes = parsedAll
+        .filter((row) => !kept.has(row))
+        .map((row) => parsedAll.indexOf(row) + 1)
+    }
+    setFileInfo({
+      name: file.name,
+      size: file.size,
+      encoding: detectedEncoding,
+      text,
+      filteredRowIndexes,
+    })
     // 预览展示 parser 预过滤后的行（剔除自助查询/读者续借等），与导入保持一致。
-    setRows(parser.filterRows(JSON.parse(text) as Record<string, unknown>[]))
+    setRows(previewRows)
   }
 
   const startImport = async () => {
@@ -127,8 +152,12 @@ function ImportPage() {
         detectedEncoding: fileInfo.encoding,
         text: fileInfo.text,
         sourceId: selectedSource.id,
+        filteredRowIndexes: fileInfo.filteredRowIndexes,
       })
       setResult(res)
+      // DevTools Console 输出（debug-mode spec §4.1/D6：主线程统一打印；
+      // trace=null 与生产构建内部自门控，no-op）。
+      logImportTrace(res.trace ?? null)
     } catch (e) {
       // 用户可见文案一律本地化（WCAG 3.1.2）；原始错误保留在控制台供诊断。
       console.error('[import] executeImport failed:', e)

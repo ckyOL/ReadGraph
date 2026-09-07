@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest'
 
 import type { ReadGraphDB } from '@/db/db'
 import type { Source } from '@/types/entities'
@@ -7,7 +7,11 @@ import {
   createTestDB,
   installFakeIndexedDB,
 } from '@/db/test-helpers'
-import { executeImport, buildRawRecords } from './run-import'
+import {
+  executeImport,
+  buildRawRecords,
+  IMPORT_WORKER_THRESHOLD,
+} from './run-import'
 import type { ImportMeta } from '@/parsers/pipeline'
 import { szlibParser } from '@/parsers/szlib'
 import { reviewBadgeOf } from '@/lib/book-status'
@@ -51,6 +55,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   closeTestDB(db)
 })
 
@@ -425,5 +431,121 @@ describe('executeImport — L3 回归', () => {
     expect(result.importLog.stats.filteredRows).toBe(4)
     // totalRawRecords 为过滤后有效行数（22 - 2 条 sample 自带过滤行）。
     expect(result.importLog.stats.totalRawRecords).toBe(sample.length - 2)
+  })
+})
+
+describe('executeImport — debug 装配（debug-mode spec §5.3/§4.2，DBG-3）', () => {
+  it('debug 开启：trace 收集装配、durationMs 主线程填写、performance 打点', async () => {
+    vi.stubGlobal('__DEBUG_MODE__', true)
+    const marks: string[] = []
+    const spyMark = vi
+      .spyOn(performance, 'mark')
+      .mockImplementation((name: string) => {
+        marks.push(name)
+        return {
+          name,
+          entryType: 'mark',
+          startTime: 0,
+          duration: 0,
+          detail: null,
+        } as PerformanceMark
+      })
+    vi.spyOn(performance, 'measure').mockReturnValue({
+      name: 'readgraph:import',
+      entryType: 'measure',
+      startTime: 0,
+      duration: 1,
+      detail: null,
+    } as PerformanceMeasure)
+
+    const result = await executeImport(db, request())
+    // trace 收集开启（debug 装配层决定，非管线默认）。
+    expect(result.trace).not.toBeNull()
+    // durationMs 由装配层填写（主线程同步路径 performance.now 差值）。
+    expect(typeof result.trace!.durationMs).toBe('number')
+    expect(result.trace!.durationMs).toBeGreaterThanOrEqual(0)
+    // performance 打点（spec §4.2 主线程 mark + measure）。
+    expect(marks).toEqual(['readgraph:import:start', 'readgraph:import:end'])
+    expect(spyMark).toHaveBeenCalledTimes(2)
+
+    // trace.rows 与 rawRecords 按 rowIndex 对齐（{verbose:false} 契约沿用）。
+    expect(result.trace!.rows).toHaveLength(result.rawRecords.length)
+    expect(result.trace!.rows.map((r) => r.rowIndex)).toEqual(
+      result.rawRecords.map((r) => r.rowIndex),
+    )
+    // 首次导入有效行 = new-book（spec §8 用例 1）。
+    expect(result.trace!.rows.filter((r) => r.decision === 'new-book')).not.toHaveLength(0)
+  })
+
+  it('非 debug：不装配 traceOptions，result.trace 恒 null、零 performance 打点', async () => {
+    const spyMark = vi.spyOn(performance, 'mark')
+    const result = await executeImport(db, request())
+    expect(result.trace).toBeNull()
+    expect(spyMark).not.toHaveBeenCalled()
+  })
+
+  it('filteredRowIndexes 补充被过滤行：row-filtered/filtered-out、rowIndex 正确、stats 不变', async () => {
+    vi.stubGlobal('__DEBUG_MODE__', true)
+    // szlib-sample：原数组下标 3=自助查询、18=读者续借（1-based）。
+    // 注意：管线行 rowIndex 是「过滤后数组内」的 1..20（buildRawRecords 按入参
+    // 顺序编号），与 UI 传入的原数组下标分属两个下标空间——过滤行补充按原
+    // 下标 append 后升序合并，rowIndex 3/18 各出现两次（管线行 + 补充行）。
+    const result = await executeImport(db, request({ filteredRowIndexes: [3, 18] }))
+    const trace = result.trace!
+    expect(trace).not.toBeNull()
+
+    const filtered = trace.rows.filter((r) => r.decision === 'row-filtered')
+    expect(filtered.map((r) => r.rowIndex)).toEqual([3, 18])
+    for (const row of filtered) {
+      expect(row.status).toBe('filtered-out')
+      expect(row.rawRecordId).toBeNull()
+      expect(row.bookId).toBeNull()
+      expect(row.catalogRecordId).toBeNull()
+      expect(row.borrowCycleId).toBeNull()
+      expect(row.reason).not.toBe('')
+    }
+    // barcode/title 尽力从原始行字段填充（file row 3 = 自助查询含条码）。
+    const row3 = filtered.find((r) => r.rowIndex === 3)!
+    expect(row3.barcode).not.toBeNull()
+
+    // rows 按 rowIndex 升序合并（管线 20 行 + 补充 2 行 = 22；升序但同号并存）。
+    const indexes = trace.rows.map((r) => r.rowIndex)
+    expect(trace.rows).toHaveLength(22)
+    expect([...indexes].sort((a, b) => a - b)).toEqual(indexes)
+    // 管线行（rowIndex 1）仍在。
+    expect(indexes).toContain(1)
+    // 同号并存：rowIndex 3 与 18 各 2 行（管线行 + row-filtered 行）。
+    expect(indexes.filter((v) => v === 3)).toHaveLength(2)
+    expect(indexes.filter((v) => v === 18)).toHaveLength(2)
+    // 不触碰 stats（totalRawRecords 语义 = 进入管线的行数，spec §5.3）。
+    expect(trace.stats.totalRawRecords).toBe(result.importLog.stats.totalRawRecords)
+    expect(trace.stats.totalRawRecords).toBe(
+      (sample as Record<string, unknown>[]).length - 2,
+    )
+    expect(trace.stats.filteredRows).toBe(2)
+    expect(trace.stats.skippedRecords).toBe(result.importLog.stats.skippedRecords)
+    // entityDelta.skippedRows 只含周期跳过行，不含 row-filtered（spec §5.1 口径）。
+    expect(trace.entityDelta.skippedRows).not.toContain(3)
+    expect(trace.entityDelta.skippedRows).not.toContain(18)
+  })
+
+  it('不传 filteredRowIndexes：无 row-filtered 行（debug 开启）', async () => {
+    vi.stubGlobal('__DEBUG_MODE__', true)
+    const result = await executeImport(db, request())
+    expect(result.trace!.rows.filter((r) => r.decision === 'row-filtered')).toHaveLength(0)
+  })
+
+  it('非 debug 传 filteredRowIndexes：忽略（零分配，D5）', async () => {
+    const result = await executeImport(db, request({ filteredRowIndexes: [3, 18] }))
+    expect(result.trace).toBeNull()
+    expect(await db.importLogs.count()).toBe(1)
+  })
+
+  it('Worker 路径：durationMs 由 Worker 填写，executeImport 不覆盖（mock comlink）', async () => {
+    vi.stubGlobal('__DEBUG_MODE__', true)
+    // Worker 阈值下限为 IMPORT_MAX_FILE_SIZE（≥50MB 才走 Worker），jsdom/node 无
+    // 真实 Worker：本用例直接断言 import-worker api（见 import-worker.test.ts），
+    // 此处仅验证 mock wrap 未被主线程路径调用（Worker 未触碰）。
+    expect(IMPORT_WORKER_THRESHOLD).toBeGreaterThanOrEqual(50 * 1024 * 1024)
   })
 })

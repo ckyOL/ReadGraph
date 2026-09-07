@@ -8,7 +8,15 @@ import { wrap } from 'comlink'
 import type { ReadGraphDB } from '@/db/db'
 import { deriveClassCodes } from '@/db/repositories'
 import { getParser } from '@/parsers/registry'
-import { importPipeline, type ExistingState, type ImportMeta } from '@/parsers/pipeline'
+import {
+  importPipeline,
+  type ExistingState,
+  type ImportMeta,
+  type PipelineResult,
+  type TraceOptions,
+} from '@/parsers/pipeline'
+import type { ImportTraceRow } from '@/parsers/trace'
+import { isDebugMode, isDebugVerbose } from '@/lib/debug'
 import type { ImportLogStats, RawRecord, Source } from '@/types/entities'
 import { uuid } from '@/db/uuid'
 import { IMPORT_MAX_FILE_SIZE } from '@/lib/encoding'
@@ -24,6 +32,12 @@ export interface ImportRequest {
   /** 经 detectAndDecode 解码后的文件文本。 */
   text: string
   sourceId: string
+  /**
+   * 被 parser.filterRows 预剔除的行在原数组中的下标（1-based，debug-mode
+   * spec §5.3）。仅 trace 收集开启时被消费（补 row-filtered 行）；生产路径
+   * 不计算、不传（D5 零分配）。
+   */
+  filteredRowIndexes?: number[]
 }
 
 /**
@@ -54,13 +68,17 @@ async function runInWorker(
   source: Source,
   existing: ExistingState,
   meta: ImportMeta,
+  traceOptions: TraceOptions | undefined,
 ) {
   const worker = new Worker(new URL('./import-worker.ts', import.meta.url), {
     type: 'module',
   })
   try {
     const api = wrap<ImportWorkerApi>(worker)
-    return await api.run({ rows, source, existing, meta })
+    // D6：Worker 回传 { result, trace }（durationMs 已在 Worker 内填写），
+    // 主线程解包合并——trace 并入返回值，console 输出统一在 UI 层。
+    const { result, trace } = await api.run({ rows, source, existing, meta, traceOptions })
+    return trace ? { ...result, trace } : result
   } finally {
     worker.terminate()
   }
@@ -76,7 +94,7 @@ async function runInWorker(
 export async function executeImport(
   db: ReadGraphDB,
   req: ImportRequest,
-): Promise<ReturnType<typeof importPipeline>> {
+): Promise<PipelineResult> {
   const source = await db.sources.get(req.sourceId)
   if (!source) throw new Error(`source not found: ${req.sourceId}`)
 
@@ -117,16 +135,45 @@ export async function executeImport(
     borrowCycles: await db.borrowCycles.toArray(),
   }
 
-  const result =
+  // debug-mode spec §5.2/§4.2：traceOptions 仅由 debug 装配层决定（D3/D5）——
+  // 生产构建 isDebugMode() 恒 false → undefined → 管线零收集、mark 被剔除。
+  const debugOn = isDebugMode()
+  const startedAt = performance.now()
+  if (debugOn) performance.mark('readgraph:import:start')
+  const traceOptions: TraceOptions | undefined = debugOn
+    ? { verbose: isDebugVerbose() }
+    : undefined
+  let result =
     req.fileSize >= IMPORT_WORKER_THRESHOLD
-      ? await runInWorker(rows, source, existing, meta)
-      : importPipeline(rows, source, parser, existing, meta)
+      ? await runInWorker(rows, source, existing, meta, traceOptions)
+      : importPipeline(rows, source, parser, existing, meta, traceOptions)
+
+  if (debugOn && result.trace) {
+    // 主线程同步路径：performance.now 差值填 durationMs（spec §4.2）；Worker
+    // 路径已由 Worker 填写，executeImport 不覆盖（runInWorker 内已并入）。
+    if (result.trace.durationMs === null) {
+      result = {
+        ...result,
+        trace: { ...result.trace, durationMs: performance.now() - startedAt },
+      }
+    }
+    // spec §4.2 主线程打点：mark/measure 供 Performance 面板观察导入总耗时。
+    performance.mark('readgraph:import:end')
+    performance.measure('readgraph:import', 'readgraph:import:start')
+  }
+
+  if (debugOn && result.trace && req.filteredRowIndexes) {
+    result = withFilteredRows(result, req.filteredRowIndexes, parsed as Record<string, unknown>[])
+  }
 
   // L3：行级预过滤剔除数记入 ImportLog.stats（管线内无过滤概念，此处覆盖）。
+  // trace.stats 与 importLog.stats 深同步（spec §4.1 步骤 4 输出源一致性）：
+  // 管线内两者同引用，覆盖后 trace.stats 若不同步会残留 filteredRows=0。
   result.importLog.stats = {
     ...result.importLog.stats,
     filteredRows,
   }
+  if (result.trace) result.trace.stats = result.importLog.stats
   const stats: ImportLogStats = result.importLog.stats
   await db.transaction(
     'rw',
@@ -152,4 +199,49 @@ export async function executeImport(
     },
   )
   return result
+}
+
+/**
+ * 被过滤行的 trace 补充（debug-mode spec §5.3，仅 trace 收集开启时）：
+ * `decision='row-filtered'`、`status='filtered-out'`、实体 ID 与 rawRecordId
+ * 均 null；barcode/title 尽力从原始行字段填充（缺失为 null）。rows 按
+ * rowIndex 升序合并；不触碰 stats（totalRawRecords 语义保持「进入管线的
+ * 行数」）。生产路径永不调用（D5 零分配）。
+ */
+function withFilteredRows(
+  result: PipelineResult,
+  filteredRowIndexes: number[],
+  parsed: Record<string, unknown>[],
+): PipelineResult {
+  const trace = result.trace
+  if (!trace) return result
+  const extra: ImportTraceRow[] = []
+  for (const index of filteredRowIndexes) {
+    // rowIndex 保留 UI 传入的原数组下标（spec §5.3「rowIndex 正确」）；
+    // 与管线行号（过滤后数组内的 1..N）分属两个下标空间，不去重不重排——
+    // trace.rows 仅按 rowIndex 升序合并（spec §5.3）。
+    const data = parsed[index - 1]
+    const barcode = data?.['barcode']
+    const title = data?.['title']
+    extra.push({
+      rowIndex: index,
+      rawRecordId: null,
+      status: 'filtered-out',
+      decision: 'row-filtered',
+      reason: '被行级预过滤剔除（filterRows：与借还状态无关的操作类型）',
+      barcode: typeof barcode === 'string' && barcode !== '' ? barcode : null,
+      title: typeof title === 'string' && title !== '' ? title : null,
+      bookId: null,
+      catalogRecordId: null,
+      borrowCycleId: null,
+      warningType: null,
+    })
+  }
+  return {
+    ...result,
+    trace: {
+      ...trace,
+      rows: [...trace.rows, ...extra].sort((a, b) => a.rowIndex - b.rowIndex),
+    },
+  }
 }
