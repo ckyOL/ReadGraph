@@ -9,9 +9,12 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  // AI dev 同源代理开关（vite.config.ts aiDevProxyPlugin）：测试走直连语义（与 build/preview 一致）。
+  // 构建期常量测试直连语义（与 build/preview 一致）：__AI_DEV_PROXY__=false → 直连；
+  // __DEBUG_MODE__=false（debug-mode spec §8）→ 测 debug 行为用
+  // vi.stubGlobal('__DEBUG_MODE__', true) 切换（先例 ai-client.test.ts）。
   define: {
     __AI_DEV_PROXY__: JSON.stringify(false),
+    __DEBUG_MODE__: JSON.stringify(false),
   },
   test: {
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],

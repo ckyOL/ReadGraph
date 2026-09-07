@@ -13,6 +13,7 @@ import type {
 } from '@/types/entities'
 import { stableHash } from '@/lib/hash'
 import type { SourceParser } from './types'
+import type { ImportTrace } from './trace'
 import {
   dedupeBorrowCycles,
   dedupeCatalogsAndBooks,
@@ -45,6 +46,19 @@ export interface PipelineResult {
   importLog: ImportLog
   rawRecords: RawRecord[]
   warnings: ParseWarning[]
+  /**
+   * 导入决策 trace（debug-mode spec §5.2，DBG-1 落收集）。
+   * traceOptions 缺省 → 不收集，恒为 null（D5：零分配）。
+   */
+  trace?: ImportTrace | null
+}
+
+/**
+ * trace 收集开关（debug-mode spec §5.2 第 6 可选参；类型契约归 pipeline.ts）。
+ * 缺省 → 零收集、`PipelineResult.trace` 为 null；verbose → 行级补 idDerivation。
+ */
+export interface TraceOptions {
+  verbose?: boolean
 }
 
 const makeCrId = (input: string) => `cr-${stableHash(input)}`
@@ -63,6 +77,8 @@ export function importPipeline(
   parser: SourceParser,
   existing: ExistingState,
   meta: ImportMeta,
+  // trace 收集开关（debug-mode spec §5.2）：缺省零收集（D5）。
+  _traceOptions?: TraceOptions,
 ): PipelineResult {
   const warnings: ParseWarning[] = []
   const now = meta.importedAt
@@ -476,6 +492,8 @@ export function importPipeline(
     importLog,
     rawRecords: workingRows,
     warnings,
+    // DBG-0 签名增量：恒缺省（不收集）；收集实现归 DBG-1（spec §5.2）。
+    trace: null,
   }
 }
 

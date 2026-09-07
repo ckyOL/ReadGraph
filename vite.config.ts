@@ -174,10 +174,13 @@ function aiDevProxyPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
-  // AI dev 代理开关（ai-features §5.4）：仅 `pnpm dev`（mode=development）开启；
-  // build/preview/vitest（mode=production/test）注入 false → 前端直连。构建期静态替换。
+  // 构建期常量（D3/ai-features §5.4 同模式）：__AI_DEV_PROXY__ 仅 `pnpm dev`
+  // （mode=development）开启，build/preview/vitest 注入 false → 前端直连；
+  // __DEBUG_MODE__（debug-mode spec §3.1）同 gate：dev → true，其余 false。
+  // 均为构建期静态替换，生产包 debug 分支为死代码被 minifier 剔除。
   define: {
     __AI_DEV_PROXY__: JSON.stringify(mode === 'development'),
+    __DEBUG_MODE__: JSON.stringify(mode === 'development'),
   },
   plugins: [
     cspMetaPlugin(),
