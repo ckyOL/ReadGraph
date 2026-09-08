@@ -149,6 +149,9 @@ BorrowCycle.barcode           ─> CatalogRecord.barcodes[]（本次借阅的具
 | 日期与工具 | date-fns | dayjs | 纯函数式 API，利于 Tree-shaking，且 AI 生成调用代码时直观明确 |
 | 国际化 (i18n) | react-i18next | Paraglide JS | 行业标准的 UI 多语言方案，AI 对其生态和配置语法烂熟于心，支持浏览器语言检测与动态加载 |
 | 本地化 (l10n) | 原生 Intl API | - | 追求零依赖：数字、货币、长短文本排序直接使用浏览器原生的 `Intl` 接口；日期配合 `date-fns` 的 locale 包实现精准格式化 |
+> **落地现状（以 [app-spec §2](./app-spec.md#2-技术栈与版本基线) 为权威）**：Zustand 与 Papa Parse
+> 实际未引入（数据流为 `dexie-react-hooks` 响应式订阅，现有来源均为 JSON）；`date-fns` 仅以
+> `date-fns-tz`（tz 转换）形式落地，未引主体。其余各行与落地一致。
 
 ---
 

@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Profile AI insights (optional, BYOK)** — an opt-in "AI insights" section on
+  the reading profile page backed by the user's own OpenAI-compatible endpoint
+  (`docs/specs/ai-features.md`): default-off with zero AI traces until
+  enabled; sanitize-before-send pipeline (per-scene field whitelist assembly,
+  exhaustive blacklist assertions, one-time send preview); thin fetch client
+  with SSE streaming, abort, TTFB/idle double-window timeout, connection test
+  with a `/v1/models` model picker and `/v1` endpoint normalization; streaming
+  Markdown output (thinking models get a collapsible reasoning channel); local
+  result cache with a clear button; local OpenAI-compatible backends
+  (Ollama / LM Studio) work under the same contract with loopback-specific
+  error guidance.
+  Production CSP `connect-src` is widened to user-chosen `https:` endpoints
+  plus loopback for the local path (rationale recorded in `vite.config.ts`).
+- **Annual view & annual goals** — `/profile/$year` renders the year slice
+  from the same `computeYearSlice` aggregation as the profile stats
+  (`docs/specs/reading-profile.md` §4): the year's book grid, most-borrowed
+  Top N, an annual goal with progress (editable in settings and inline in the
+  year view), and an optional AI year narrative through the same sanitized
+  streaming pipeline. The annual share card entries below build on this view.
+- **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
+  (adaptation of the Bookology Stats calendar, see
+  `docs/research/bookology-benchmark.md` §5.1): each day cell counts distinct
+  books held in borrow that day (UTC day buckets, device borrows excluded);
+  month/year views with navigation, borrow-day
+  summary in the overview row ("Borrow days", 5th card), and a per-day tooltip
+  listing titles with cover thumbnails. Aggregated by a new pure `calendar`
+  dimension in `computeProfileStats` (open-ended cycles anchored to a
+  caller-supplied "today"); rendered with the ECharts heatmap series — no new
+  dependencies.
 - **Annual share card** — a downloadable/shareable 1080×1440 PNG generated on
   `/profile/$year` from the same `computeYearSlice` slice as the rest of the
   annual view (`docs/specs/reading-profile.md` §4.1): Top-3 cover trio with the
@@ -81,15 +110,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or stripping layers. The value is the runtime `location.origin` (never
   fabricated) and is omitted for opaque origins (`file://`, sandboxed iframes)
   and non-DOM environments.
-- **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
-  (adaptation of the Bookology Stats calendar, see `docs/bookology-benchmark.md`
-  §5.1): each day cell counts distinct books held in borrow that day (UTC day
-  buckets, device borrows excluded); month/year views with navigation, borrow-day
-  summary in the overview row ("Borrow days", 5th card), and a per-day tooltip
-  listing titles with cover thumbnails. Aggregated by a new pure `calendar`
-  dimension in `computeProfileStats` (open-ended cycles anchored to a
-  caller-supplied "today"); rendered with the ECharts heatmap series — no new
-  dependencies.
 - **Classification badge tooltip** — replaced the native `title` tooltip with a
   Radix-powered styled tooltip (paper-ink: square corners, theme popover colors,
   per-line breadcrumb with mono codes; partial-tree hint and auxiliary segment

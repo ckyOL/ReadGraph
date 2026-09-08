@@ -8,7 +8,7 @@
 | 主题 | 文档 |
 |------|------|
 | 数据模型 | [docs/metadata](./metadata) + [src/db/schemas.ts](../src/db/schemas.ts) |
-| 竞品调研 | [bookology-benchmark](./bookology-benchmark.md)（Bookology 借鉴分析：借阅日历/年度目标/年度回顾 P0——日历已落地、年度目标/回顾口径已承接 [reading-profile §2.7](./specs/reading-profile.md)，笔记/书单 P1，计时器/书架/同步 P2 不借鉴） |
+| 竞品调研 | [bookology-benchmark](./research/bookology-benchmark.md)（Bookology 借鉴分析：借阅日历/年度目标/年度回顾 P0——日历已落地、年度目标/回顾口径已承接 [reading-profile §2.7](./specs/reading-profile.md)，笔记/书单 P1，计时器/书架/同步 P2 不借鉴） |
 | 设计决策与约束 | [design-decisions](./design-decisions.md) |
 | 供应链安全 | [npm-supply-chain-security](./npm-supply-chain-security.md)（pnpm 等价映射见 §5） |
 | AI Agent 工作流 | [ai-agent-workflow-rules](./ai-agent-workflow-rules.md) |
@@ -23,13 +23,13 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 模块 | 状态 | 规格 |
 |------|------|------|
 | 项目骨架（可构建、可导入、可跑通） | ✅ 已落地 | 仅工程骨架与空应用入口 |
-| 数据层（Dexie + Zod schema） | ✅ 已补规格 | [specs/data-layer.md](./specs/data-layer.md) |
-| 导入管线（Parser + 纯函数 pipeline） | ✅ 已补规格 | [specs/import-pipeline.md](./specs/import-pipeline.md) |
-| UI 导航规格 | ✅ 已补规格 | [specs/ui-navigation.md](./specs/ui-navigation.md) |
-| 阅读画像与图表 | ✅ 已补规格 | [specs/reading-profile.md](./specs/reading-profile.md) |
-| 设置与系统重置 | ✅ 已补规格 | [specs/settings.md](./specs/settings.md) |
-| OPAC 编目补全 | ✅ 已补规格 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) |
-| AI 功能（阅读画像分析） | ✅ 已补规格 | [specs/ai-features.md](./specs/ai-features.md) |
+| 数据层（Dexie + Zod schema） | ✅ 已落地 | [specs/data-layer.md](./specs/data-layer.md) |
+| 导入管线（Parser + 纯函数 pipeline） | ✅ 已落地 | [specs/import-pipeline.md](./specs/import-pipeline.md) |
+| UI 导航规格 | ✅ 已落地 | [specs/ui-navigation.md](./specs/ui-navigation.md) |
+| 阅读画像与图表 | ✅ 已落地 | [specs/reading-profile.md](./specs/reading-profile.md) |
+| 设置与系统重置 | ✅ 已落地 | [specs/settings.md](./specs/settings.md) |
+| OPAC 编目补全 | ✅ 已落地 | [specs/opac-enrichment.md](./specs/opac-enrichment.md) |
+| AI 功能（阅读画像分析） | ✅ 已落地 | [specs/ai-features.md](./specs/ai-features.md) |
 | 年度分享图（阅读报告分享图） | ✅ 已落地 | [specs/reading-profile.md §4.1](./specs/reading-profile.md#41-年度分享图profileyear-新增)（R1–R6 裁定）；调研见 [research/annual-share-card.md](./research/annual-share-card.md) |
 
 ### 1.2 非目标
@@ -41,28 +41,29 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 
 ## 2. 技术栈与版本基线
 
-> 严格遵循 [npm-supply-chain-security](./npm-supply-chain-security.md)：依赖最小化、新增走 §3「新依赖安全审查清单」+ 7 天冷却（`minimumReleaseAge`）;版本范围 `^` 可用（由 `pnpm-lock.yaml` frozen 提交 + 冷却兜底）。本表版本在 §5 三表中锁定或标注「安装时核验」。
+> 严格遵循 [npm-supply-chain-security](./npm-supply-chain-security.md)：依赖最小化、新增走 §3「新依赖安全审查清单」+ 7 天冷却（`minimumReleaseAge`）;版本范围 `^` 可用（由 `pnpm-lock.yaml` frozen 提交 + 冷却兜底），具体版本以 `pnpm-lock.yaml` 为准。
 
 | 类别 | 选型 | 来源 / 引入节点 | 备注 |
 |------|------|----------------|------|
 | 构建与脚手架基底 | Vite + React 19 + TypeScript | Vite 官方 `react-ts` 模板生成（§5.1） | 模板默认 React 19 + TS + Vite 8 |
 | 包管理器 | pnpm | 本里程碑锁定（§5） | 严格依赖隔离，杜绝幽灵依赖 |
 | 静态检查（Lint） | Oxlint | `react-ts` 模板自带 `.oxlintrc.json` | 单包零依赖，替代 ESLint，减少依赖面 |
-| 单元测试 | Vitest | **模板不含，本里程碑单独 `pnpm add -D`**（§5.1） | 与 Vite 原生集成 |
+| 单元测试 | Vitest | 模板不含，单独 `pnpm add -D`（§5.1） | 与 Vite 原生集成 |
 | 类型检查 | TypeScript | 模板自带 tsc project refs 配置 | `pnpm build` 含 `tsc -b` |
-| Lockfile 校验 | `pnpm verify`（frozen 安装内建供应链复校验） | 本里程碑引入（§5 见)） |
-| 路由 | TanStack Router + `@tanstack/router-plugin`（Vite 插件，文件路由 + 类型安全 codegen） | 待规格阶段引入（§5.2） | 仅用路由库 + Vite 插件，**不用** TanStack Start 服务端运行时 |
-| 状态管理 | Zustand | 待规格阶段锁定 | 最小 boilerplate |
-| 本地数据库 | Dexie.js + dexie-react-hooks | 待规格阶段锁定 | 响应式 IndexedDB |
-| 数据校验 | Zod | 待规格阶段锁定 | Schema 优先 |
-| UI 组件 | shadcn/ui（Radix UI 底层），经 `shadcn` CLI 生成源码到本地 | 待规格阶段引入（§5.2） | 代码落盘本地，可控；每个组件仅带入其自身依赖，逐件审查 |
-| 样式 | Tailwind CSS v4（`@tailwindcss/vite`） | 与 shadcn 同步引入 | shadcn 依赖 Tailwind v4 |
-| 图表 | ECharts | 待规格阶段锁定 | 离线渲染、中文友好 |
-| CSV 解析 | Papa Parse | 待规格阶段锁定 | 流式、大文件友好 |
-| 日期 | date-fns | 待规格阶段锁定 | 纯函数式、tree-shakable |
-| i18n | react-i18next | ✅ 已锁定 | 浏览器语言检测 + 动态加载；已锁 `i18next@26.3.4` / `react-i18next@17.0.8`，`packageManager` 锁 `pnpm@11.9.0`，`engines.npm` 锁 `>=11.16.0` |
+| Lockfile 校验 | `pnpm verify`（frozen 安装内建供应链复校验） | 本里程碑引入 | 无外部 `lockfile-lint` |
+| 路由 | TanStack Router + `@tanstack/router-plugin`（Vite 插件，文件路由 + 类型安全 codegen） | ✅ 已落地 | 仅用路由库 + Vite 插件，**不用** TanStack Start 服务端运行时 |
+| 状态管理 | Dexie 响应式 hooks（`dexie-react-hooks`）+ React 状态 | ✅ 已落地 | 未引入 Zustand/Jotai——数据流以 IndexedDB 响应式订阅为主 |
+| 本地数据库 | Dexie.js + dexie-react-hooks | ✅ 已落地 | 响应式 IndexedDB |
+| 数据校验 | Zod | ✅ 已落地 | Schema 优先 |
+| UI 组件 | shadcn/ui（Radix UI 底层），经 `shadcn` CLI 生成源码到本地 | ✅ 已落地 | 代码落盘本地，可控；每个组件仅带入其自身依赖，逐件审查 |
+| 样式 | Tailwind CSS v4（`@tailwindcss/vite`） | ✅ 已落地 | 与 shadcn 同批接入 |
+| 图表 | ECharts 6 | ✅ 已落地 | 离线渲染、中文友好；薄适配 `buildTheme()` |
+| 日期与时区 | `date-fns-tz`（+传递 `date-fns`） | ✅ 已落地 | 仅 tz 转换（`fromZonedTime`），不引 date-fns 主体（[import-pipeline §5](./specs/import-pipeline.md#5-时区转换)） |
+| i18n | react-i18next | ✅ 已锁定 | 浏览器语言检测 + 动态加载；`packageManager` 锁 `pnpm@11.9.0`，`engines.npm` 锁 `>=11.16.0`（版本以 `pnpm-lock.yaml` 为准） |
 | l10n | 原生 Intl API | 内置 | 数字/货币/排序零依赖 |
-| E2E 测试 | Playwright | 待规格阶段引入 | 覆盖导入与图表关键路径 |
+| 并发 | Web Worker + Comlink | ✅ 已落地 | 导入管线与画像聚合下放 Worker |
+| AI | OpenAI 兼容端点（自写 fetch 薄封装 + SSE） | ✅ 已落地 | 零新增依赖；契约见 [specs/ai-features.md](./specs/ai-features.md) |
+| E2E 测试 | Playwright | ✅ 已落地 | 覆盖导入与图表关键路径 |
 
 ## 3. 目录结构
 
@@ -77,13 +78,14 @@ ReadGraph/
 │  │  ├─ book-editing.md     # 统一编辑规格
 │  │  ├─ opac-enrichment.md  # OPAC 编目补全规格
 │  │  ├─ classification-hierarchy.md  # CLC 分类层次规格
-│  │  ├─ reading-profile.md  # 阅读画像与图表规格
 │  │  ├─ device-borrows.md   # 设备借阅区分规格
+│  │  ├─ reading-profile.md  # 阅读画像与图表规格
 │  │  ├─ branch-library.md   # 条码归属馆解析规格
 │  │  ├─ debug-mode.md       # 调试模式规格
 │  │  ├─ settings.md         # 设置与系统重置规格
 │  │  └─ ai-features.md      # AI 功能规格（阅读画像分析）
 │  ├─ metadata/              # 实体 schema、parser 设计
+│  ├─ research/              # 技术调研（ai-integration、annual-share-card、bookology-benchmark）
 │  ├─ design-decisions.md
 │  ├─ npm-supply-chain-security.md
 │  ├─ i18n-conventions.md
