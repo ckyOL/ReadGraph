@@ -13,6 +13,8 @@ import { buildDesensitizedFixture } from './fixtures'
  * zh-CN 使断言确定）。
  * AI 端点用 page.route 拦截：baseUrl 取应用源之外的回环端口（127.0.0.1:4174）→
  * 跨源 fetch 必带预检（OPTIONS），mock 必须放行并携带 CORS 头（冒烟已确认此坑）；
+ * 且 Allow-Headers 须包含 buildHeaders() 实发的归因头 X-Title / HTTP-Referer
+ * （漏放行 → 预检失败 → 实际请求被浏览器拦截，2026-09-06~09-08 CI 三用例持续挂）；
  * CSP（build 产物 meta connect-src 含 http://127.0.0.1:* 与 https:）放行该端点。
  */
 
@@ -25,7 +27,7 @@ const AI_BASE_URL = 'http://127.0.0.1:4174'
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Title, HTTP-Referer',
   'Access-Control-Max-Age': '86400',
 }
 
@@ -339,7 +341,7 @@ test.describe('AI 流式渲染：网络到达即渐进显示（ai-features §4.1
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Title, HTTP-Referer',
         })
         res.end()
         return
@@ -430,7 +432,7 @@ test.describe('AI thinking 渲染（reasoning_content 思考过程，ai-features
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Title, HTTP-Referer',
         })
         res.end()
         return
