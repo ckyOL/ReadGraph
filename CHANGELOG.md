@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result, no error toast); a static caret `▍` marks the streaming tail (no
   blinking, per the no-animation constraint); a copy button on the finalized
   result writes the markdown to the clipboard with a confirmation toast.
+- **AI request attribution pair completed** — all AI requests now send
+  `HTTP-Referer: <origin>` alongside the existing `X-Title: ReadGraph`
+  (`docs/specs/ai-features.md` §5.2). OpenRouter requires the Referer header to
+  create an app page and appear in rankings; the title alone does not, and the
+  browser-supplied Referer is not reliable under `strict-origin-when-cross-origin`
+  or stripping layers. The value is the runtime `location.origin` (never
+  fabricated) and is omitted for opaque origins (`file://`, sandboxed iframes)
+  and non-DOM environments.
 - **Borrow calendar heatmap** — new 6th chart tab on the reading profile page
   (adaptation of the Bookology Stats calendar, see `docs/bookology-benchmark.md`
   §5.1): each day cell counts distinct books held in borrow that day (UTC day

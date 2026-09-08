@@ -208,13 +208,28 @@ function endpointUrl(baseUrl: string, path: string): string {
 
 /**
  * Authorization 仅在 apiKey 非空时携带（本地无鉴权端点支持）。
- * X-Title 固定携带（OpenRouter 等聚合端点应用归因；其官方接受 X-Title 与
- * X-OpenRouter-Title，取跨 provider 通用名；归因域名由浏览器自动 Referer 提供）。
+ * 归因必需对（OpenRouter App Attribution：HTTP-Referer 建应用页必需，
+ * X-Title 仅命名、缺 Referer 不建页；localhost 须配对）：
+ * - X-Title 固定携带：官方接受 X-Title 与 X-OpenRouter-Title，取跨 provider 通用名。
+ * - HTTP-Referer 取运行时真实源 location.origin，不伪造域名；浏览器自动 Referer
+ *   不可依赖（referrer-policy、托管层/扩展剥离、dev 代理路径下带页面 URL）。
+ *   opaque origin（file://、沙箱 iframe，origin === 'null'）与无 DOM 环境
+ *   （node 测试）不携带。该头触发 CORS 预检，但 X-Title 已触发，不扩大失败面。
  */
+function appAttributionOrigin(): string | null {
+  if (typeof location === 'undefined') return null
+  const origin = location.origin
+  return origin && origin !== 'null' ? origin : null
+}
+
 function buildHeaders(apiKey?: string): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Title': 'ReadGraph',
+  }
+  const referer = appAttributionOrigin()
+  if (referer) {
+    headers['HTTP-Referer'] = referer
   }
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`

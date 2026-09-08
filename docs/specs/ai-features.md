@@ -129,7 +129,7 @@ src/
 
 - `connect-src` 由 `'self' + OPAC 域名` 增加 `https:`（用户 BYOK 任意云端端点，构建期静态化无法按用户配置动态放行）+ `http://127.0.0.1:*`（本地服务路径）。
 - 取舍记录：放宽面为任意 https 端点，但数据只在用户**显式启用 AI 并触发功能**时发送；保守用户可自托管 header 收紧。注释落 `vite.config.ts`。
-- 请求头归因（2026-09-06）：`buildHeaders()`（`src/ai/ai-client.ts`）所有 AI 请求固定携带 `X-Title: ReadGraph`（OpenRouter 等聚合端点应用归因；官方对 `X-Title` 与 `X-OpenRouter-Title` 等价接受，取跨 provider 通用名以减小严格网关预检失败面；不伪造 `HTTP-Referer`，归因域名由浏览器自动 Referer 提供，localhost 场景依赖 title 头 + 主域名首次访问触发应用页创建）。
+- 请求头归因（2026-09-06 建，2026-09-07 补）：`buildHeaders()`（`src/ai/ai-client.ts`）所有 AI 请求固定携带归因必需对 **`X-Title: ReadGraph` + `HTTP-Referer: <location.origin>`**。OpenRouter 官方（App Attribution）：`HTTP-Referer` 为**必需头**，缺省不建应用页、不入排行；`X-Title`/`X-OpenRouter-Title` 仅命名，单独携带不建页；localhost URL 须 title+referer 配对才被追踪。Referer 取**运行时真实源**（`location.origin`，不伪造域名）——浏览器自动 Referer 不可依赖（`strict-origin-when-cross-origin` 策略、托管层/扩展剥离、dev 同源代理路径下会带页面 URL），故显式携带；opaque origin（`file://`、沙箱 iframe，`origin === 'null'`）与无 DOM 环境（node 测试）不携带。取 `X-Title` 通用名减小严格网关预检失败面；两响头均非简单头、触发 CORS 预检——`X-Title` 已触发，`HTTP-Referer` 不扩大预检失败面。
 
 ### 5.3 结果缓存（src/lib/ai-cache.ts）
 

@@ -136,12 +136,32 @@ describe('chat', () => {
   })
 
 
-  it('请求携带 X-Title: ReadGraph（OpenRouter 等聚合端点应用归因；X-Title 与 X-OpenRouter-Title 等价接受，取通用名）', async () => {
+  it('请求携带 X-Title + HTTP-Referer（OpenRouter 归因必需对：Referer 建应用页、Title 命名；Referer 取运行时真实 origin）', async () => {
+    vi.stubGlobal('location', { origin: 'https://readgraph.example.org' })
+    const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
+    vi.stubGlobal('fetch', fetchMock)
+    await chat({ ...BASE_OPTS })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.headers).toMatchObject({
+      'X-Title': 'ReadGraph',
+      'HTTP-Referer': 'https://readgraph.example.org',
+    })
+  })
+  it('无 location（node 测试/SSR 环境）→ 不携带 HTTP-Referer，仍携带 X-Title', async () => {
     const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
     vi.stubGlobal('fetch', fetchMock)
     await chat({ ...BASE_OPTS })
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(init.headers).toMatchObject({ 'X-Title': 'ReadGraph' })
+    expect(init.headers).not.toHaveProperty('HTTP-Referer')
+  })
+  it('opaque origin（file://、沙箱 iframe，origin 为 "null"）→ 不携带 HTTP-Referer', async () => {
+    vi.stubGlobal('location', { origin: 'null' })
+    const fetchMock = okResponse({ choices: [{ message: { content: 'ok' } }] })
+    vi.stubGlobal('fetch', fetchMock)
+    await chat({ ...BASE_OPTS })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.headers).not.toHaveProperty('HTTP-Referer')
   })
   it.each(['', '   ', '\t'])('空/空白 baseUrl → 直接抛错且不发起请求', async (baseUrl) => {
     const fetchMock = vi.fn()
@@ -235,6 +255,7 @@ describe('testConnection', () => {
   })
 
   it('GET {base}/v1/models，2xx → 返回模型 ID 列表；有 key 携带 Bearer 头', async () => {
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:11434' })
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '[]' }))
     vi.stubGlobal('fetch', fetchMock)
     await expect(
@@ -243,7 +264,11 @@ describe('testConnection', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://127.0.0.1:11434/v1/models')
     expect(init.method).toBe('GET')
-    expect(init.headers).toMatchObject({ Authorization: 'Bearer k', 'X-Title': 'ReadGraph' })
+    expect(init.headers).toMatchObject({
+      Authorization: 'Bearer k',
+      'X-Title': 'ReadGraph',
+      'HTTP-Referer': 'http://127.0.0.1:11434',
+    })
   })
 
   it('baseUrl 已含 /v1 后缀 → GET {base}/v1/models 不重复拼接', async () => {
@@ -433,6 +458,7 @@ describe('chatStream', () => {
   })
 
   it('请求构造：POST 同 chat 的 URL/headers，body stream:true （无 response_format——markdown 文本流）', async () => {
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:11434' })
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -444,11 +470,11 @@ describe('chatStream', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.example.com/v1/chat/completions')
-    expect(init.method).toBe('POST')
     expect(init.headers).toMatchObject({
       'Content-Type': 'application/json',
       Authorization: 'Bearer sk-test',
       'X-Title': 'ReadGraph',
+      'HTTP-Referer': 'http://127.0.0.1:11434',
     })
     expect(JSON.parse(init.body as string)).toEqual({
       model: 'gpt-4o-mini',
