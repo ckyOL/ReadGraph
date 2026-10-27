@@ -13,7 +13,7 @@
 | 包 | 类型 | 版本 | 用途 |
 |----|------|------|------|
 | `dexie` | runtime | `4.4.4` | IndexedDB 封装、schema/version、事务 |
-| `zod` | runtime | `4.4.3` | 实体 schema 校验、`UserPreferences`、`ExportData` 校验 |
+| `zod` | runtime | `4.6.7` | 实体 schema 校验、`UserPreferences`、`ExportData` 校验 |
 | `fake-indexeddb` | dev | `6.2.5` | Vitest（node 环境）下为 Dexie 提供内存 IndexedDB |
 
 > `dexie-react-hooks` 留待 UI Provider 里程碑引入（`useLiveQuery` 响应式订阅），本层 Repository 不依赖它，避免不必要依赖面。

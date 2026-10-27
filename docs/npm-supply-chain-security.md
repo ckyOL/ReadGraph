@@ -122,6 +122,11 @@ minimumReleaseAgeExclude:  # 个别平台二进制需即时安装，按需排除
   - '@oxlint/binding-darwin-arm64@1.72.0'
   # ...
   - oxlint@1.72.0
+overrides:  # 已知漏洞的补丁下限（同 major）
+  nanoid: ^3.3.18
+  postcss: ^8.5.23
+  seroval: ^1.6.3
+  source-map-js: ^1.2.2
 ```
 
 `.npmrc`（pnpm 12 仅读注册表/认证类）：

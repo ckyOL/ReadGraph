@@ -30,7 +30,7 @@ Regenerate with: `pnpm generate:notices`
 | `remark-gfm` | 4.0.1 | MIT | Copyright (c) Titus Wormer <tituswormer@gmail.com> |
 | `tailwind-merge` | 3.6.0 | MIT | Copyright (c) 2021 Dany Castillo |
 | `tw-animate-css` | 1.4.0 | MIT | Copyright (c) 2025 Wombosvideo |
-| `zod` | 4.4.3 | MIT | Copyright (c) 2025 Colin McDonnell |
+| `zod` | 4.6.7 | MIT | Copyright (c) 2025 Colin McDonnell |
 
 ## NOTICE — dexie
 

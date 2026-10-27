@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ≥ 22.23.4 (Node 20 is EOL) and enforce the floor via `engineStrict` in
   `pnpm-workspace.yaml`. The obsolete `engines.npm` constraint is removed and
   CI now runs the same pnpm 12.14.0 pin.
+- Clear the dependency audit backlog: bump `vite` to 8.3.4, `vitest` to
+  4.1.12 and `zod` to 4.6.7, and add `seroval: ^1.6.3` /
+  `source-map-js: ^1.2.2` overrides, resolving GHSA-587h-7wmj-h5pm,
+  GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8, GHSA-mrhx-c7xc-m3w5,
+  GHSA-p6vx-979v-rg4c, GHSA-jp82-f5mq-hwhp and GHSA-68fv-2mgg-jv7q.
 
 ## [1.1.0] - 2026-09-08
 
