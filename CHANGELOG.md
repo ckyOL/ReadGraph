@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pin `actions/setup-node` to Node 22.23.4 in every CI job. `node-version: 22`
+  resolved to the runner's pre-cached 22.23.3, below the `engines.node` floor
+  added in 1.1.1, so `pnpm install --frozen-lockfile` failed with
+  `ERR_PNPM_UNSUPPORTED_ENGINE` in all six jobs before any gate ran.
+
 ## [1.1.1] - 2026-10-27
 
 ### Security
