@@ -1,31 +1,31 @@
-# 供应链安全规范（pnpm 11）
+# 供应链安全规范（pnpm 12）
 
 > **适用范围**: ReadGraph 项目全体贡献者与 AI 编码代理  
-> **最后更新**: 2026-07-29　**严重等级**: 🔴 强制执行  
-> **工具栈**: pnpm 11（`packageManager: pnpm@11.9.0`），`pnpm-lock.yaml`，无构建脚本。
+> **最后更新**: 2026-10-27　**严重等级**: 🔴 强制执行  
+> **工具栈**: pnpm 12（`packageManager: pnpm@12.14.0`），`pnpm-lock.yaml`，无构建脚本。
 
-pnpm 11 已把供应链的**技术执行**内化（见 §1 指针）。本规范只保留 pnpm 不替代的部分——**人工审查、AI 代理约束、应急与维护**。详细 pnpm 能力见 [缓解供应链攻击](https://pnpm.io/zh/supply-chain-security)、[设置](https://pnpm.io/zh/settings)。
+pnpm 12 已把供应链的**技术执行**内化（见 §1 指针）。本规范只保留 pnpm 不替代的部分——**人工审查、AI 代理约束、应急与维护**。详细 pnpm 能力见 [缓解供应链攻击](https://pnpm.io/zh/supply-chain-security)、[设置](https://pnpm.io/zh/settings)。
 
 ---
 
-## 1. pnpm 11 已自动覆盖的（无需手动配置，不得关闭）
+## 1. pnpm 12 已自动覆盖的（无需手动配置，不得关闭）
 
-| 能力 | pnpm 11 默认 | 配置入口（如需调）|
+| 能力 | pnpm 12 默认 | 配置入口（如需调）|
 |:---|:---|:---|
 | 阻断依赖构建脚本 | 默认禁用，`allowBuilds` 白名单逐包放行；`strictDepBuilds` 默认 `true` | `pnpm-workspace.yaml: allowBuilds` |
 | 阻断异源传递依赖 | `blockExoticSubdeps: true`（拦截 git URL / 直链 tarball） | 同上 |
 | 新发布版本延迟安装 | 本项目 `minimumReleaseAge: 10080`（7 天，对所有依赖含传递生效） | `pnpm-workspace.yaml: minimumReleaseAge` |
 | 强制 HTTPS 注册表 | `strictSsl: true`；`.npmrc: strict-ssl=true` | `.npmrc` |
-| 官方注册表锚定 | `.npmrc: registry=https://registry.npmjs.org/`（pnpm 11 仍读 `.npmrc` 的注册表/认证类） | `.npmrc` |
+| 官方注册表锚定 | `.npmrc: registry=https://registry.npmjs.org/`（pnpm 12 仍读 `.npmrc` 的注册表/认证类） | `.npmrc` |
 | 安装时整树复校验 | `pnpm install --frozen-lockfile` 会对每条 lock 项重跑冷却/信任策略 | — |
 
-> ⚠️ `.npmrc` 是 pnpm 11 **唯一仍读**的配置文件（仅注册表/认证类）。`ignore-scripts`/`save-exact`/`min-release-age`/`audit` 等键 pnpm 不再读取，写入即假合规，禁止保留为「安全加固」。
+> ⚠️ `.npmrc` 是 pnpm 12 **唯一仍读**的配置文件（仅注册表/认证类）。`ignore-scripts`/`save-exact`/`min-release-age`/`audit` 等键 pnpm 不再读取，写入即假合规，禁止保留为「安全加固」。
 
 ---
 
 ## 2. 版本范围策略：`^` 可用
 
-pnpm 11 下，`pnpm-lock.yaml` 提交并用 `--frozen-lockfile` 安装时，**实际安装版本由锁文件精确钉死**，manifest 里的 `^` 不生效。`^` 仅在 `pnpm update`/非 frozen 重解析时才浮升，而该次解析受 `minimumReleaseAge: 10080`（7 天冷却）门控。因此：
+pnpm 12 下，`pnpm-lock.yaml` 提交并用 `--frozen-lockfile` 安装时，**实际安装版本由锁文件精确钉死**，manifest 里的 `^` 不生效。`^` 仅在 `pnpm update`/非 frozen 重解析时才浮升，而该次解析受 `minimumReleaseAge: 10080`（7 天冷却）门控。因此：
 
 - ✅ `package.json` 允许 `^` / `~` 范围（新装/更新依赖可直接 `pnpm add`，无需 `-E`）。
 - ✅ 已有的精确版本可保留（无害且更稳，不必回改）。
@@ -116,6 +116,7 @@ pnpm dlx shadcn@latest add <name>   # 按需生成 shadcn 组件：dlx 临时下
 ## 6. 完整策略设置（`pnpm-workspace.yaml`）
 
 ```yaml
+engineStrict: true        # engines.node 不满足时直接失败，而非仅告警
 minimumReleaseAge: 10080  # 7 天冷却（分钟）；一旦显式配置，minimumReleaseAgeStrict 默认 true
 minimumReleaseAgeExclude:  # 个别平台二进制需即时安装，按需排除
   - '@oxlint/binding-darwin-arm64@1.72.0'
@@ -123,14 +124,14 @@ minimumReleaseAgeExclude:  # 个别平台二进制需即时安装，按需排除
   - oxlint@1.72.0
 ```
 
-`.npmrc`（pnpm 11 仅读注册表/认证类）：
+`.npmrc`（pnpm 12 仅读注册表/认证类）：
 
 ```ini
 registry=https://registry.npmjs.org/
 strict-ssl=true
 ```
 
-`package.json`：`packageManager: pnpm@11.9.0`、`engines.node: >=20.0.0`。认证令牌一律经环境变量注入，禁止写入 `.npmrc`。
+`package.json`：`packageManager: pnpm@12.14.0`、`engines.node: >=22.23.4`。认证令牌一律经环境变量注入，禁止写入 `.npmrc`。
 
 可选增强 `trustPolicy: no-downgrade`（防信任降级版被装）：实测对本仓库会拒掉 `semver@6.3.1`（旧传递依赖缺 provenance），启用须配 `trustPolicyExclude` 并先跑 frozen 安装确认。
 

@@ -31,8 +31,8 @@
 
 ### 环境要求
 
-- Node.js ≥ 20（`engines.node` 强制校验）
-- pnpm 11 —— 仓库锁定 `packageManager: pnpm@11.9.0`，不得使用其他包管理器安装
+- Node.js ≥ 22.23.4（`engines.node` 强制校验）
+- pnpm 12 —— 仓库锁定 `packageManager: pnpm@12.14.0`，不得使用其他包管理器安装
 
 ### 安装与开发
 
@@ -151,7 +151,7 @@ ReadGraph 采用**规格驱动（SDD）**：没有经协商一致的规格，功
 
 ## 依赖与供应链安全
 
-项目用 pnpm 11 加固供应链。不可谈判的规则：
+项目用 pnpm 12 加固供应链。不可谈判的规则：
 
 - 只允许 `pnpm install --frozen-lockfile`；必须提交 `pnpm-lock.yaml`。
 - `minimumReleaseAge: 10080`（7 天发布冷却）对所有依赖生效——发布不足 7 天的新包会被拒绝。

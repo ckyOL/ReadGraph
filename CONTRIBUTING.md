@@ -33,8 +33,8 @@ Be respectful, constructive, and inclusive. By participating in this project you
 
 ### Prerequisites
 
-- Node.js ≥ 20 (`engines.node` is enforced)
-- pnpm 11 — the repo pins `packageManager: pnpm@11.9.0` and must never be installed with a different package manager
+- Node.js ≥ 22.23.4 (`engines.node` is enforced)
+- pnpm 12 — the repo pins `packageManager: pnpm@12.14.0` and must never be installed with a different package manager
 
 ### Install & run
 
@@ -153,7 +153,7 @@ Process hygiene (from [docs/ai-agent-workflow-rules.md](./docs/ai-agent-workflow
 
 ## Dependencies & Supply Chain
 
-The project hardens its supply chain with pnpm 11. Non-negotiable rules:
+The project hardens its supply chain with pnpm 12. Non-negotiable rules:
 
 - `pnpm install --frozen-lockfile` only; commit `pnpm-lock.yaml`.
 - `minimumReleaseAge: 10080` (7-day release cooldown) applies to all deps — new packages under 7 days old are rejected.

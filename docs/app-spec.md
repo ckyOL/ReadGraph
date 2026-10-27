@@ -59,7 +59,7 @@ ReadGraph 是一个**纯前端**的个人阅读智能档案系统。用户从个
 | 样式 | Tailwind CSS v4（`@tailwindcss/vite`） | ✅ 已落地 | 与 shadcn 同批接入 |
 | 图表 | ECharts 6 | ✅ 已落地 | 离线渲染、中文友好；薄适配 `buildTheme()` |
 | 日期与时区 | `date-fns-tz`（+传递 `date-fns`） | ✅ 已落地 | 仅 tz 转换（`fromZonedTime`），不引 date-fns 主体（[import-pipeline §5](./specs/import-pipeline.md#5-时区转换)） |
-| i18n | react-i18next | ✅ 已锁定 | 浏览器语言检测 + 动态加载；`packageManager` 锁 `pnpm@11.9.0`，`engines.npm` 锁 `>=11.16.0`（版本以 `pnpm-lock.yaml` 为准） |
+| i18n | react-i18next | ✅ 已锁定 | 浏览器语言检测 + 动态加载；`packageManager` 锁 `pnpm@12.14.0`，`engines.node` 锁 `>=22.23.4`（版本以 `pnpm-lock.yaml` 为准） |
 | l10n | 原生 Intl API | 内置 | 数字/货币/排序零依赖 |
 | 并发 | Web Worker + Comlink | ✅ 已落地 | 导入管线与画像聚合下放 Worker |
 | AI | OpenAI 兼容端点（自写 fetch 薄封装 + SSE） | ✅ 已落地 | 零新增依赖；契约见 [specs/ai-features.md](./specs/ai-features.md) |
@@ -147,20 +147,20 @@ pnpm audit --audit-level=high     # 安全审计
 
 ## 5. 安全基线
 
-本仓库供应链安全由 **pnpm 11 原生执行**，配置入口是 `pnpm-workspace.yaml`（策略）+ `.npmrc`（仅注册表/认证）。详见 [npm-supply-chain-security §2-3](./npm-supply-chain-security.md)。
+本仓库供应链安全由 **pnpm 12 原生执行**，配置入口是 `pnpm-workspace.yaml`（策略）+ `.npmrc`（仅注册表/认证）。详见 [npm-supply-chain-security §2-3](./npm-supply-chain-security.md)。
 
 > [!CAUTION]
-> 自 pnpm 11 起，pnpm **只从 `.npmrc` 读注册表与认证**；`ignore-scripts`/`save-exact`/`min-release-age`/`audit` 等**不再被 pnpm 读取**。安全策略写在 `.npmrc` 是「自检通过、实际失效」的假合规。下列条目均以 pnpm 11 真实生效来源为准。
+> 自 pnpm 11 起（本项目现用 pnpm 12），pnpm **只从 `.npmrc` 读注册表与认证**；`ignore-scripts`/`save-exact`/`min-release-age`/`audit` 等**不再被 pnpm 读取**。安全策略写在 `.npmrc` 是「自检通过、实际失效」的假合规。下列条目均以 pnpm 12 真实生效来源为准。
 
-| 安全规范项 | pnpm 11 生效来源 | 状态 |
+| 安全规范项 | pnpm 12 生效来源 | 状态 |
 |-----------|----------------|------|
 | 禁止依赖安装脚本 | pnpm v10+ 默认禁用，`allowBuilds` 白名单逐包放行；`strictDepBuilds` 默认 `true` | ✅ 默认开启 |
 | 版本锁定 | `pnpm-lock.yaml` frozen 提交 + `minimumReleaseAge: 10080`；`^` 范围可用（CI frozen 安装走锁文件精确版） | ✅ |
 | 仅官方注册表 | `.npmrc: registry=https://registry.npmjs.org/`（pnpm 仍读此类设置） | ✅ |
-| 强制 HTTPS | `.npmrc: strict-ssl=true`；pnpm 11 `strictSsl` 默认即 `true` | ✅ |
+| 强制 HTTPS | `.npmrc: strict-ssl=true`；pnpm 12 `strictSsl` 默认即 `true` | ✅ |
 | 安全审计 | `pnpm audit --audit-level=high`（命令，非配置；`pnpm audit` script 已配） | ✅ |
 | Lockfile 提交与冻结 | `pnpm-lock.yaml` 提交并审 diff；CI `pnpm install --frozen-lockfile --ignore-scripts` 内置整树供应链复校验 | ✅ |
-| 新包冷却期 7 天 | `pnpm-workspace.yaml: minimumReleaseAge: 10080`（分钟，对所有依赖含传递生效；显式配置后 `minimumReleaseAgeStrict` 默认 `true`） | ✅ 真正强制（旧 `.npmrc: min-release-age=7d` 在 pnpm 11 下不被读取，已移除） |
+| 新包冷却期 7 天 | `pnpm-workspace.yaml: minimumReleaseAge: 10080`（分钟，对所有依赖含传递生效；显式配置后 `minimumReleaseAgeStrict` 默认 `true`） | ✅ 真正强制（旧 `.npmrc: min-release-age=7d` 在 pnpm 12 下不被读取，已移除） |
 | 阻断异源传递依赖 | pnpm `blockExoticSubdeps` 默认 `true`（拦截 git URL / 直链 tarball） | ✅ 默认开启 |
 | 禁止幽灵依赖 | pnpm 默认严格依赖隔离，未声明包无法 import | ✅ 增益 |
 | 禁止 `--force` / `--shamefully-hoist` | 规范禁止（npm 对应禁 `--force` / `--legacy-peer-deps`） | ✅ |
@@ -196,7 +196,7 @@ pnpm install --ignore-scripts
 
 | 产物 | 说明 | 处置 |
 |------|------|------|
-| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ^7.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | caret/`~` 可保留（pnpm 11 frozen 锁文件兜底）；按需调整版本 |
+| `package.json` | `react`/`react-dom` `^19.2.7`、`@vitejs/plugin-react ^6.0.2`、`typescript ^7.0.2`、`vite ^8.1.0`、`oxlint ^1.x`、`@types/* ^x` | caret/`~` 可保留（pnpm 12 frozen 锁文件兜底）；按需调整版本 |
 | `tsconfig.json` + `tsconfig.app.json` + `tsconfig.node.json` | project references、`moduleResolution: bundler`、`verbatimModuleSyntax`、`moduleDetection: force`、`erasableSyntaxOnly`、`noUnusedLocals/Parameters` | ✅ 直接沿用;按本目录结构补 `src` include 与别名 |
 | `vite.config.ts` | 仅 `@vitejs/plugin-react` | ✅ 沿用;后续在此追加 `@tailwindcss/vite` 与 `@tanstack/router-plugin` |
 | `index.html` | `lang="en"`、含 `/favicon.svg`、示例标题 | 改 `lang="zh-CN"`、标题改 "ReadGraph"、按需替换 favicon |
@@ -210,7 +210,7 @@ pnpm install --ignore-scripts
 
 1. **Vitest**：模板无测试配置。需 `pnpm add -D vitest`（经 §5 冷却期审查后），新增 `vitest.config.ts`，并补脚本 `test`/`test:watch`。
 2. **lockfile 校验**：用 `pnpm verify`（frozen 安装内建供应链复校验），无需外部 `lockfile-lint`。
-3. **`engines`**：模板 `package.json` 无。按 [npm-supply-chain-security §6] 补 `node>=20`（pnpm 无需 `npm` 引擎）。
+3. **`engines`**：模板 `package.json` 无。按 [npm-supply-chain-security §6] 补 `node>=22.23.4`（pnpm 无需 `npm` 引擎，Node 20 已 EOL）。
 
 ### 5.2 增量接入：UI 与路由
 

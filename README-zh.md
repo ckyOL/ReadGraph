@@ -35,8 +35,8 @@
 
 ### 环境要求
 
-- Node.js ≥ 20
-- pnpm 11
+- Node.js ≥ 22.23.4
+- pnpm 12
 
 ### 安装与开发
 
@@ -96,7 +96,7 @@ CI 在每次推送到 `main` 及每次 PR 时运行 verify、lint、build、test
 
 - **纯前端** — 所有数据存于浏览器 IndexedDB，不上传任何服务器；仅当显式启用可选 AI 解读（BYOK）时，才会把经白名单脱敏的统计摘要发送到你自行配置的端点。
 - **离线数据** — 记录存于浏览器 IndexedDB；断网可用性取决于托管方缓存策略；本仓库不提供 Service Worker。
-- **供应链加固** — pnpm 11 强制 7 天发布冷却（`minimumReleaseAge`）、锁定 lockfile、强制 HTTPS；见 [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md)。
+- **供应链加固** — pnpm 12 强制 7 天发布冷却（`minimumReleaseAge`）、锁定 lockfile、强制 HTTPS；见 [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md)。
 - **仓库不含真实个人数据** — 读者证号 / IP 一律不得提交，测试夹具均已脱敏。
 
 ## 许可证

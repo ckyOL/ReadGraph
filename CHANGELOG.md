@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pin the toolchain to pnpm 12.14.0, which includes the fixes for
+  CVE-2026-82393, CVE-2026-82392 and CVE-2026-101043; require Node.js
+  ≥ 22.23.4 (Node 20 is EOL) and enforce the floor via `engineStrict` in
+  `pnpm-workspace.yaml`. The obsolete `engines.npm` constraint is removed and
+  CI now runs the same pnpm 12.14.0 pin.
+
 ## [1.1.0] - 2026-09-08
 
 ### Added

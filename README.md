@@ -35,8 +35,8 @@ Import borrow/return exports from your public library or e-book platform, and tu
 
 ### Prerequisites
 
-- Node.js ≥ 20
-- pnpm 11
+- Node.js ≥ 22.23.4
+- pnpm 12
 
 ### Install & run
 
@@ -96,7 +96,7 @@ CI runs verify, lint, build, test, e2e, and audit on every push & PR to main —
 
 - **Pure frontend** — all data lives in your browser's IndexedDB; nothing is uploaded to any server — unless you explicitly enable the optional AI insights (BYOK), which send only a sanitized, whitelisted summary to the endpoint you configure.
 - **Offline data** — records live in browser IndexedDB; offline availability depends on the host's caching policy; this repo ships no Service Worker.
-- **Supply-chain hardening** — pnpm 11 with 7-day release cooldown (`minimumReleaseAge`), frozen lockfile, strict SSL; see [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md).
+- **Supply-chain hardening** — pnpm 12 with 7-day release cooldown (`minimumReleaseAge`), frozen lockfile, strict SSL; see [docs/npm-supply-chain-security.md](./docs/npm-supply-chain-security.md).
 - **No real personal data in the repo** — reader card numbers / IPs must never be committed; fixtures are desensitized.
 
 ## License
