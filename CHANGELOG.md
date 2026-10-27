@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-27
+
 ### Security
 
 - Pin the toolchain to pnpm 12.14.0, which includes the fixes for
