@@ -65,7 +65,10 @@ Releases are cut from the merged `main` branch only, after full verification:
    `chore(release): bump to 1.0.0`), then:
    `git tag -a v1.0.0 -m "v1.0.0"` (annotated tag on the release commit).
 5. **Push tag** — `git push origin main --tags`.
-6. **Create release** — `gh release create v1.0.0 --notes-file CHANGELOG.md`.
+6. **Create release** — `gh release create v1.0.0 --notes-file <release-notes>`,
+   where `<release-notes>` holds only the tagged version's section of
+   `CHANGELOG.md` (from its `## [x.y.z]` heading up to the next `## [` heading),
+   never the whole file.
 
-The tag must be annotated, the release notes must come from `CHANGELOG.md`, and the
-tag version must match the `package.json` version.
+The tag must be annotated, the release notes must be the tagged section of
+`CHANGELOG.md`, and the tag version must match the `package.json` version.
